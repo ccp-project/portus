@@ -1,0 +1,8 @@
+[package]
+name = "ipc"
+version = "0.1.0"
+authors = ["Akshay Narayan <akshayn@csail.mit.edu>"]
+
+[dependencies]
+libc="0.2"
+nix="0.9.0"
