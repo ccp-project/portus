@@ -33,29 +33,6 @@ impl Socket {
         Ok(s)
     }
 
-    pub fn recv(&self, buf: &mut [u8]) -> Result<(), nix::Error> {
-        socket::recvmsg::<()>(
-            self.0,
-            &[nix::sys::uio::IoVec::from_mut_slice(&mut buf[..])],
-            None,
-            nix::sys::socket::MsgFlags::empty(),
-        ).map(|_| ())
-    }
-
-    pub fn send(&self, buf: &[u8]) -> Result<(), nix::Error> {
-        socket::sendmsg(
-            self.0,
-            &[nix::sys::uio::IoVec::from_slice(&buf[..])],
-            &[],
-            nix::sys::socket::MsgFlags::empty(),
-            None,
-        ).map(|_| ())
-    }
-
-    pub fn close(&self) -> Result<(), nix::Error> {
-        return socket::shutdown(self.0, nix::sys::socket::Shutdown::Both);
-    }
-
     fn setsockopt_int(&self, level: c_int, option: c_int, val: c_int) -> Result<(), nix::Error> {
         use std::mem;
         let res = unsafe {
@@ -73,6 +50,41 @@ impl Socket {
         }
 
         Ok(())
+    }
+}
+
+use super::Error;
+impl super::Ipc for Socket {
+    fn recv(&self, buf: &mut [u8]) -> Result<usize, Error> {
+        socket::recvmsg::<()>(
+            self.0,
+            &[nix::sys::uio::IoVec::from_mut_slice(&mut buf[..])],
+            None,
+            nix::sys::socket::MsgFlags::empty(),
+        ).map(|r| r.bytes)
+            .map_err(|e| Error::from(e))
+    }
+
+    fn send(&self, addr: Option<u16>, buf: &[u8]) -> Result<(), Error> {
+        // addr should NEVER be Some(_) for a netlink socket
+        // there is no addressing for netlink.
+        if addr.is_some() {
+            return Err(Error(String::from("No addr for netlink")));
+        }
+
+        socket::sendmsg(
+            self.0,
+            &[nix::sys::uio::IoVec::from_slice(&buf[..])],
+            &[],
+            nix::sys::socket::MsgFlags::empty(),
+            None,
+        ).map(|_| ())
+            .map_err(|e| Error::from(e))
+    }
+
+    fn close(&self) -> Result<(), Error> {
+        return socket::shutdown(self.0, nix::sys::socket::Shutdown::Both)
+            .map_err(|e| Error::from(e));
     }
 }
 
