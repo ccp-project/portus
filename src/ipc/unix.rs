@@ -95,7 +95,7 @@ impl super::Ipc for Socket {
 #[cfg(test)]
 mod tests {
     use std;
-    use Ipc;
+    use ipc::Ipc;
 
     #[test]
     fn test_sk() {
