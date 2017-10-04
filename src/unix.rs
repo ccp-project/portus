@@ -29,7 +29,11 @@ impl Socket {
         let in_addr = port_to_addr!(port);
 
         // unlink before bind
-        std::fs::remove_file(&in_addr)?;
+        match std::fs::remove_file(&in_addr).err() {
+            Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Some(e) => Err(e),
+            None => Ok(()),
+        }?;
         let sock = UnixDatagram::bind(in_addr)?;
 
         if port != 0 {
@@ -95,28 +99,25 @@ mod tests {
 
     #[test]
     fn test_sk() {
-        let sk1 = super::Socket::new(0).unwrap();
+        let sk1 = super::Socket::new(0).expect("recv socket init");
         assert!(!sk1.is_connected);
 
-        let sk2 = super::Socket::new(42424).unwrap();
+        let sk2 = super::Socket::new(42424).expect("send socket init");
         assert!(sk2.is_connected);
 
         use std::thread;
-        let c1 = thread::spawn(move || {
-            let mut msg = [0u8; 128];
-            let sz = sk1.recv(&mut msg).unwrap();
-            sk1.close().unwrap();
-            let got = std::str::from_utf8(&msg[..sz]).unwrap();
-            assert_eq!(got, "hello, world");
-        });
 
         let c2 = thread::spawn(move || {
             let msg = "hello, world".as_bytes();
-            sk2.send(None, &msg).unwrap();
-            sk2.close().unwrap();
+            sk2.send(None, &msg).expect("send msg");
+            sk2.close().expect("close sender");
         });
 
-        c1.join().unwrap();
-        c2.join().unwrap();
+        let mut msg = [0u8; 128];
+        let sz = sk1.recv(&mut msg).expect("receive msg");
+        sk1.close().expect("close receiver");
+        let got = std::str::from_utf8(&msg[..sz]).expect("parse string");
+        assert_eq!(got, "hello, world");
+        c2.join().expect("join sender thread");
     }
 }

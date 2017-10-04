@@ -87,9 +87,3 @@ impl super::Ipc for Socket {
             .map_err(|e| Error::from(e));
     }
 }
-
-impl Clone for Socket {
-    fn clone(&self) -> Self {
-        Socket(self.0)
-    }
-}
