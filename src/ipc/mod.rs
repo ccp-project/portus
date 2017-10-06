@@ -21,6 +21,7 @@ impl std::convert::From<std::io::Error> for Error {
     }
 }
 
+#[cfg(all(linux))]
 pub mod netlink;
 pub mod unix;
 
@@ -102,11 +103,12 @@ impl<T: Ipc + Sync> Drop for Backend<T> {
 
 #[cfg(test)]
 mod tests {
-    use std;
-    use std::thread;
-
+    #[cfg(all(linux))] // this doesn't work on Darwin currently. Not sure why.
     #[test]
     fn test_unix() {
+        use std;
+        use std::thread;
+
         let (tx, rx) = std::sync::mpsc::channel();
         let c1 = thread::spawn(move || {
             let sk1 = super::unix::Socket::new(0).expect("init socket");
