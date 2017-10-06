@@ -9,13 +9,13 @@ extern crate nix;
 #[derive(Debug)]
 pub struct Error(String);
 
-impl std::convert::From<nix::Error> for Error {
+impl From<nix::Error> for Error {
     fn from(e: nix::Error) -> Error {
         Error(format!("err {}", e))
     }
 }
 
-impl std::convert::From<std::io::Error> for Error {
+impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Error {
         Error(format!("err {}", e))
     }
@@ -103,7 +103,8 @@ impl<T: Ipc + Sync> Drop for Backend<T> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(all(linux))] // this doesn't work on Darwin currently. Not sure why.
+    // this doesn't work on Darwin currently. Not sure why.
+    #[cfg(not(target_os="macos"))]
     #[test]
     fn test_unix() {
         use std;
@@ -123,9 +124,7 @@ mod tests {
             rx.recv().expect("chan rcv");
             let sk2 = super::unix::Socket::new(42424).expect("init socket");
             let (b2, _) = super::Backend::new(sk2).expect("init backend");
-            b2.send_msg(None, "hello, world".as_bytes()).expect(
-                "send message",
-            );
+            b2.send_msg(None, "hello, world".as_bytes()).expect("send message");
         });
 
         c2.join().expect("join sender thread");
