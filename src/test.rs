@@ -35,9 +35,6 @@ impl Ipc for FakeIpc {
     }
 }
 
-
-// this doesn't work on Darwin currently. Not sure why.
-#[cfg(not(target_os = "macos"))]
 #[test]
 fn test_ser_over_ipc() {
     use std;
