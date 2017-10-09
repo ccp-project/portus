@@ -142,9 +142,11 @@ use super::pattern;
 check_pattern_msg!(test_pattern_1,
                    42,
                    make_pattern!(pattern::Event::Report => pattern::Event::SetCwndAbs(10) => pattern::Event::WaitNs(100)));
-check_pattern_msg!(test_pattern_2,
-                   43,
-                   make_pattern!(pattern::Event::SetRateAbs(1000000) => pattern::Event::WaitRtts(2.0)));
+check_pattern_msg!(
+    test_pattern_2,
+    43,
+    make_pattern!(pattern::Event::SetRateAbs(1000000) => pattern::Event::WaitRtts(2.0))
+);
 
 extern crate test;
 use self::test::Bencher;

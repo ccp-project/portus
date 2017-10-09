@@ -124,7 +124,9 @@ pub trait AsRawMsg {
     fn get_u64s<W: Write>(&self, w: &mut W) -> Result<()>;
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()>;
 
-    fn from_raw_msg(msg: RawMsg) -> Result<Self> where Self: std::marker::Sized;
+    fn from_raw_msg(msg: RawMsg) -> Result<Self>
+    where
+        Self: std::marker::Sized;
 }
 
 pub struct RMsg<T: AsRawMsg>(pub T);

@@ -54,19 +54,29 @@ impl Socket {
 impl super::Ipc for Socket {
     fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<(), super::Error> {
         match self {
-            &Socket { ref sk, is_connected: true } => {
+            &Socket {
+                ref sk,
+                is_connected: true,
+            } => {
                 if addr.is_some() {
-                    Err(super::Error(String::from("No addr for connected unix socket")))
+                    Err(super::Error(
+                        String::from("No addr for connected unix socket"),
+                    ))
                 } else {
                     translate_result!(sk.send(msg))
                 }
             }
 
-            &Socket { ref sk, is_connected: false } => {
+            &Socket {
+                ref sk,
+                is_connected: false,
+            } => {
                 match addr {
                     Some(a) => translate_result!(sk.send_to(msg, port_to_addr!(a))),
                     None => {
-                        Err(super::Error(String::from("Need addr for unconnected unix socket")))
+                        Err(super::Error(
+                            String::from("Need addr for unconnected unix socket"),
+                        ))
                     }
                 }
             }
@@ -87,7 +97,7 @@ impl super::Ipc for Socket {
 #[cfg(test)]
 mod tests {
     // this doesn't work on Darwin currently. Not sure why.
-    #[cfg(not(target_os="macos"))]
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn test_sk() {
         use std;

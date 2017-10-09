@@ -108,7 +108,7 @@ impl<T: Ipc + Sync> Drop for Backend<T> {
 #[cfg(test)]
 mod tests {
     // this doesn't work on Darwin currently. Not sure why.
-    #[cfg(not(target_os="macos"))]
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn test_unix() {
         use std;
@@ -128,7 +128,9 @@ mod tests {
             rx.recv().expect("chan rcv");
             let sk2 = super::unix::Socket::new(42424).expect("init socket");
             let (b2, _) = super::Backend::new(sk2).expect("init backend");
-            b2.send_msg(None, "hello, world".as_bytes()).expect("send message");
+            b2.send_msg(None, "hello, world".as_bytes()).expect(
+                "send message",
+            );
         });
 
         c2.join().expect("join sender thread");

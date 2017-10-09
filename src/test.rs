@@ -24,7 +24,9 @@ impl Ipc for FakeIpc {
         use std::cmp;
         let x = self.0.lock().unwrap();
         let w = cmp::min(msg.len(), (*x).len());
-        msg.write_all(&(*x)[0..w]).expect("fakeipc write to recv buffer");
+        msg.write_all(&(*x)[0..w]).expect(
+            "fakeipc write to recv buffer",
+        );
         Ok(w)
     }
 
@@ -35,7 +37,7 @@ impl Ipc for FakeIpc {
 
 
 // this doesn't work on Darwin currently. Not sure why.
-#[cfg(not(target_os="macos"))]
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn test_ser_over_ipc() {
     use std;
@@ -57,12 +59,14 @@ fn test_ser_over_ipc() {
         let raw_msg = deserialize(&mut msg[..]).expect("deserialization");
         let got = Msg::get(raw_msg).expect("typing");
 
-        assert_eq!(got,
-                   Msg::Cr(CreateMsg {
-                       sid: 42,
-                       start_seq: 42,
-                       cong_alg: String::from("foobar"),
-                   }));
+        assert_eq!(
+            got,
+            Msg::Cr(CreateMsg {
+                sid: 42,
+                start_seq: 42,
+                cong_alg: String::from("foobar"),
+            })
+        );
     });
 
     let sk2 = sk.clone();
@@ -112,12 +116,14 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
             let raw_msg = deserialize(&mut msg[..]).expect("deserialization");
             let got = Msg::get(raw_msg).expect("typing");
 
-            assert_eq!(got,
-                       Msg::Cr(CreateMsg {
-                           sid: 42,
-                           start_seq: 42,
-                           cong_alg: String::from("foobar"),
-                       }));
+            assert_eq!(
+                got,
+                Msg::Cr(CreateMsg {
+                    sid: 42,
+                    start_seq: 42,
+                    cong_alg: String::from("foobar"),
+                })
+            );
 
             if let Err(_) = exp_end_tx.send(true) {
                 break;
