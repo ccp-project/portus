@@ -64,13 +64,7 @@ impl super::Ipc for Socket {
             .map_err(|e| Error::from(e))
     }
 
-    fn send(&self, addr: Option<u16>, buf: &[u8]) -> Result<()> {
-        // addr should NEVER be Some(_) for a netlink socket
-        // there is no addressing for netlink.
-        if addr.is_some() {
-            return Err(Error(String::from("No addr for netlink")));
-        }
-
+    fn send(&self, _: Option<u16>, buf: &[u8]) -> Result<()> {
         socket::sendmsg(
             self.0,
             &[nix::sys::uio::IoVec::from_slice(&buf[..])],
