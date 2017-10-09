@@ -106,4 +106,4 @@ impl<T: Ipc + Sync> Drop for Backend<T> {
 }
 
 #[cfg(test)]
-mod test;
+pub mod test;

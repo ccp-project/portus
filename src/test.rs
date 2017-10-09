@@ -1,39 +1,5 @@
-use std::sync::{Arc, Mutex};
-use super::ipc::*;
-use super::serialize::*;
-
-#[derive(Clone)]
-struct FakeIpc(Arc<Mutex<Vec<u8>>>);
-
-impl FakeIpc {
-    fn new() -> Self {
-        FakeIpc(Arc::new(Mutex::new(Vec::new())))
-    }
-}
-
-impl Ipc for FakeIpc {
-    fn send(&self, _: Option<u16>, msg: &[u8]) -> Result<(), super::ipc::Error> {
-        let mut x = self.0.lock().unwrap();
-        (*x).extend(msg);
-        Ok(())
-    }
-
-    // return the number of bytes read if successful.
-    fn recv(&self, mut msg: &mut [u8]) -> Result<usize, super::ipc::Error> {
-        use std::io::Write;
-        use std::cmp;
-        let x = self.0.lock().unwrap();
-        let w = cmp::min(msg.len(), (*x).len());
-        msg.write_all(&(*x)[0..w]).expect(
-            "fakeipc write to recv buffer",
-        );
-        Ok(w)
-    }
-
-    fn close(&self) -> Result<(), super::ipc::Error> {
-        Ok(())
-    }
-}
+use super::ipc;
+use super::serialize;
 
 #[test]
 fn test_ser_over_ipc() {
@@ -41,10 +7,10 @@ fn test_ser_over_ipc() {
     use std::thread;
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let sk = FakeIpc::new();
+    let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
-        let (_, r1) = Backend::new(sk1).expect("init backend");
+        let (_, r1) = ipc::Backend::new(sk1).expect("init backend");
         tx.send(true).expect("ready chan send");
         let mut msg = r1.recv().expect("receive message"); // Vec<u8>
 
@@ -53,12 +19,12 @@ fn test_ser_over_ipc() {
             panic!("msg too small: {:?}", msg);
         }
 
-        let raw_msg = deserialize(&mut msg[..]).expect("deserialization");
-        let got = Msg::get(raw_msg).expect("typing");
+        let raw_msg = serialize::deserialize(&mut msg[..]).expect("deserialization");
+        let got = serialize::Msg::get(raw_msg).expect("typing");
 
         assert_eq!(
             got,
-            Msg::Cr(CreateMsg {
+            serialize::Msg::Cr(serialize::CreateMsg {
                 sid: 42,
                 start_seq: 42,
                 cong_alg: String::from("foobar"),
@@ -69,16 +35,18 @@ fn test_ser_over_ipc() {
     let sk2 = sk.clone();
     let c2 = thread::spawn(move || {
         rx.recv().expect("ready chan rcv");
-        let (b2, _) = Backend::new(sk2).expect("init backend");
+        let (b2, _) = ipc::Backend::new(sk2).expect("init backend");
 
         // serialize a message
-        let m = CreateMsg {
+        let m = serialize::CreateMsg {
             sid: 42,
             start_seq: 42,
             cong_alg: String::from("foobar"),
         };
 
-        let buf = RMsg::<CreateMsg>(m.clone()).serialize().expect("serialize");
+        let buf = serialize::RMsg::<serialize::CreateMsg>(m.clone())
+            .serialize()
+            .expect("serialize");
         b2.send_msg(None, &buf[..]).expect("send message");
     });
 
@@ -97,10 +65,10 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let (exp_start_tx, exp_start_rx) = std::sync::mpsc::channel();
     let (exp_end_tx, exp_end_rx) = std::sync::mpsc::channel();
     let (tx, rx) = std::sync::mpsc::channel();
-    let sk = FakeIpc::new();
+    let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     thread::spawn(move || {
-        let (_, r1) = Backend::new(sk1).expect("init backend");
+        let (_, r1) = ipc::Backend::new(sk1).expect("init backend");
         loop {
             tx.send(true).expect("ready chan send");
             let mut msg = r1.recv().expect("receive message"); // Vec<u8>
@@ -110,12 +78,12 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
                 panic!("msg too small: {:?}", msg);
             }
 
-            let raw_msg = deserialize(&mut msg[..]).expect("deserialization");
-            let got = Msg::get(raw_msg).expect("typing");
+            let raw_msg = serialize::deserialize(&mut msg[..]).expect("deserialization");
+            let got = serialize::Msg::get(raw_msg).expect("typing");
 
             assert_eq!(
                 got,
-                Msg::Cr(CreateMsg {
+                serialize::Msg::Cr(serialize::CreateMsg {
                     sid: 42,
                     start_seq: 42,
                     cong_alg: String::from("foobar"),
@@ -130,8 +98,8 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
 
     let sk2 = sk.clone();
     thread::spawn(move || {
-        let (b2, _) = Backend::new(sk2).expect("init backend");
-        let m = CreateMsg {
+        let (b2, _) = ipc::Backend::new(sk2).expect("init backend");
+        let m = serialize::CreateMsg {
             sid: 42,
             start_seq: 42,
             cong_alg: String::from("foobar"),
@@ -146,7 +114,9 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
             rx.recv().expect("ready chan rcv");
 
             // send a message
-            let buf = RMsg::<CreateMsg>(m.clone()).serialize().expect("serialize");
+            let buf = serialize::RMsg::<serialize::CreateMsg>(m.clone())
+                .serialize()
+                .expect("serialize");
             b2.send_msg(None, &buf[..]).expect("send message");
         }
     });

@@ -1,3 +1,39 @@
+use std::sync::{Arc, Mutex};
+use super::Ipc;
+
+#[derive(Clone)]
+pub struct FakeIpc(Arc<Mutex<Vec<u8>>>);
+
+impl FakeIpc {
+    pub fn new() -> Self {
+        FakeIpc(Arc::new(Mutex::new(Vec::new())))
+    }
+}
+
+impl Ipc for FakeIpc {
+    fn send(&self, _: Option<u16>, msg: &[u8]) -> Result<(), super::Error> {
+        let mut x = self.0.lock().unwrap();
+        (*x).extend(msg);
+        Ok(())
+    }
+
+    // return the number of bytes read if successful.
+    fn recv(&self, mut msg: &mut [u8]) -> Result<usize, super::Error> {
+        use std::io::Write;
+        use std::cmp;
+        let x = self.0.lock().unwrap();
+        let w = cmp::min(msg.len(), (*x).len());
+        msg.write_all(&(*x)[0..w]).expect(
+            "fakeipc write to recv buffer",
+        );
+        Ok(w)
+    }
+
+    fn close(&self) -> Result<(), super::Error> {
+        Ok(())
+    }
+}
+
 // this doesn't work on Darwin currently. Not sure why.
 #[cfg(not(target_os = "macos"))]
 #[test]
