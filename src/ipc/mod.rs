@@ -75,17 +75,21 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
             while me.close.load(Ordering::SeqCst) {
                 let len = match me.sock.recv(rcv_buf.as_mut_slice()) {
                     Ok(l) => l,
-                    Err(e) => {
-                        println!("{:?}", e);
+                    Err(_) => {
+                        //println!("{:?}", e);
                         continue;
                     }
                 };
 
+                if len == 0 {
+                    continue;
+                }
+
                 rcv_buf.truncate(len);
                 match me.notif_ch.send(rcv_buf.clone()) {
                     Ok(_) => (),
-                    Err(e) => {
-                        println!("{}", e);
+                    Err(_) => {
+                        //println!("{}", e);
                         continue;
                     }
                 };

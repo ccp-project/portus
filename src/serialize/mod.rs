@@ -127,7 +127,7 @@ pub trait AsRawMsg {
     fn from_raw_msg(msg: RawMsg) -> Result<Self> where Self: std::marker::Sized;
 }
 
-pub struct RMsg<T: AsRawMsg>(T);
+pub struct RMsg<T: AsRawMsg>(pub T);
 
 impl<T: AsRawMsg> RMsg<T> {
     pub fn serialize(&self) -> Result<Vec<u8>> {
@@ -145,9 +145,9 @@ const CREATE: u8 = 0;
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct CreateMsg {
-    sid: u32,
-    start_seq: u32,
-    cong_alg: String,
+    pub sid: u32,
+    pub start_seq: u32,
+    pub cong_alg: String,
 }
 
 impl AsRawMsg for CreateMsg {
@@ -231,8 +231,8 @@ impl AsRawMsg for MeasureMsg {
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct DropMsg {
-    sid: u32,
-    event: String,
+    pub sid: u32,
+    pub event: String,
 }
 
 const DROP: u8 = 2;
@@ -271,8 +271,8 @@ mod pattern;
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct PatternMsg {
-    sid: u32,
-    pattern: pattern::Pattern,
+    pub sid: u32,
+    pub pattern: pattern::Pattern,
 }
 
 const CWND: u8 = 3;
@@ -315,6 +315,8 @@ pub fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     })
 }
 
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub enum Msg {
     Cr(CreateMsg),
     Dr(DropMsg),
