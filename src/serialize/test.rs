@@ -1,6 +1,6 @@
 use std;
 use std::mem;
-use super::{AsRawMsg, RMsg, Msg, CreateMsg, MeasureMsg, DropMsg, PatternMsg, deserialize};
+use super::{AsRawMsg, RMsg, Msg, CreateMsg, MeasureMsg, DropMsg, PatternMsg};
 
 #[test]
 fn test_from_u32() {
@@ -47,8 +47,7 @@ fn test_to_u64_1() {
 
 fn flip<T: AsRawMsg>(m: RMsg<T>) -> Msg {
     let mut buf = m.serialize().expect("serialize");
-    let raw_msg = deserialize(&mut buf).expect("deserialization");
-    Msg::get(raw_msg).expect("typing")
+    Msg::from_buf(&mut buf).expect("deserialize")
 }
 
 macro_rules! check_msg {

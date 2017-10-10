@@ -305,7 +305,7 @@ impl AsRawMsg for PatternMsg {
     }
 }
 
-pub fn deserialize(buf: &[u8]) -> Result<RawMsg> {
+fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     let mut buf = Cursor::new(buf);
     let (typ, len, sid) = deserialize_header(&mut buf)?;
     let i = buf.position();
@@ -327,7 +327,7 @@ pub enum Msg {
 }
 
 impl Msg {
-    pub fn get(m: RawMsg) -> Result<Msg> {
+    fn from_raw_msg(m: RawMsg) -> Result<Msg> {
         match m.typ {
             CREATE => Ok(Msg::Cr(CreateMsg::from_raw_msg(m)?)),
             DROP => Ok(Msg::Dr(DropMsg::from_raw_msg(m)?)),
@@ -335,6 +335,10 @@ impl Msg {
             CWND => Ok(Msg::Pt(PatternMsg::from_raw_msg(m)?)),
             _ => Err(Error(String::from("unknown type"))),
         }
+    }
+
+    pub fn from_buf(buf: &[u8]) -> Result<Msg> {
+        deserialize(buf).and_then(Msg::from_raw_msg)
     }
 }
 

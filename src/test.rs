@@ -20,9 +20,7 @@ fn test_ser_over_ipc() {
             panic!("msg too small: {:?}", msg);
         }
 
-        let raw_msg = serialize::deserialize(&mut msg[..]).expect("deserialization");
-        let got = serialize::Msg::get(raw_msg).expect("typing");
-
+        let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
         assert_eq!(
             got,
             serialize::Msg::Cr(serialize::CreateMsg {
@@ -80,9 +78,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
                 panic!("msg too small: {:?}", msg);
             }
 
-            let raw_msg = serialize::deserialize(&mut msg[..]).expect("deserialization");
-            let got = serialize::Msg::get(raw_msg).expect("typing");
-
+            let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
             assert_eq!(
                 got,
                 serialize::Msg::Cr(serialize::CreateMsg {
