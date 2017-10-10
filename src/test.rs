@@ -10,7 +10,8 @@ fn test_ser_over_ipc() {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
-        let (_, r1) = ipc::Backend::new(sk1).expect("init backend");
+        let b1 = ipc::Backend::new(sk1).expect("init backend");
+        let r1 = b1.listen();
         tx.send(true).expect("ready chan send");
         let mut msg = r1.recv().expect("receive message"); // Vec<u8>
 
@@ -35,7 +36,7 @@ fn test_ser_over_ipc() {
     let sk2 = sk.clone();
     let c2 = thread::spawn(move || {
         rx.recv().expect("ready chan rcv");
-        let (b2, _) = ipc::Backend::new(sk2).expect("init backend");
+        let b2 = ipc::Backend::new(sk2).expect("init backend");
 
         // serialize a message
         let m = serialize::CreateMsg {
@@ -68,7 +69,8 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     thread::spawn(move || {
-        let (_, r1) = ipc::Backend::new(sk1).expect("init backend");
+        let b1 = ipc::Backend::new(sk1).expect("init backend");
+        let r1 = b1.listen();
         loop {
             tx.send(true).expect("ready chan send");
             let mut msg = r1.recv().expect("receive message"); // Vec<u8>
@@ -98,7 +100,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
 
     let sk2 = sk.clone();
     thread::spawn(move || {
-        let (b2, _) = ipc::Backend::new(sk2).expect("init backend");
+        let b2 = ipc::Backend::new(sk2).expect("init backend");
         let m = serialize::CreateMsg {
             sid: 42,
             start_seq: 42,

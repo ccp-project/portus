@@ -33,7 +33,6 @@ pub trait Ipc {
 
 pub struct Backend<T: Ipc + Sync> {
     sock: Arc<T>,
-    notif_ch: mpsc::Sender<Vec<u8>>,
     close: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -41,7 +40,6 @@ impl<T: Ipc + Sync> Clone for Backend<T> {
     fn clone(&self) -> Self {
         Backend {
             sock: self.sock.clone(),
-            notif_ch: self.notif_ch.clone(),
             close: self.close.clone(),
         }
     }
@@ -50,17 +48,12 @@ impl<T: Ipc + Sync> Clone for Backend<T> {
 impl<T: Ipc + 'static + Sync + Send> Backend<T> {
     // Pass in a T: Ipc, the Ipc substrate to use.
     // Return a Backend on which to call send_msg
-    // and a channel on which to listen for incoming
-    pub fn new(sock: T) -> Result<(Backend<T>, mpsc::Receiver<Vec<u8>>), Error> {
-        let (tx, rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) = mpsc::channel();
-        let b = Backend {
+    // and listen
+    pub fn new(sock: T) -> Result<Backend<T>, Error> {
+        Ok(Backend {
             sock: Arc::new(sock),
-            notif_ch: tx,
-            close: Default::default(),
-        };
-
-        b.listen();
-        Ok((b, rx))
+            close: Default::default(), // initialized to false
+        })
     }
 
     // Blocking send.
@@ -68,11 +61,14 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
         self.sock.send(addr, msg).map_err(|e| Error::from(e))
     }
 
-    fn listen(&self) {
+    // Start listening on the IPC socket
+    // Return a channel on which incoming messages will be passed
+    pub fn listen(&self) -> mpsc::Receiver<Vec<u8>> {
+        let (tx, rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) = mpsc::channel();
         let me = self.clone();
         thread::spawn(move || {
             let mut rcv_buf = vec![0u8; 1024];
-            while me.close.load(Ordering::SeqCst) {
+            while !me.close.load(Ordering::SeqCst) {
                 let len = match me.sock.recv(rcv_buf.as_mut_slice()) {
                     Ok(l) => l,
                     Err(_) => {
@@ -86,15 +82,11 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
                 }
 
                 rcv_buf.truncate(len);
-                match me.notif_ch.send(rcv_buf.clone()) {
-                    Ok(_) => (),
-                    Err(_) => {
-                        //println!("{}", e);
-                        continue;
-                    }
-                };
+                let _ = tx.send(rcv_buf.clone());
             }
         });
+
+        rx
     }
 }
 
