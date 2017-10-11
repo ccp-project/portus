@@ -4,31 +4,19 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread;
 
+use super::Error;
+use super::Result;
+
 extern crate nix;
-
-#[derive(Debug)]
-pub struct Error(String);
-
-impl From<nix::Error> for Error {
-    fn from(e: nix::Error) -> Error {
-        Error(format!("err {}", e))
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Error {
-        Error(format!("err {}", e))
-    }
-}
 
 #[cfg(all(linux))]
 pub mod netlink;
 pub mod unix;
 
 pub trait Ipc {
-    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<(), Error>; // Blocking send
-    fn recv(&self, msg: &mut [u8]) -> Result<usize, Error>; // Blocking listen
-    fn close(&self) -> Result<(), Error>; // Close the underlying sockets
+    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<()>; // Blocking send
+    fn recv(&self, msg: &mut [u8]) -> Result<usize>; // Blocking listen
+    fn close(&self) -> Result<()>; // Close the underlying sockets
 }
 
 pub struct Backend<T: Ipc + Sync> {
@@ -49,7 +37,7 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
     // Pass in a T: Ipc, the Ipc substrate to use.
     // Return a Backend on which to call send_msg
     // and listen
-    pub fn new(sock: T) -> Result<Backend<T>, Error> {
+    pub fn new(sock: T) -> Result<Backend<T>> {
         Ok(Backend {
             sock: Arc::new(sock),
             close: Default::default(), // initialized to false
@@ -57,7 +45,7 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
     }
 
     // Blocking send.
-    pub fn send_msg(&self, addr: Option<u16>, msg: &[u8]) -> Result<(), Error> {
+    pub fn send_msg(&self, addr: Option<u16>, msg: &[u8]) -> Result<()> {
         self.sock.send(addr, msg).map_err(|e| Error::from(e))
     }
 

@@ -1,6 +1,9 @@
 use std;
 use std::os::unix::net::UnixDatagram;
 
+use super::Error;
+use super::Result;
+
 macro_rules! port_to_addr {
     ($x:expr) => (format!("/tmp/ccp/{}", $x));
 }
@@ -18,7 +21,7 @@ impl Socket {
     // Only the CCP process is allowed to use id = 0.
     // For all other datapaths, they should use a known unique identifier
     // such as the port number.
-    pub fn new(port: u16) -> Result<Self, super::Error> {
+    pub fn new(port: u16) -> Result<Self> {
         // create dir if not already exists
         match std::fs::create_dir("/tmp/ccp").err() {
             Some(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
@@ -52,13 +55,13 @@ impl Socket {
 }
 
 impl super::Ipc for Socket {
-    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<(), super::Error> {
+    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<()> {
         match self {
             &Socket {
                 ref sk,
                 is_connected: true,
             } => {
-                if addr.is_some() {
+                if let Some(_) = addr {
                     Err(super::Error(
                         String::from("No addr for connected unix socket"),
                     ))
@@ -84,11 +87,11 @@ impl super::Ipc for Socket {
     }
 
     // return the number of bytes read if successful.
-    fn recv(&self, msg: &mut [u8]) -> Result<usize, super::Error> {
-        self.sk.recv(msg).map_err(|e| super::Error::from(e))
+    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
+        self.sk.recv(msg).map_err(|e| Error::from(e))
     }
 
-    fn close(&self) -> Result<(), super::Error> {
+    fn close(&self) -> Result<()> {
         use std::net::Shutdown;
         translate_result!(self.sk.shutdown(Shutdown::Both))
     }

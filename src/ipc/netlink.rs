@@ -54,8 +54,10 @@ impl Socket {
 }
 
 use super::Error;
+use super::Result;
+
 impl super::Ipc for Socket {
-    fn recv(&self, buf: &mut [u8]) -> Result<usize, Error> {
+    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
         socket::recvmsg::<()>(
             self.0,
             &[nix::sys::uio::IoVec::from_mut_slice(&mut buf[..])],
@@ -65,7 +67,7 @@ impl super::Ipc for Socket {
             .map_err(|e| Error::from(e))
     }
 
-    fn send(&self, addr: Option<u16>, buf: &[u8]) -> Result<(), Error> {
+    fn send(&self, addr: Option<u16>, buf: &[u8]) -> Result<()> {
         // addr should NEVER be Some(_) for a netlink socket
         // there is no addressing for netlink.
         if addr.is_some() {
@@ -82,7 +84,7 @@ impl super::Ipc for Socket {
             .map_err(|e| Error::from(e))
     }
 
-    fn close(&self) -> Result<(), Error> {
+    fn close(&self) -> Result<()> {
         return socket::shutdown(self.0, nix::sys::socket::Shutdown::Both)
             .map_err(|e| Error::from(e));
     }
