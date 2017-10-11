@@ -8,21 +8,21 @@ use super::Result;
 
 use bytes::{ByteOrder, LittleEndian};
 
-pub fn u32_to_u8s(buf: &mut [u8], num: u32) {
+pub(crate) fn u32_to_u8s(buf: &mut [u8], num: u32) {
     LittleEndian::write_u32(buf, num);
 }
 
-pub fn u64_to_u8s(buf: &mut [u8], num: u64) {
+pub(crate) fn u64_to_u8s(buf: &mut [u8], num: u64) {
     LittleEndian::write_u64(buf, num);
 }
 
-pub fn u32_from_u8s(buf: &[u8]) -> u32 {
+pub(crate) fn u32_from_u8s(buf: &[u8]) -> u32 {
     LittleEndian::read_u32(buf)
 }
 
-pub fn u64_from_u8s(buf: &[u8]) -> u64 {
-    LittleEndian::read_u64(buf)
-}
+//pub(crate) fn u64_from_u8s(buf: &[u8]) -> u64 {
+//    LittleEndian::read_u64(buf)
+//}
 
 /* (type, len, socket_id) header
  * -----------------------------------
@@ -52,7 +52,7 @@ fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u8, u32)> {
     Ok((typ, len, sid))
 }
 
-pub struct RawMsg<'a> {
+pub(crate) struct RawMsg<'a> {
     typ: u8,
     len: u8,
     sid: u32,
@@ -60,7 +60,7 @@ pub struct RawMsg<'a> {
 }
 
 impl<'a> RawMsg<'a> {
-    pub unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
+    pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
         use std::mem;
         match self.typ {
             CREATE => Ok(mem::transmute(&self.bytes[0..4])),
@@ -71,7 +71,7 @@ impl<'a> RawMsg<'a> {
         }
     }
 
-    pub unsafe fn get_u64s(&self) -> Result<&'a [u64]> {
+    pub(crate) unsafe fn get_u64s(&self) -> Result<&'a [u64]> {
         use std::mem;
         match self.typ {
             CREATE => Ok(&[]),
@@ -82,7 +82,7 @@ impl<'a> RawMsg<'a> {
         }
     }
 
-    pub fn get_bytes(&self) -> Result<&'a [u8]> {
+    pub(crate) fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
             CREATE => Ok(&self.bytes[4..(self.len as usize - 6)]),
             MEASURE => Ok(&[]),
@@ -93,7 +93,7 @@ impl<'a> RawMsg<'a> {
     }
 }
 
-pub trait AsRawMsg {
+pub(crate) trait AsRawMsg {
     fn get_hdr(&self) -> (u8, u8, u32);
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()>;
     fn get_u64s<W: Write>(&self, w: &mut W) -> Result<()>;
@@ -104,7 +104,7 @@ pub trait AsRawMsg {
         Self: std::marker::Sized;
 }
 
-pub struct RMsg<T: AsRawMsg>(pub T);
+pub(crate) struct RMsg<T: AsRawMsg>(pub T);
 
 impl<T: AsRawMsg> RMsg<T> {
     pub fn serialize(&self) -> Result<Vec<u8>> {

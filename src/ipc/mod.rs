@@ -43,13 +43,13 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
     }
 
     // Blocking send.
-    pub fn send_msg(&self, addr: Option<u16>, msg: &[u8]) -> Result<()> {
+    pub(crate) fn send_msg(&self, addr: Option<u16>, msg: &[u8]) -> Result<()> {
         self.sock.send(addr, msg).map_err(|e| Error::from(e))
     }
 
     // Start listening on the IPC socket
     // Return a channel on which incoming messages will be passed
-    pub fn listen(&self) -> mpsc::Receiver<Vec<u8>> {
+    pub(crate) fn listen(&self) -> mpsc::Receiver<Vec<u8>> {
         let (tx, rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) = mpsc::channel();
         let me = self.clone();
         thread::spawn(move || {
