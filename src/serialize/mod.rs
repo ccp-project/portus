@@ -250,8 +250,7 @@ impl AsRawMsg for DropMsg {
     }
 }
 
-#[macro_use]
-mod pattern;
+use super::pattern;
 #[derive(Clone)]
 #[derive(Debug)]
 #[derive(PartialEq)]

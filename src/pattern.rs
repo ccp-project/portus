@@ -23,7 +23,7 @@ const REPORT: u8 = 5;
 macro_rules! write_event {
     ($t: ident, $buf: ident, $w: ident, $x: expr) => (
         $w.write_all(&[$t, 6])?;
-        super::u32_to_u8s(&mut $buf, $x);
+        super::serialize::u32_to_u8s(&mut $buf, $x);
         $w.write_all(&$buf[..])?;
     )
 }
@@ -73,7 +73,7 @@ impl Event {
         } else {
             let mut num_buf = [0u8; 4];
             buf.read_exact(&mut num_buf)?;
-            let num = super::u32_from_u8s(&num_buf);
+            let num = super::serialize::u32_from_u8s(&num_buf);
             match (typ, len) {
                 (SETCWND, 6) => Ok(Event::SetCwndAbs(num)),
                 (SETRATE, 6) => Ok(Event::SetRateAbs(num)),

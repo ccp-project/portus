@@ -4,6 +4,8 @@ extern crate bytes;
 extern crate libc;
 extern crate nix;
 
+#[macro_use]
+pub mod pattern;
 pub mod ipc;
 pub mod serialize;
 
