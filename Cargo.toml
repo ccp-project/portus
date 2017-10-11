@@ -4,7 +4,7 @@ version = "0.0.1"
 authors = ["Akshay Narayan <akshayn@csail.mit.edu>"]
 
 [dependencies]
-bytevec="0.2.0"
+bytes="0.4.5"
 libc="0.2"
 nix="0.9.0"
 

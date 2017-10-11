@@ -1,47 +1,47 @@
-use std;
-use std::mem;
 use super::{AsRawMsg, RMsg, Msg, CreateMsg, MeasureMsg, DropMsg, PatternMsg};
 
 #[test]
 fn test_from_u32() {
+    let mut buf = [0u8; 4];
     let x: u32 = 42;
-    let buf: &[u8] = to_u8s!(u32, x);
+    super::u32_to_u8s(&mut buf, x);
     assert_eq!(buf, [0x2A, 0, 0, 0]);
 }
 
 #[test]
 fn test_from_u64() {
+    let mut buf = [0u8; 8];
     let x: u64 = 42;
-    let buf: &[u8] = to_u8s!(u64, x);
+    super::u64_to_u8s(&mut buf, x);
     assert_eq!(buf, [0x2A, 0, 0, 0, 0, 0, 0, 0]);
 
     let x: u64 = 42424242;
-    let buf: &[u8] = to_u8s!(u64, x);
+    super::u64_to_u8s(&mut buf, x);
     assert_eq!(buf, [0xB2, 0x57, 0x87, 0x02, 0, 0, 0, 0]);
 }
 
 #[test]
 fn test_to_u32() {
     let buf = vec![0x2A, 0, 0, 0];
-    let x = from_u8s!(u32, buf);
+    let x = super::u32_from_u8s(&buf[..]);
     assert_eq!(x, 42);
 
     let buf = vec![0x42, 0, 0x42, 0];
-    let x = from_u8s!(u32, buf);
+    let x = super::u32_from_u8s(&buf[..]);
     assert_eq!(x, 4325442);
 }
 
 #[test]
 fn test_to_u64_0() {
     let buf = vec![0x42, 0, 0x42, 0, 0, 0, 0, 0];
-    let x = from_u8s!(u64, buf);
+    let x = super::u64_from_u8s(&buf[..]);
     assert_eq!(x, 4325442);
 }
 
 #[test]
 fn test_to_u64_1() {
     let buf = vec![0, 0x42, 0, 0x42, 0, 0x42, 0, 0x42];
-    let x = from_u8s!(u64, buf);
+    let x = super::u64_from_u8s(&buf[..]);
     assert_eq!(x, 4755873775377990144);
 }
 

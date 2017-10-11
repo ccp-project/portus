@@ -1,5 +1,9 @@
 #![cfg_attr(feature = "bench", feature(test))]
 
+extern crate bytes;
+extern crate libc;
+extern crate nix;
+
 pub mod ipc;
 pub mod serialize;
 

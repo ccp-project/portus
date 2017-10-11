@@ -7,8 +7,6 @@ use std::thread;
 use super::Error;
 use super::Result;
 
-extern crate nix;
-
 #[cfg(all(linux))]
 pub mod netlink;
 pub mod unix;

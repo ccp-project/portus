@@ -1,5 +1,4 @@
 use std;
-use std::mem;
 use std::vec::Vec;
 use std::io::prelude::*;
 use std::io::Cursor;
@@ -7,22 +6,22 @@ use std::io::Cursor;
 use super::Error;
 use super::Result;
 
-macro_rules! to_u8s {
-    ($s: ty, $x:expr) => {
-        unsafe {
-            let p : *const u8 = std::mem::transmute(&$x);
-            std::slice::from_raw_parts(p, mem::size_of::<$s>())
-        }
-    }
+use bytes::{ByteOrder, LittleEndian};
+
+pub fn u32_to_u8s(buf: &mut [u8], num: u32) {
+    LittleEndian::write_u32(buf, num);
 }
 
-macro_rules! from_u8s {
-    ($s: ty, $x:expr) => (
-        *unsafe { 
-            let ptr : *const u8 = $x[0..(mem::size_of::<$s>())].as_ptr();
-            std::mem::transmute::<*const u8, &$s>(ptr) 
-        }
-    )
+pub fn u64_to_u8s(buf: &mut [u8], num: u64) {
+    LittleEndian::write_u64(buf, num);
+}
+
+pub fn u32_from_u8s(buf: &[u8]) -> u32 {
+    LittleEndian::read_u32(buf)
+}
+
+pub fn u64_from_u8s(buf: &[u8]) -> u64 {
+    LittleEndian::read_u64(buf)
 }
 
 /* (type, len, socket_id) header
@@ -37,7 +36,9 @@ fn serialize_header(typ: u8, len: u8, sid: u32) -> Vec<u8> {
     let mut hdr = Vec::new();
     hdr.push(typ);
     hdr.push(len);
-    hdr.extend(to_u8s!(u32, sid));
+    let mut buf = [0u8; 4];
+    u32_to_u8s(&mut buf, sid);
+    hdr.extend(&buf[..]);
     hdr
 }
 
@@ -46,7 +47,7 @@ fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u8, u32)> {
     buf.read_exact(&mut hdr)?;
     let typ = hdr[0];
     let len = hdr[1];
-    let sid = from_u8s!(u32, hdr[2..]);
+    let sid = u32_from_u8s(&hdr[2..]);
 
     Ok((typ, len, sid))
 }
@@ -132,7 +133,9 @@ impl AsRawMsg for CreateMsg {
     }
 
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
-        w.write_all(to_u8s!(u32, self.start_seq))?;
+        let mut buf = [0u8; 4];
+        u32_to_u8s(&mut buf, self.start_seq);
+        w.write_all(&buf[..])?;
         Ok(())
     }
 
@@ -175,14 +178,20 @@ impl AsRawMsg for MeasureMsg {
     }
 
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
-        w.write_all(to_u8s!(u32, self.ack))?;
-        w.write_all(to_u8s!(u32, self.rtt_us))?;
+        let mut buf = [0u8; 4];
+        u32_to_u8s(&mut buf, self.ack);
+        w.write_all(&buf[..])?;
+        u32_to_u8s(&mut buf, self.rtt_us);
+        w.write_all(&buf[..])?;
         Ok(())
     }
 
     fn get_u64s<W: Write>(&self, w: &mut W) -> Result<()> {
-        w.write_all(to_u8s!(u64, self.rin))?;
-        w.write_all(to_u8s!(u64, self.rout))?;
+        let mut buf = [0u8; 8];
+        u64_to_u8s(&mut buf, self.rin);
+        w.write_all(&buf[..])?;
+        u64_to_u8s(&mut buf, self.rout);
+        w.write_all(&buf[..])?;
         Ok(())
     }
 

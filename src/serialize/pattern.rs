@@ -1,5 +1,3 @@
-use std;
-use std::mem;
 use std::vec::Vec;
 use std::io::prelude::*;
 
@@ -22,6 +20,14 @@ const WAIT: u8 = 3;
 const WAITREL: u8 = 4;
 const REPORT: u8 = 5;
 
+macro_rules! write_event {
+    ($t: ident, $buf: ident, $w: ident, $x: expr) => (
+        $w.write_all(&[$t, 6])?;
+        super::u32_to_u8s(&mut $buf, $x);
+        $w.write_all(&$buf[..])?;
+    )
+}
+
 impl Event {
     /* Pattern serialization
      * (type, len, value?) event description
@@ -32,29 +38,23 @@ impl Event {
      * total: 2 || 6 Bytes
      */
     pub fn serialize<W: Write>(&self, w: &mut W) -> super::Result<()> {
+        let mut buf = [0u8; 4];
         match self {
             &Event::SetCwndAbs(x) => {
-                w.write_all(&[SETCWND, 6])?;
-                w.write_all(to_u8s!(u32, x))?;
+                write_event!(SETCWND, buf, w, x);
             }
             &Event::WaitNs(x) => {
-                w.write_all(&[WAIT, 6])?;
-                w.write_all(to_u8s!(u32, x))?;
+                write_event!(WAIT, buf, w, x);
             }
             &Event::SetRateAbs(x) => {
-                w.write_all(&[SETRATE, 6])?;
-                w.write_all(to_u8s!(u32, x))?;
+                write_event!(SETRATE, buf, w, x);
             }
-
             &Event::SetRateRel(f) => {
-                w.write_all(&[SETRATEREL, 6])?;
-                w.write_all(to_u8s!(u32, (f * 1e3) as u32))?;
+                write_event!(SETRATEREL, buf, w, (f * 1e3) as u32);
             }
             &Event::WaitRtts(f) => {
-                w.write_all(&[WAITREL, 6])?;
-                w.write_all(to_u8s!(u32, (f * 1e3) as u32))?;
+                write_event!(WAITREL, buf, w, (f * 1e3) as u32);
             }
-
             &Event::Report => {
                 w.write_all(&[REPORT, 2])?;
             }
@@ -73,7 +73,7 @@ impl Event {
         } else {
             let mut num_buf = [0u8; 4];
             buf.read_exact(&mut num_buf)?;
-            let num = from_u8s!(u32, num_buf);
+            let num = super::u32_from_u8s(&num_buf);
             match (typ, len) {
                 (SETCWND, 6) => Ok(Event::SetCwndAbs(num)),
                 (SETRATE, 6) => Ok(Event::SetRateAbs(num)),

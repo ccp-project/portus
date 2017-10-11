@@ -1,7 +1,4 @@
-extern crate libc;
 use libc::c_int;
-
-extern crate nix;
 use nix::sys::socket;
 
 #[derive(Debug)]
