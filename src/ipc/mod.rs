@@ -7,7 +7,7 @@ use std::thread;
 use super::Error;
 use super::Result;
 
-#[cfg(all(linux))]
+#[cfg(all(target_os = "linux"))]
 pub mod netlink;
 pub mod unix;
 
