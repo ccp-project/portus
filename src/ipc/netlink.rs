@@ -70,10 +70,33 @@ impl super::Ipc for Socket {
         Ok(&mut buf[NLMSG_HDRSIZE..res])
     }
 
+    // netlink header format (RFC 3549)
+    // 0               1               2               3
+    // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                          Length                             |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |            Type              |           Flags              |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                      Sequence Number                        |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    // |                      Process ID (PID)                       |
+    // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     fn send(&self, _: Option<u16>, buf: &[u8]) -> Result<()> {
+        let len = NLMSG_HDRSIZE + buf.len();
+        let mut msg = Vec::<u8>::with_capacity(len);
+        msg.resize(4, 0u8);
+        // write the netlink header
+        super::super::serialize::u32_to_u8s(&mut msg[0..4], len as u32);
+        // rest is 0s
+        msg.extend_from_slice(&[0u8; 12]);
+        // payload
+        msg.extend_from_slice(buf);
+
+        // send
         socket::sendmsg(
             self.0,
-            &[nix::sys::uio::IoVec::from_slice(&buf[..])],
+            &[nix::sys::uio::IoVec::from_slice(&msg[..])],
             &[],
             nix::sys::socket::MsgFlags::empty(),
             None,
