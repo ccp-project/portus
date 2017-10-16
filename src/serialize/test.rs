@@ -129,6 +129,7 @@ macro_rules! check_pattern_msg {
             PatternMsg,
             PatternMsg{
                 sid: $sid,
+                num_events: $p.len() as u32,
                 pattern: $p,
             },
             Msg::Pt(pat),

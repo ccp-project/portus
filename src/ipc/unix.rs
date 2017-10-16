@@ -87,8 +87,9 @@ impl super::Ipc for Socket {
     }
 
     // return the number of bytes read if successful.
-    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
-        self.sk.recv(msg).map_err(|e| Error::from(e))
+    fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]> {
+        let sz = self.sk.recv(msg).map_err(|e| Error::from(e))?;
+        Ok(&msg[..sz])
     }
 
     fn close(&self) -> Result<()> {
@@ -121,9 +122,9 @@ mod tests {
         });
 
         let mut msg = [0u8; 128];
-        let sz = sk1.recv(&mut msg).expect("receive msg");
+        let buf = sk1.recv(&mut msg).expect("receive msg");
         sk1.close().expect("close receiver");
-        let got = std::str::from_utf8(&msg[..sz]).expect("parse string");
+        let got = std::str::from_utf8(buf).expect("parse string");
         assert_eq!(got, "hello, world");
         c2.join().expect("join sender thread");
     }

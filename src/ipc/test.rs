@@ -18,15 +18,13 @@ impl Ipc for FakeIpc {
     }
 
     // return the number of bytes read if successful.
-    fn recv(&self, mut msg: &mut [u8]) -> Result<usize, super::Error> {
-        use std::io::Write;
+    fn recv<'a>(&self, msg: &'a mut [u8]) -> super::Result<&'a [u8]> {
         use std::cmp;
         let x = self.0.lock().unwrap();
         let w = cmp::min(msg.len(), (*x).len());
-        msg.write_all(&(*x)[0..w]).expect(
-            "fakeipc write to recv buffer",
-        );
-        Ok(w)
+        let dest_slice = &mut msg[0..w];
+        dest_slice.copy_from_slice(&(*x)[0..w]);
+        Ok(dest_slice)
     }
 
     fn close(&self) -> Result<(), super::Error> {

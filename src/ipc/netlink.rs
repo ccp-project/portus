@@ -31,13 +31,9 @@ impl Socket {
         Ok(Socket(fd))
     }
 
-    pub fn new(group: u32) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let s = Self::__new()?;
-        s.setsockopt_int(
-            270,
-            libc::NETLINK_ADD_MEMBERSHIP,
-            group as c_int,
-        )?;
+        s.setsockopt_int(270, libc::NETLINK_ADD_MEMBERSHIP, 22)?;
         Ok(s)
     }
 
@@ -61,15 +57,17 @@ impl Socket {
     }
 }
 
+const NLMSG_HDRSIZE: usize = 0x10;
 impl super::Ipc for Socket {
-    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
-        socket::recvmsg::<()>(
+    fn recv<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8]> {
+        let res = socket::recvmsg::<()>(
             self.0,
             &[nix::sys::uio::IoVec::from_mut_slice(&mut buf[..])],
             None,
             nix::sys::socket::MsgFlags::empty(),
         ).map(|r| r.bytes)
-            .map_err(|e| Error::from(e))
+            .map_err(|e| Error::from(e))?;
+        Ok(&mut buf[NLMSG_HDRSIZE..res])
     }
 
     fn send(&self, _: Option<u16>, buf: &[u8]) -> Result<()> {

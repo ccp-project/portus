@@ -66,7 +66,7 @@ impl<'a> RawMsg<'a> {
             CREATE => Ok(mem::transmute(&self.bytes[0..4])),
             MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 2])),
             DROP => Ok(&[]),
-            CWND => Ok(&[]),
+            CWND => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Err(Error(String::from("malformed msg"))),
         }
     }
@@ -87,7 +87,7 @@ impl<'a> RawMsg<'a> {
             CREATE => Ok(&self.bytes[4..(self.len as usize - 6)]),
             MEASURE => Ok(&[]),
             DROP => Ok(&self.bytes[0..(self.len as usize - 6)]),
-            CWND => Ok(&self.bytes[0..(self.len as usize - 6)]),
+            CWND => Ok(&self.bytes[4..(self.len as usize - 6)]),
             _ => Err(Error(String::from("malformed msg"))),
         }
     }
@@ -256,16 +256,24 @@ use super::pattern;
 #[derive(PartialEq)]
 pub struct PatternMsg {
     pub sid: u32,
+    pub num_events: u32,
     pub pattern: pattern::Pattern,
 }
 
 const CWND: u8 = 3;
 impl AsRawMsg for PatternMsg {
     fn get_hdr(&self) -> (u8, u8, u32) {
-        (CWND, HDR_LENGTH + self.pattern.len_bytes() as u8, self.sid)
+        (
+            CWND,
+            HDR_LENGTH + 4 + self.pattern.len_bytes() as u8,
+            self.sid,
+        )
     }
 
-    fn get_u32s<W: Write>(&self, _: &mut W) -> Result<()> {
+    fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
+        let mut buf = [0u8; 4];
+        u32_to_u8s(&mut buf, self.num_events);
+        w.write_all(&buf[..])?;
         Ok(())
     }
 
@@ -279,9 +287,11 @@ impl AsRawMsg for PatternMsg {
     }
 
     fn from_raw_msg(msg: RawMsg) -> Result<Self> {
+        let u32s = unsafe { msg.get_u32s() }?;
         let mut b = msg.get_bytes()?;
         Ok(PatternMsg {
             sid: msg.sid,
+            num_events: u32s[0],
             pattern: pattern::Pattern::deserialize(&mut b)?,
         })
     }

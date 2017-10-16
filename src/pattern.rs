@@ -94,7 +94,7 @@ pub struct Pattern(Vec<Event>);
 #[macro_export]
 macro_rules! make_pattern {
     ($($x: expr)=>*) => ({
-        use serialize::pattern::Pattern;
+        use pattern::Pattern;
         let mut v = vec![];
         $(
             v.push($x);
@@ -116,6 +116,10 @@ impl Pattern {
                 _ => 6,
             })
             .sum()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
     pub fn serialize<W: Write>(&self, w: &mut W) -> super::Result<()> {

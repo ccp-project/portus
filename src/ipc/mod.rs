@@ -11,27 +11,22 @@ use super::Result;
 pub mod netlink;
 pub mod unix;
 
-pub trait Ipc {
-    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<()>; // Blocking send
-    fn recv(&self, msg: &mut [u8]) -> Result<usize>; // Blocking listen
-    fn close(&self) -> Result<()>; // Close the underlying sockets
+pub trait Ipc: 'static + Sync + Send {
+    // Blocking send
+    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<()>;
+    // Blocking listen. Return value is a slice into the provided buffer. Should not allocate.
+    fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]>;
+    // Close the underlying sockets
+    fn close(&self) -> Result<()>;
 }
 
-pub struct Backend<T: Ipc + Sync> {
+#[derive(Default)]
+pub struct Backend<T: Ipc> {
     sock: Arc<T>,
     close: Arc<std::sync::atomic::AtomicBool>,
 }
 
-impl<T: Ipc + Sync> Clone for Backend<T> {
-    fn clone(&self) -> Self {
-        Backend {
-            sock: self.sock.clone(),
-            close: self.close.clone(),
-        }
-    }
-}
-
-impl<T: Ipc + 'static + Sync + Send> Backend<T> {
+impl<T: Ipc> Backend<T> {
     // Pass in a T: Ipc, the Ipc substrate to use.
     // Return a Backend on which to call send_msg
     // and listen
@@ -55,20 +50,19 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
         thread::spawn(move || {
             let mut rcv_buf = vec![0u8; 1024];
             while !me.close.load(Ordering::SeqCst) {
-                let len = match me.sock.recv(rcv_buf.as_mut_slice()) {
+                let buf = match me.sock.recv(&mut rcv_buf) {
                     Ok(l) => l,
-                    Err(_) => {
-                        //println!("{:?}", e);
+                    Err(e) => {
+                        println!("recv err {:?}", e);
                         continue;
                     }
                 };
 
-                if len == 0 {
+                if buf.len() == 0 {
                     continue;
                 }
 
-                rcv_buf.truncate(len);
-                let _ = tx.send(rcv_buf.clone());
+                let _ = tx.send(buf.to_vec());
             }
         });
 
@@ -76,7 +70,16 @@ impl<T: Ipc + 'static + Sync + Send> Backend<T> {
     }
 }
 
-impl<T: Ipc + Sync> Drop for Backend<T> {
+impl<T: Ipc> Clone for Backend<T> {
+    fn clone(&self) -> Self {
+        Backend {
+            sock: self.sock.clone(),
+            close: self.close.clone(),
+        }
+    }
+}
+
+impl<T: Ipc> Drop for Backend<T> {
     fn drop(&mut self) {
         // tell the receive loop to exit
         self.close.store(true, Ordering::SeqCst)
