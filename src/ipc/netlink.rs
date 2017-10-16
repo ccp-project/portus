@@ -15,14 +15,28 @@ impl From<nix::Error> for Error {
 #[derive(Debug)]
 pub struct Socket(c_int);
 
+const NL_CFG_F_NONROOT_RECV: c_int = (1 << 0);
+const NL_CFG_F_NONROOT_SEND: c_int = (1 << 1);
+
 impl Socket {
     fn __new() -> Result<Self> {
-        let fd = socket::socket(
+        let fd = if let Ok(fd) = socket::socket(
             nix::sys::socket::AddressFamily::Netlink,
             nix::sys::socket::SockType::Raw,
             nix::sys::socket::SockFlag::empty(),
             libc::NETLINK_USERSOCK,
-        )?;
+        )
+        {
+            fd
+        } else {
+            socket::socket(
+                nix::sys::socket::AddressFamily::Netlink,
+                nix::sys::socket::SockType::Raw,
+                nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_RECV) |
+                    nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_SEND),
+                libc::NETLINK_USERSOCK,
+            )?
+        };
 
         let pid = unsafe { libc::getpid() };
 
