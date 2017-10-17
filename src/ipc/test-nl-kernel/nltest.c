@@ -12,14 +12,31 @@
 struct sock *nl_sk = NULL;
 
 int nl_send_msg(unsigned long data, char *payload, size_t msg_size);
+/* (type, len, socket_id) header
+ * -----------------------------------
+ * | Msg Type | Len (B)  | Uint32    |
+ * | (1 B)    | (1 B)    | (32 bits) |
+ * -----------------------------------
+ * total: 6 Bytes
+ */
+struct __attribute__((packed, aligned(2))) CcpMsgHeader {
+    uint8_t Type;
+    uint8_t Len;
+    uint32_t SocketId;
+};
 
 /* Receive echo message from userspace 
  * Respond echo it back for checking
  */
 void nl_recv_msg(struct sk_buff *skb) {
     int res;
+    struct CcpMsgHeader hdr;
     struct nlmsghdr *nlh = nlmsg_hdr(skb);
-    res = nl_send_msg(0, nlmsg_data(nlh), strlen(nlmsg_data(nlh)) + 1);
+
+    // read header to get length
+    memcpy(&hdr, nlmsg_data(nlh), sizeof(struct CcpMsgHeader));
+
+    res = nl_send_msg(0, nlmsg_data(nlh), hdr.Len);
     if (res < 0) {
         pr_info("echo send failed: %d\n", res);
     }

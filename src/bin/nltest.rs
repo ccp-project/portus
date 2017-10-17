@@ -2,6 +2,38 @@
 
 extern crate portus;
 use portus::ipc::Backend;
+use portus::serialize::AsRawMsg;
+
+#[derive(Clone)]
+#[derive(Debug)]
+#[derive(PartialEq)]
+struct TestMsg(String);
+
+use std::io::prelude::*;
+impl portus::serialize::AsRawMsg for TestMsg {
+    fn get_hdr(&self) -> (u8, u8, u32) {
+        (0xff, portus::serialize::HDR_LENGTH + self.0.len() as u8, 0)
+    }
+
+    fn get_u32s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
+        Ok(())
+    }
+
+    fn get_u64s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
+        Ok(())
+    }
+
+    fn get_bytes<W: Write>(&self, w: &mut W) -> portus::Result<()> {
+        w.write_all(self.0.as_bytes())?;
+        Ok(())
+    }
+
+    fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
+        let b = msg.get_bytes()?;
+        let got = std::str::from_utf8(&b[..]).expect("parse message to str");
+        Ok(TestMsg(String::from(got)))
+    }
+}
 
 fn main() {
     use std::process::Command;
@@ -43,12 +75,20 @@ fn main() {
         assert_eq!(got, "hello, netlink\0\0"); // word aligned
 
         println!("send...");
-        let msg = "hello, kernel\0\0\0"; // word aligned
-        b.send_msg(None, msg.as_bytes()).expect("send response");
+        let msg = TestMsg(String::from("hello, kernel\0\0\0\0\0")); // word aligned
+        let test = msg.clone();
+        let buf = portus::serialize::serialize(msg).expect("serialize");
+        b.send_msg(None, &buf[..]).expect("send response");
 
         let echo = rx.recv().expect("receive echo");
-        let got = std::str::from_utf8(&echo[..]).expect("parse message to str");
-        assert_eq!(got, msg);
+        if let portus::serialize::Msg::Other(raw) =
+            portus::serialize::Msg::from_buf(&echo[..]).expect("parse error")
+        {
+            let got = TestMsg::from_raw_msg(raw).expect("get from raw");
+            assert_eq!(got, test);
+        } else {
+            panic!("wrong type");
+        }
     });
 
     // load kernel module
