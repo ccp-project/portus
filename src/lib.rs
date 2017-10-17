@@ -53,13 +53,13 @@ impl<T: Ipc> Backend<T> {
     // 3. The control pattern prog to install. Implementations can create patterns using make_pattern!.
     // send_pattern() will return quickly with a Result indicating whether the send was successful.
     pub fn send_pattern(&self, sock_id: u32, prog: pattern::Pattern) -> Result<()> {
-        let msg = serialize::PatternMsg {
+        let msg = serialize::pattern::Msg {
             sid: sock_id,
             num_events: prog.len() as u32,
             pattern: prog,
         };
 
-        let buf = serialize::RMsg(msg).serialize()?;
+        let buf = serialize::serialize(msg)?;
         self.send_msg(Some(sock_id as u16), &buf[..])?;
         Ok(())
     }
@@ -166,6 +166,7 @@ where
                                      since it is on the CCP side."
                     )
                 }
+                _ => continue,
             }
         }
     }

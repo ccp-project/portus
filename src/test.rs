@@ -23,7 +23,7 @@ fn test_ser_over_ipc() {
         let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
         assert_eq!(
             got,
-            serialize::Msg::Cr(serialize::CreateMsg {
+            serialize::Msg::Cr(serialize::create::Msg {
                 sid: 42,
                 start_seq: 42,
                 cong_alg: String::from("foobar"),
@@ -37,15 +37,13 @@ fn test_ser_over_ipc() {
         let b2 = ipc::Backend::new(sk2).expect("init backend");
 
         // serialize a message
-        let m = serialize::CreateMsg {
+        let m = serialize::create::Msg {
             sid: 42,
             start_seq: 42,
             cong_alg: String::from("foobar"),
         };
 
-        let buf = serialize::RMsg::<serialize::CreateMsg>(m.clone())
-            .serialize()
-            .expect("serialize");
+        let buf = serialize::serialize(m.clone()).expect("serialize");
         b2.send_msg(None, &buf[..]).expect("send message");
     });
 
@@ -81,7 +79,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
             let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
             assert_eq!(
                 got,
-                serialize::Msg::Cr(serialize::CreateMsg {
+                serialize::Msg::Cr(serialize::create::Msg {
                     sid: 42,
                     start_seq: 42,
                     cong_alg: String::from("foobar"),
@@ -97,7 +95,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let sk2 = sk.clone();
     thread::spawn(move || {
         let b2 = ipc::Backend::new(sk2).expect("init backend");
-        let m = serialize::CreateMsg {
+        let m = serialize::create::Msg {
             sid: 42,
             start_seq: 42,
             cong_alg: String::from("foobar"),
@@ -112,9 +110,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
             rx.recv().expect("ready chan rcv");
 
             // send a message
-            let buf = serialize::RMsg::<serialize::CreateMsg>(m.clone())
-                .serialize()
-                .expect("serialize");
+            let buf = serialize::serialize(m.clone()).expect("serialize");
             b2.send_msg(None, &buf[..]).expect("send message");
         }
     });

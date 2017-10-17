@@ -3,7 +3,6 @@ use std::vec::Vec;
 use std::io::prelude::*;
 use std::io::Cursor;
 
-use super::Error;
 use super::Result;
 
 use bytes::{ByteOrder, LittleEndian};
@@ -31,7 +30,7 @@ pub(crate) fn u32_from_u8s(buf: &[u8]) -> u32 {
  * -----------------------------------
  * total: 6 Bytes
  */
-const HDR_LENGTH: u8 = 6;
+pub const HDR_LENGTH: u8 = 6;
 fn serialize_header(typ: u8, len: u8, sid: u32) -> Vec<u8> {
     let mut hdr = Vec::new();
     hdr.push(typ);
@@ -52,180 +51,56 @@ fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u8, u32)> {
     Ok((typ, len, sid))
 }
 
-pub(crate) struct RawMsg<'a> {
-    typ: u8,
-    len: u8,
-    sid: u32,
+#[derive(Clone)]
+#[derive(Debug)]
+#[derive(PartialEq)]
+pub struct RawMsg<'a> {
+    pub typ: u8,
+    pub len: u8,
+    pub sid: u32,
     bytes: &'a [u8],
 }
 
 impl<'a> RawMsg<'a> {
+    // For predefined messages, get u32s separately for convenience
     pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
         use std::mem;
         match self.typ {
-            CREATE => Ok(mem::transmute(&self.bytes[0..4])),
-            MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 2])),
-            DROP => Ok(&[]),
-            CWND => Ok(mem::transmute(&self.bytes[0..4])),
-            _ => Err(Error(String::from("malformed msg"))),
+            create::CREATE => Ok(mem::transmute(&self.bytes[0..4])),
+            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 2])),
+            drop::DROP => Ok(&[]),
+            pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
+            _ => Ok(&[]),
         }
     }
 
+    // For predefined messages, get u64s separately for convenience
     pub(crate) unsafe fn get_u64s(&self) -> Result<&'a [u64]> {
         use std::mem;
         match self.typ {
-            CREATE => Ok(&[]),
-            MEASURE => Ok(mem::transmute(&self.bytes[(4 * 2)..(4 * 2 + 8 * 2)])),
-            DROP => Ok(&[]),
-            CWND => Ok(&[]),
-            _ => Err(Error(String::from("malformed msg"))),
+            create::CREATE => Ok(&[]),
+            measure::MEASURE => Ok(mem::transmute(&self.bytes[(4 * 2)..(4 * 2 + 8 * 2)])),
+            drop::DROP => Ok(&[]),
+            pattern::CWND => Ok(&[]),
+            _ => Ok(&[]),
         }
     }
 
-    pub(crate) fn get_bytes(&self) -> Result<&'a [u8]> {
+    // For predefined messages, bytes blob is whatever's left (may be nothing)
+    // For other message types, just return the bytes blob
+    pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
-            CREATE => Ok(&self.bytes[4..(self.len as usize - 6)]),
-            MEASURE => Ok(&[]),
-            DROP => Ok(&self.bytes[0..(self.len as usize - 6)]),
-            CWND => Ok(&self.bytes[4..(self.len as usize - 6)]),
-            _ => Err(Error(String::from("malformed msg"))),
+            create::CREATE => Ok(&self.bytes[4..(self.len as usize - 6)]),
+            measure::MEASURE => Ok(&[]),
+            drop::DROP => Ok(&self.bytes[0..(self.len as usize - 6)]),
+            pattern::CWND => Ok(&self.bytes[4..(self.len as usize - 6)]),
+            _ => Ok(self.bytes),
         }
     }
 }
 
-pub(crate) trait AsRawMsg {
+pub trait AsRawMsg {
     fn get_hdr(&self) -> (u8, u8, u32);
-    fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()>;
-    fn get_u64s<W: Write>(&self, w: &mut W) -> Result<()>;
-    fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()>;
-
-    fn from_raw_msg(msg: RawMsg) -> Result<Self>
-    where
-        Self: std::marker::Sized;
-}
-
-pub(crate) struct RMsg<T: AsRawMsg>(pub T);
-
-impl<T: AsRawMsg> RMsg<T> {
-    pub fn serialize(&self) -> Result<Vec<u8>> {
-        let (a, b, c) = self.0.get_hdr();
-        let mut msg = serialize_header(a, b, c);
-        self.0.get_u32s(&mut msg)?;
-        self.0.get_u64s(&mut msg)?;
-        self.0.get_bytes(&mut msg)?;
-        Ok(msg)
-    }
-}
-
-const CREATE: u8 = 0;
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
-pub struct CreateMsg {
-    pub sid: u32,
-    pub start_seq: u32,
-    pub cong_alg: String,
-}
-
-impl AsRawMsg for CreateMsg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
-        (CREATE, HDR_LENGTH + 4 + self.cong_alg.len() as u8, self.sid)
-    }
-
-    fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
-        let mut buf = [0u8; 4];
-        u32_to_u8s(&mut buf, self.start_seq);
-        w.write_all(&buf[..])?;
-        Ok(())
-    }
-
-    fn get_u64s<W: Write>(&self, _: &mut W) -> Result<()> {
-        Ok(())
-    }
-
-    fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
-        w.write_all(self.cong_alg.clone().as_bytes())?;
-        Ok(())
-    }
-
-    fn from_raw_msg(msg: RawMsg) -> Result<Self> {
-        let b = msg.get_bytes()?;
-        let s = std::str::from_utf8(b)?;
-        let alg = String::from(s);
-        Ok(CreateMsg {
-            sid: msg.sid,
-            start_seq: unsafe { msg.get_u32s() }?[0],
-            cong_alg: alg,
-        })
-    }
-}
-
-const MEASURE: u8 = 1;
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
-pub struct MeasureMsg {
-    pub sid: u32,
-    pub ack: u32,
-    pub rtt_us: u32,
-    pub rin: u64,
-    pub rout: u64,
-}
-
-impl AsRawMsg for MeasureMsg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
-        (MEASURE, HDR_LENGTH + 8 + 16 as u8, self.sid)
-    }
-
-    fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
-        let mut buf = [0u8; 4];
-        u32_to_u8s(&mut buf, self.ack);
-        w.write_all(&buf[..])?;
-        u32_to_u8s(&mut buf, self.rtt_us);
-        w.write_all(&buf[..])?;
-        Ok(())
-    }
-
-    fn get_u64s<W: Write>(&self, w: &mut W) -> Result<()> {
-        let mut buf = [0u8; 8];
-        u64_to_u8s(&mut buf, self.rin);
-        w.write_all(&buf[..])?;
-        u64_to_u8s(&mut buf, self.rout);
-        w.write_all(&buf[..])?;
-        Ok(())
-    }
-
-    fn get_bytes<W: Write>(&self, _: &mut W) -> Result<()> {
-        Ok(())
-    }
-
-    fn from_raw_msg(msg: RawMsg) -> Result<Self> {
-        let u32s = unsafe { msg.get_u32s() }?;
-        let u64s = unsafe { msg.get_u64s() }?;
-        Ok(MeasureMsg {
-            sid: msg.sid,
-            ack: u32s[0],
-            rtt_us: u32s[1],
-            rin: u64s[0],
-            rout: u64s[1],
-        })
-    }
-}
-
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
-pub struct DropMsg {
-    pub sid: u32,
-    pub event: String,
-}
-
-const DROP: u8 = 2;
-impl AsRawMsg for DropMsg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
-        (DROP, HDR_LENGTH + self.event.len() as u8, self.sid)
-    }
-
     fn get_u32s<W: Write>(&self, _: &mut W) -> Result<()> {
         Ok(())
     }
@@ -234,67 +109,25 @@ impl AsRawMsg for DropMsg {
         Ok(())
     }
 
-    fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
-        w.write_all(self.event.clone().as_bytes())?;
-        Ok(())
-    }
-
-    fn from_raw_msg(msg: RawMsg) -> Result<Self> {
-        let b = msg.get_bytes()?;
-        let s = std::str::from_utf8(b)?;
-        let ev = String::from(s);
-        Ok(DropMsg {
-            sid: msg.sid,
-            event: ev,
-        })
-    }
+    fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()>;
+    fn from_raw_msg(msg: RawMsg) -> Result<Self>
+    where
+        Self: std::marker::Sized;
 }
 
-use super::pattern;
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
-pub struct PatternMsg {
-    pub sid: u32,
-    pub num_events: u32,
-    pub pattern: pattern::Pattern,
-}
+pub(crate) mod create;
+pub(crate) mod measure;
+pub(crate) mod drop;
+pub(crate) mod pattern;
+mod testmsg;
 
-const CWND: u8 = 3;
-impl AsRawMsg for PatternMsg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
-        (
-            CWND,
-            HDR_LENGTH + 4 + self.pattern.len_bytes() as u8,
-            self.sid,
-        )
-    }
-
-    fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
-        let mut buf = [0u8; 4];
-        u32_to_u8s(&mut buf, self.num_events);
-        w.write_all(&buf[..])?;
-        Ok(())
-    }
-
-    fn get_u64s<W: Write>(&self, _: &mut W) -> Result<()> {
-        Ok(())
-    }
-
-    fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
-        self.pattern.serialize(w)?;
-        Ok(())
-    }
-
-    fn from_raw_msg(msg: RawMsg) -> Result<Self> {
-        let u32s = unsafe { msg.get_u32s() }?;
-        let mut b = msg.get_bytes()?;
-        Ok(PatternMsg {
-            sid: msg.sid,
-            num_events: u32s[0],
-            pattern: pattern::Pattern::deserialize(&mut b)?,
-        })
-    }
+pub fn serialize<T: AsRawMsg>(m: T) -> Result<Vec<u8>> {
+    let (a, b, c) = m.get_hdr();
+    let mut msg = serialize_header(a, b, c);
+    m.get_u32s(&mut msg)?;
+    m.get_u64s(&mut msg)?;
+    m.get_bytes(&mut msg)?;
+    Ok(msg)
 }
 
 fn deserialize(buf: &[u8]) -> Result<RawMsg> {
@@ -311,21 +144,22 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
 
 #[derive(Debug)]
 #[derive(PartialEq)]
-pub enum Msg {
-    Cr(CreateMsg),
-    Dr(DropMsg),
-    Ms(MeasureMsg),
-    Pt(PatternMsg),
+pub enum Msg<'a> {
+    Cr(create::Msg),
+    Dr(drop::Msg),
+    Ms(measure::Msg),
+    Pt(pattern::Msg),
+    Other(RawMsg<'a>),
 }
 
-impl Msg {
+impl<'a> Msg<'a> {
     fn from_raw_msg(m: RawMsg) -> Result<Msg> {
         match m.typ {
-            CREATE => Ok(Msg::Cr(CreateMsg::from_raw_msg(m)?)),
-            DROP => Ok(Msg::Dr(DropMsg::from_raw_msg(m)?)),
-            MEASURE => Ok(Msg::Ms(MeasureMsg::from_raw_msg(m)?)),
-            CWND => Ok(Msg::Pt(PatternMsg::from_raw_msg(m)?)),
-            _ => Err(Error(String::from("unknown type"))),
+            create::CREATE => Ok(Msg::Cr(create::Msg::from_raw_msg(m)?)),
+            drop::DROP => Ok(Msg::Dr(drop::Msg::from_raw_msg(m)?)),
+            measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
+            pattern::CWND => Ok(Msg::Pt(pattern::Msg::from_raw_msg(m)?)),
+            _ => Ok(Msg::Other(m)),
         }
     }
 

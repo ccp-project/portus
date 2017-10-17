@@ -1,4 +1,4 @@
-use super::{AsRawMsg, RMsg, Msg, CreateMsg, MeasureMsg, DropMsg, PatternMsg};
+use super::Msg;
 
 #[test]
 fn test_from_u32() {
@@ -45,17 +45,13 @@ fn test_to_u32() {
 //    assert_eq!(x, 4755873775377990144);
 //}
 
-fn flip<T: AsRawMsg>(m: RMsg<T>) -> Msg {
-    let mut buf = m.serialize().expect("serialize");
-    Msg::from_buf(&mut buf).expect("deserialize")
-}
-
 macro_rules! check_msg {
     ($id: ident, $typ: ty, $m: expr, $got: pat, $x: ident) => (
         #[test]
         fn $id() {
             let m = $m;
-            let msg = flip::<$typ>(RMsg::<$typ>(m.clone()));
+            let buf: Vec<u8> = super::serialize::<$typ>(m.clone()).expect("serialize");
+            let msg = Msg::from_buf(&buf[..]).expect("deserialize");
             match msg {
                 $got => assert_eq!($x, m),
                 _ => panic!("wrong type for message"),
@@ -68,8 +64,8 @@ macro_rules! check_create_msg {
     ($id: ident, $sid:expr, $sseq:expr, $alg:expr) => (
         check_msg!(
             $id, 
-            CreateMsg,
-            CreateMsg{
+            super::create::Msg,
+            super::create::Msg{
                 sid: $sid,
                 start_seq: $sseq,
                 cong_alg: String::from($alg),
@@ -87,8 +83,8 @@ macro_rules! check_measure_msg {
     ($id: ident, $sid:expr, $ack:expr, $rtt:expr, $rin:expr, $rout:expr) => (
         check_msg!(
             $id, 
-            MeasureMsg,
-            MeasureMsg{
+            super::measure::Msg,
+            super::measure::Msg{
                 sid: $sid,
                 ack: $ack,
                 rtt_us: $rtt,
@@ -108,8 +104,8 @@ macro_rules! check_drop_msg {
     ($id: ident, $sid:expr, $ev:expr) => (
         check_msg!(
             $id, 
-            DropMsg,
-            DropMsg{
+            super::drop::Msg,
+            super::drop::Msg{
                 sid: $sid,
                 event: String::from($ev),
             },
@@ -126,8 +122,8 @@ macro_rules! check_pattern_msg {
     ($id: ident, $sid:expr, $p:expr) => (
         check_msg!(
             $id, 
-            PatternMsg,
-            PatternMsg{
+            super::pattern::Msg,
+            super::pattern::Msg{
                 sid: $sid,
                 num_events: $p.len() as u32,
                 pattern: $p,
@@ -138,7 +134,7 @@ macro_rules! check_pattern_msg {
     )
 }
 
-use super::pattern;
+use pattern;
 check_pattern_msg!(test_pattern_1,
                    42,
                    make_pattern!(pattern::Event::Report => pattern::Event::SetCwndAbs(10) => pattern::Event::WaitNs(100)));
@@ -147,6 +143,22 @@ check_pattern_msg!(
     43,
     make_pattern!(pattern::Event::SetRateAbs(1000000) => pattern::Event::WaitRtts(2.0))
 );
+
+#[test]
+fn test_other_msg() {
+    use super::testmsg;
+    use super::AsRawMsg;
+    let m = testmsg::Msg(String::from("testing"));
+    let buf: Vec<u8> = super::serialize::<testmsg::Msg>(m.clone()).expect("serialize");
+    let msg = Msg::from_buf(&buf[..]).expect("deserialize");
+    match msg {
+        Msg::Other(raw) => {
+            let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
+            assert_eq!(m, got);
+        }
+        _ => panic!("wrong type for message"),
+    }
+}
 
 extern crate test;
 use self::test::Bencher;
