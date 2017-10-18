@@ -1,8 +1,4 @@
-#[cfg(all(target_os = "linux"))] // netlink is linux-only
-
 extern crate portus;
-use portus::ipc::Backend;
-use portus::serialize::AsRawMsg;
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -35,8 +31,11 @@ impl portus::serialize::AsRawMsg for TestMsg {
     }
 }
 
-fn main() {
+#[cfg(all(target_os = "linux"))] // netlink is linux-only
+fn test() {
     use std::process::Command;
+    use portus::ipc::Backend;
+    use portus::serialize::AsRawMsg;
 
     Command::new("sudo")
         .arg("rmmod")
@@ -108,4 +107,18 @@ fn main() {
         .output()
         .expect("rmmod failed");
     println!("\x1B[32m{}\x1B[0m", "nltest ok");
+}
+
+#[cfg(not(target_os = "linux"))] // netlink is linux-only
+fn test() {
+    return;
+}
+
+fn main() {
+    if !cfg!(target_os = "linux") {
+        println!("netlink only works on linux.");
+        return;
+    }
+
+    test();
 }

@@ -1,5 +1,3 @@
-#[cfg(all(target_os = "linux"))] // netlink is linux-only
-
 use std::thread;
 use std::vec::Vec;
 
@@ -70,6 +68,7 @@ fn bench<T: Ipc>(
         .collect()
 }
 
+#[cfg(all(target_os = "linux"))] // netlink is linux-only
 fn netlink(iter: u32) -> Vec<Duration> {
     use std::process::Command;
 
@@ -127,6 +126,11 @@ fn netlink(iter: u32) -> Vec<Duration> {
     rx.recv().expect("get rtts")
 }
 
+#[cfg(not(target_os = "linux"))] // netlink is linux-only
+fn netlink(_: u32) -> Vec<Duration> {
+    vec![]
+}
+
 fn unix(iter: u32) -> Vec<Duration> {
     let (tx, rx) = mpsc::channel::<Vec<Duration>>();
     let (ready_tx, ready_rx) = mpsc::channel::<bool>();
@@ -160,14 +164,17 @@ fn unix(iter: u32) -> Vec<Duration> {
 }
 
 fn main() {
-    let nl_rtts: Vec<i64> = netlink(10)
-        .iter()
-        .map(|d| d.num_nanoseconds().unwrap())
-        .collect();
+    if cfg!(target_os = "linux") {
+        let nl_rtts: Vec<i64> = netlink(10)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap())
+            .collect();
+        println!("{:?}", nl_rtts);
+    }
+
     let unix_rtts: Vec<i64> = unix(10)
         .iter()
         .map(|d| d.num_nanoseconds().unwrap())
         .collect();
-    println!("{:?}", nl_rtts);
     println!("{:?}", unix_rtts);
 }
