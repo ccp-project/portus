@@ -61,6 +61,7 @@ fn test() {
     println!("{}", String::from_utf8_lossy(&mk.stdout));
 
     use std::thread;
+    let (tx, rx) = std::sync::mpsc::channel::<bool>();
 
     // listen
     let c1 = thread::spawn(move || {
@@ -69,6 +70,7 @@ fn test() {
             .expect("ipc initialization");
         let rx = b.listen();
         println!("listen...");
+        tx.send(true).expect("sync");
         let msg = rx.recv().expect("receive message");
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
         assert_eq!(got, "hello, netlink\0\0"); // word aligned
@@ -91,6 +93,7 @@ fn test() {
     });
 
     // load kernel module
+    rx.recv().expect("sync");
     println!("insmod...");
     Command::new("sudo")
         .arg("insmod")
