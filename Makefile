@@ -1,14 +1,14 @@
 all: build test 
 
 build:
-	cargo build
+	cargo build --all
 
 test: build
-	cargo +nightly test --features bench
+	cargo +nightly test --features bench --all
 	sudo ./target/debug/nltest
 
 cargo_bench: build test
-	cargo +nightly bench --features bench
+	cargo +nightly bench --features bench --all
 
 ipc_latency: build
 	sudo ./target/debug/ipc_latency

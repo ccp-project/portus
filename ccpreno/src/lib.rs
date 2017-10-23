@@ -5,7 +5,7 @@ use portus::{CongAlg, DropEvent, Measurement};
 use portus::pattern;
 use portus::ipc::{Ipc, Backend};
 
-struct Reno<T: Ipc> {
+pub struct Reno<T: Ipc> {
     control_channel: Option<Backend<T>>,
     sock_id: u32,
     ss_thresh: u32,
@@ -106,24 +106,4 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
 
         self.send_pattern();
     }
-}
-
-#[cfg(all(target_os = "linux"))]
-fn main() {
-    use portus::ipc::netlink::Socket;
-    let b = Socket::new().and_then(|sk| Backend::new(sk)).expect(
-        "ipc initialization",
-    );
-
-    portus::start::<_, Reno<Socket>>(b);
-}
-
-#[cfg(not(target_os = "linux"))]
-fn main() {
-    use portus::ipc::unix::Socket;
-    let b = Socket::new(0).and_then(|sk| Backend::new(sk)).expect(
-        "ipc initialization",
-    );
-
-    portus::start::<_, Reno<Socket>>(b);
 }
