@@ -29,14 +29,14 @@ macro_rules! write_event {
 }
 
 impl Event {
-    /* Pattern serialization
-     * (type, len, value?) event description
-     * ----------------------------------------
-     * | Event Type | Len (B)  | Uint32?      |
-     * | (1 B)      | (1 B)    | (0||32 bits) |
-     * ----------------------------------------
-     * total: 2 || 6 Bytes
-     */
+    /// Pattern serialization
+    /// (type, len, value?) event description
+    /// ----------------------------------------
+    /// | Event Type | Len (B)  | Uint32?      |
+    /// | (1 B)      | (1 B)    | (0||32 bits) |
+    /// ----------------------------------------
+    /// total: 2 || 6 Bytes
+    ///
     pub fn serialize<W: Write>(&self, w: &mut W) -> super::Result<()> {
         let mut buf = [0u8; 4];
         match self {
@@ -91,6 +91,9 @@ impl Event {
 #[derive(PartialEq)]
 pub struct Pattern(Vec<Event>);
 
+/// Convenience macro for creating patterns.
+/// Takes event initializations (e.g. pattern::Event::Report())
+/// separated by `=>` and creates a Pattern object.
 #[macro_export]
 macro_rules! make_pattern {
     ($($x: expr)=>*) => ({

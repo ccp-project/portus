@@ -45,13 +45,13 @@ impl From<std::io::Error> for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl<T: Ipc> Backend<T> {
-    // Algorithm implementations use send_pattern() to control the datapath's behavior by
-    // calling send_pattern() with:
-    // 1. An initialized backend b. See note in start() for ownership.
-    // 2. The flow's sock_id. IPC implementations supporting addressing (e.g. Unix sockets, which can
-    // communicate with many applications using UDP datapaths)  MUST make the address be sock_id
-    // 3. The control pattern prog to install. Implementations can create patterns using make_pattern!.
-    // send_pattern() will return quickly with a Result indicating whether the send was successful.
+    /// Algorithm implementations use send_pattern() to control the datapath's behavior by
+    /// calling send_pattern() with:
+    /// 1. An initialized backend b. See note in start() for ownership.
+    /// 2. The flow's sock_id. IPC implementations supporting addressing (e.g. Unix sockets, which can
+    /// communicate with many applications using UDP datapaths)  MUST make the address be sock_id
+    /// 3. The control pattern prog to install. Implementations can create patterns using make_pattern!.
+    /// send_pattern() will return quickly with a Result indicating whether the send was successful.
     pub fn send_pattern(&self, sock_id: u32, prog: pattern::Pattern) -> Result<()> {
         let msg = serialize::pattern::Msg {
             sid: sock_id,
@@ -97,21 +97,21 @@ pub trait CongAlg<T: Ipc> {
     fn drop(&mut self, sock_id: u32, d: DropEvent);
 }
 
-// Main execution loop of ccp for the static pipeline use case.
-// Blocks "forever".
-// In this use case, an algorithm implementation is a binary which
-// 1. Initializes an ipc backend (depending on datapath)
-// 2. Calls start(), passing the backend b and CongAlg alg.
-// start() takes ownership of b. To use send_pattern() below, clone b first.
-//
-// start():
-// 1. listens for messages from the datapath
-// 2. call the appropriate message in alg
-//
-// start() will never return (-> !). It will panic if:
-// 1. It receives an invalid drop notification
-// 2. It receives a pattern control message (only a datapath should receive these)
-// 3. The IPC channel fails.
+/// Main execution loop of ccp for the static pipeline use case.
+/// Blocks "forever".
+/// In this use case, an algorithm implementation is a binary which
+/// 1. Initializes an ipc backend (depending on datapath)
+/// 2. Calls start(), passing the backend b and CongAlg alg.
+/// start() takes ownership of b. To use send_pattern() below, clone b first.
+///
+/// start():
+/// 1. listens for messages from the datapath
+/// 2. call the appropriate message in alg
+///
+/// start() will never return (-> !). It will panic if:
+/// 1. It receives an invalid drop notification
+/// 2. It receives a pattern control message (only a datapath should receive these)
+/// 3. The IPC channel fails.
 pub fn start<T, U>(b: Backend<T>) -> !
 where
     T: Ipc,

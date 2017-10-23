@@ -12,11 +12,11 @@ pub mod netlink;
 pub mod unix;
 
 pub trait Ipc: 'static + Sync + Send {
-    // Blocking send
+    /// Blocking send
     fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<()>;
-    // Blocking listen. Return value is a slice into the provided buffer. Should not allocate.
+    /// Blocking listen. Return value is a slice into the provided buffer. Should not allocate.
     fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]>;
-    // Close the underlying sockets
+    /// Close the underlying sockets
     fn close(&self) -> Result<()>;
 }
 
@@ -27,9 +27,9 @@ pub struct Backend<T: Ipc> {
 }
 
 impl<T: Ipc> Backend<T> {
-    // Pass in a T: Ipc, the Ipc substrate to use.
-    // Return a Backend on which to call send_msg
-    // and listen
+    /// Pass in a T: Ipc, the Ipc substrate to use.
+    /// Return a Backend on which to call send_msg
+    /// and listen
     pub fn new(sock: T) -> Result<Backend<T>> {
         Ok(Backend {
             sock: Arc::new(sock),
@@ -37,13 +37,13 @@ impl<T: Ipc> Backend<T> {
         })
     }
 
-    // Blocking send.
+    /// Blocking send.
     pub fn send_msg(&self, addr: Option<u16>, msg: &[u8]) -> Result<()> {
         self.sock.send(addr, msg).map_err(|e| Error::from(e))
     }
 
-    // Start listening on the IPC socket
-    // Return a channel on which incoming messages will be passed
+    /// Start listening on the IPC socket
+    /// Return a channel on which incoming messages will be passed
     pub fn listen(&self) -> mpsc::Receiver<Vec<u8>> {
         let (tx, rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) = mpsc::channel();
         let me = self.clone();

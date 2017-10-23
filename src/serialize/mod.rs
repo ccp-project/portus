@@ -23,13 +23,13 @@ pub(crate) fn u32_from_u8s(buf: &[u8]) -> u32 {
 //    LittleEndian::read_u64(buf)
 //}
 
-/* (type, len, socket_id) header
- * -----------------------------------
- * | Msg Type | Len (B)  | Uint32    |
- * | (1 B)    | (1 B)    | (32 bits) |
- * -----------------------------------
- * total: 6 Bytes
- */
+/// (type, len, socket_id) header
+/// -----------------------------------
+/// | Msg Type | Len (B)  | Uint32    |
+/// | (1 B)    | (1 B)    | (32 bits) |
+/// -----------------------------------
+/// total: 6 Bytes
+///
 pub const HDR_LENGTH: u8 = 6;
 fn serialize_header(typ: u8, len: u8, sid: u32) -> Vec<u8> {
     let mut hdr = Vec::new();
@@ -62,7 +62,7 @@ pub struct RawMsg<'a> {
 }
 
 impl<'a> RawMsg<'a> {
-    // For predefined messages, get u32s separately for convenience
+    /// For predefined messages, get u32s separately for convenience
     pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
         use std::mem;
         match self.typ {
@@ -74,7 +74,7 @@ impl<'a> RawMsg<'a> {
         }
     }
 
-    // For predefined messages, get u64s separately for convenience
+    /// For predefined messages, get u64s separately for convenience
     pub(crate) unsafe fn get_u64s(&self) -> Result<&'a [u64]> {
         use std::mem;
         match self.typ {
@@ -86,8 +86,8 @@ impl<'a> RawMsg<'a> {
         }
     }
 
-    // For predefined messages, bytes blob is whatever's left (may be nothing)
-    // For other message types, just return the bytes blob
+    /// For predefined messages, bytes blob is whatever's left (may be nothing)
+    /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
             create::CREATE => Ok(&self.bytes[4..(self.len as usize - 6)]),
@@ -99,6 +99,17 @@ impl<'a> RawMsg<'a> {
     }
 }
 
+/// A message type has 4 components, always in the following order.
+/// 1. Header
+/// 2. u32s
+/// 3. u64s
+/// 4. Arbitrary bytes
+///
+/// For convenience, the predefined message types define a number of u32s and u64s.
+/// External message types can implement `get_bytes()` to pass custom types in the message payload.
+/// In these cases, there is no overhead from the u32 and u64 parts of the message.
+/// Message types wanting to become "predefined" (and as such take advantage of get_u32s and
+/// get_u64s below) should edit this file accordingly (see `impl RawMsg`)
 pub trait AsRawMsg {
     fn get_hdr(&self) -> (u8, u8, u32);
     fn get_u32s<W: Write>(&self, _: &mut W) -> Result<()> {
@@ -142,6 +153,10 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     })
 }
 
+/// Message type for deserialization.
+/// Reads message type in the header of the input buffer and returns
+/// a Msg of the corresponding type. If the message type is unkown, returns a
+/// wrapper with direct access to the message bytes.
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum Msg<'a> {
