@@ -80,7 +80,7 @@ check_create_msg!(test_create_1, 15, 15, "nimbus");
 check_create_msg!(test_create_2, 42, 424242, "reno");
 
 macro_rules! check_measure_msg {
-    ($id: ident, $sid:expr, $ack:expr, $rtt:expr, $rin:expr, $rout:expr) => (
+    ($id: ident, $sid:expr, $ack:expr, $rtt:expr, $loss:expr, $rin:expr, $rout:expr) => (
         check_msg!(
             $id, 
             super::measure::Msg,
@@ -88,6 +88,7 @@ macro_rules! check_measure_msg {
                 sid: $sid,
                 ack: $ack,
                 rtt_us: $rtt,
+                loss: $loss,
                 rin: $rin,
                 rout: $rout,
             },
@@ -97,8 +98,8 @@ macro_rules! check_measure_msg {
     )
 }
 
-check_measure_msg!(test_measure_1, 15, 424242, 65535, 200000, 150000);
-check_measure_msg!(test_measure_2, 256, 42424242, 65536, 100000, 50000);
+check_measure_msg!(test_measure_1, 15, 424242, 65535, 65530, 200000, 150000);
+check_measure_msg!(test_measure_2, 256, 42424242, 65536, 65531, 100000, 50000);
 
 macro_rules! check_drop_msg {
     ($id: ident, $sid:expr, $ev:expr) => (

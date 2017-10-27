@@ -11,13 +11,14 @@ pub struct Msg {
     pub sid: u32,
     pub ack: u32,
     pub rtt_us: u32,
+    pub loss: u32,
     pub rin: u64,
     pub rout: u64,
 }
 
 impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u8, u32) {
-        (MEASURE, HDR_LENGTH + 8 + 16 as u8, self.sid)
+        (MEASURE, HDR_LENGTH + 12 + 16 as u8, self.sid)
     }
 
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
@@ -25,6 +26,8 @@ impl AsRawMsg for Msg {
         u32_to_u8s(&mut buf, self.ack);
         w.write_all(&buf[..])?;
         u32_to_u8s(&mut buf, self.rtt_us);
+        w.write_all(&buf[..])?;
+        u32_to_u8s(&mut buf, self.loss);
         w.write_all(&buf[..])?;
         Ok(())
     }
@@ -49,6 +52,7 @@ impl AsRawMsg for Msg {
             sid: msg.sid,
             ack: u32s[0],
             rtt_us: u32s[1],
+            loss: u32s[2],
             rin: u64s[0],
             rout: u64s[1],
         })

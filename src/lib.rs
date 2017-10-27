@@ -68,6 +68,7 @@ impl<T: Ipc> Backend<T> {
 pub struct Measurement {
     pub ack: u32,
     pub rtt_us: u32,
+    pub loss: u32,
     pub rate_sent: u64,
     pub rate_achieved: u64,
 }
@@ -141,6 +142,7 @@ where
                             Measurement {
                                 ack: m.ack,
                                 rtt_us: m.rtt_us,
+                                loss: m.loss,
                                 rate_sent: m.rin,
                                 rate_achieved: m.rout,
                             },

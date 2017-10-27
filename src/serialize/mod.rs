@@ -67,7 +67,7 @@ impl<'a> RawMsg<'a> {
         use std::mem;
         match self.typ {
             create::CREATE => Ok(mem::transmute(&self.bytes[0..4])),
-            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 2])),
+            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 3])),
             drop::DROP => Ok(&[]),
             pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
@@ -79,7 +79,7 @@ impl<'a> RawMsg<'a> {
         use std::mem;
         match self.typ {
             create::CREATE => Ok(&[]),
-            measure::MEASURE => Ok(mem::transmute(&self.bytes[(4 * 2)..(4 * 2 + 8 * 2)])),
+            measure::MEASURE => Ok(mem::transmute(&self.bytes[(4 * 3)..(4 * 3 + 8 * 2)])),
             drop::DROP => Ok(&[]),
             pattern::CWND => Ok(&[]),
             _ => Ok(&[]),
