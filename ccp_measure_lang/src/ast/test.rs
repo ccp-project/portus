@@ -248,25 +248,84 @@ fn bindcheck() {
 }
 
 #[test]
-fn many_simple() {
+fn defs() {
+    let foo = b"(def (Foo 0) (Bar 0) (Baz 0))";
+    use nom::{IResult, Needed};
+    match super::defs(foo) {
+        IResult::Done(r, me) => {
+            assert_eq!(r, &[]);
+            assert_eq!(
+                me,
+                vec![
+                    (Type::Name(String::from("Foo")), Type::Num),
+                    (Type::Name(String::from("Bar")), Type::Num),
+                    (Type::Name(String::from("Baz")), Type::Num),
+                ]
+            );
+        }
+        IResult::Error(e) => panic!(e),
+        IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
+        IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+    }
+}
+
+use super::Prog;
+#[test]
+fn prog() {
     let foo = b"
-    (bind foo 4)
+    (def (foo 0) (baz 0))
+    (bind Flow.foo 4)
     (bind bar 5)
-    (bind baz 6)
+    (+ Flow.foo bar)
+    (bind Flow.baz (+ Flow.foo (+ bar 6)))
     ";
-    let er = Expr::new(foo);
-    let e = er.unwrap();
-    assert_eq!(e.len(), 3);
+    let (p, sc) = Prog::new_with_scope(foo).unwrap();
+    assert_eq!(p.0.len(), 3);
+    assert_eq!(
+        sc.get(&Type::Name(String::from("Flow.baz"))),
+        Some(&Type::Num)
+    );
+    assert_eq!(
+        sc.get(&Type::Name(String::from("Flow.foo"))),
+        Some(&Type::Num)
+    );
 }
 
 #[test]
-fn many_vars() {
+fn prog1() {
     let foo = b"
+    (def (bar 0) (baz 0))
     (bind x 15)
-    (bind foo.bar (+ 3 x))
-    (bind foo.baz (+ foo.bar x))
+    (bind Flow.bar (> 3 5))
+    (bind Flow.baz (if Flow.bar (tup 6 7)))
     ";
-    let er = Expr::new(foo);
-    let e = er.unwrap();
-    assert_eq!(e.len(), 3);
+    let (p, sc) = Prog::new_with_scope(foo).unwrap();
+    assert_eq!(p.0.len(), 3);
+    assert_eq!(
+        sc.get(&Type::Name(String::from("Flow.bar"))),
+        Some(&Type::Bool)
+    );
+    assert_eq!(
+        sc.get(&Type::Name(String::from("Flow.baz"))),
+        Some(&Type::Num)
+    );
+    assert_eq!(sc.get(&Type::Name(String::from("Flow.foo"))), None);
+    assert_eq!(sc.get(&Type::Name(String::from("bar"))), None);
+}
+
+#[test]
+fn prog2() {
+    let foo = b"
+    (def (Foo 0) (Ack 0) (MinRtt 10000000))
+    (bind Flow.Ack (max Flow.Ack Ack))
+    (bind Flow.MinRtt (min Flow.MinRtt Rtt))
+    (bind bdp (* Flow.MinRtt SndRate))
+    (bind Flow.Foo (* bdp 2))
+    ";
+    let (p, sc) = Prog::new_with_scope(foo).unwrap();
+    assert_eq!(p.0.len(), 4);
+    assert_eq!(
+        sc.get(&Type::Name(String::from("Flow.Ack"))),
+        Some(&Type::Num)
+    );
 }

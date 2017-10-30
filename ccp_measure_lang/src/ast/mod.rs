@@ -2,6 +2,7 @@ use std;
 use nom::IResult;
 use super::{Error, Result};
 
+#[derive(Clone)]
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum Prim {
@@ -20,9 +21,9 @@ pub enum Type {
     Num,
     None,
     Tup(Box<Type>, Box<Type>),
-    Var(String),
 }
 
+#[derive(Clone)]
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum Op {
@@ -43,6 +44,7 @@ pub enum Op {
     Tup, // (tup a b) create tuple (a,b)
 }
 
+#[derive(Clone)]
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub enum Expr {
@@ -170,7 +172,9 @@ named!(
     many1!(expr)
 );
 
-use std::collections::HashMap;
+mod scope;
+use self::scope::Scope;
+
 impl Expr {
     pub fn new(src: &[u8]) -> Result<Vec<Self>> {
         use nom::Needed;
@@ -191,16 +195,16 @@ impl Expr {
         }
     }
 
-    fn check_type_with_scope(&self, scope: &mut HashMap<Type, Type>) -> Result<Type> {
+    fn check_type_with_scope(&self, scope: &mut Scope) -> Result<Type> {
+        println!("exp: {:?}, scope: {:?}", self, scope);
         match self {
             &Expr::Atom(ref t) => {
                 match t {
                     &Prim::Bool(_) => Ok(Type::Bool),
                     &Prim::Name(ref name) => {
-                        if let Some(bind) = scope.get(&Type::Var(name.clone())) {
-                            Ok(bind.clone())
-                        } else {
-                            Ok(Type::Name(name.clone()))
+                        match scope.get(&Type::Name(name.clone())) {
+                            Some(bind) if bind != &Type::None => Ok(bind.clone()),
+                            _ => Ok(Type::Name(name.clone())),
                         }
                     }
                     &Prim::Num(_) => Ok(Type::Num),
@@ -208,11 +212,10 @@ impl Expr {
                 }
             }
             &Expr::Sexp(ref o, ref left, ref right) => {
-                let left_type: Type = left.check_type_with_scope(scope)?;
-                let right_type: Type = right.check_type_with_scope(scope)?;
-
                 match o {
                     &Op::Add | &Op::Div | &Op::Max | &Op::Min | &Op::Mul | &Op::Sub => {
+                        let left_type: Type = left.check_type_with_scope(scope)?;
+                        let right_type: Type = right.check_type_with_scope(scope)?;
                         if let (&Type::Num, &Type::Num) = (&left_type, &right_type) {
                             Ok(Type::Num)
                         } else {
@@ -222,6 +225,8 @@ impl Expr {
                         }
                     }
                     &Op::Beq | &Op::Bne => {
+                        let left_type: Type = left.check_type_with_scope(scope)?;
+                        let right_type: Type = right.check_type_with_scope(scope)?;
                         match (&left_type, &right_type) {
                             (&Type::Bool, &Type::Tup(box Type::Bool, box Type::Bool)) => {
                                 Ok(Type::Bool)
@@ -235,23 +240,26 @@ impl Expr {
                         }
                     }
                     &Op::Bind => {
-                        match &left_type {
-                            &Type::Name(ref n) => {
-                                scope.insert(Type::Var(n.clone()), right_type);
-                                Ok(Type::Var(n.clone()))
+                        let right_type: Type = right.check_type_with_scope(scope)?;
+                        match **left {
+                            Expr::Atom(Prim::Name(ref n)) => {
+                                match scope.bind(Type::Name(n.clone()), right_type) {
+                                    Some(ref b) if b != &Type::None => Err(Error::from(
+                                        format!("already bound: {:?}", n),
+                                    )),
+                                    _ => Ok(Type::Name(n.clone())),
+                                }
                             }
-                            &Type::Var(ref v) => Err(
-                                Error::from(format!("already bound: {:?}", v)),
-                            ),
                             _ => {
                                 Err(Error::from(
-                                    format!("expected (name, _) got {:?}", (left_type.clone(), right_type)),
+                                    format!("expected (name, _) got {:?}", (left, right_type)),
                                 ))
                             }
-
                         }
                     }
                     &Op::Equiv | &Op::Gt | &Op::Lt => {
+                        let left_type: Type = left.check_type_with_scope(scope)?;
+                        let right_type: Type = right.check_type_with_scope(scope)?;
                         match (&left_type, &right_type) {
                             (&Type::Num, &Type::Num) |
                             (&Type::Bool, &Type::Bool) => Ok(Type::Bool),
@@ -261,26 +269,31 @@ impl Expr {
                         }
                     }
                     &Op::Ewma => {
+                        let left_type: Type = left.check_type_with_scope(scope)?;
+                        let right_type: Type = right.check_type_with_scope(scope)?;
                         match (&left_type, &right_type) {
-                            (&Type::Num, &Type::Tup(box Type::Bool, box Type::Bool)) => {
-                                Ok(Type::Bool)
-                            }
                             (&Type::Num, &Type::Tup(box Type::Num, box Type::Num)) => Ok(Type::Num),
                             _ => Err(Error::from(
-                                format!("expected Num, (<T>, <T>)) got {:?}", (&left_type, &right_type)),
+                                format!("expected Num, (Num, Num)) got {:?}", (&left_type, &right_type)),
                             )),
                         }
                     }
                     &Op::Let => {
-                        if let &Type::Var(_) = &left_type {
+                        let left_type: Type = left.check_type_with_scope(scope)?;
+                        let right_type: Type = right.check_type_with_scope(scope)?;
+                        if let &Type::Name(_) = &left_type {
                             Ok(right_type)
                         } else {
                             Err(Error::from(
-                                format!("expected (Var, _) got {:?}", (left_type, right_type)),
+                                format!("expected (Name, _) got {:?}", (left_type, right_type)),
                             ))
                         }
                     }
-                    &Op::Tup => Ok(Type::Tup(Box::new(left_type), Box::new(right_type))),
+                    &Op::Tup => {
+                        let left_type: Type = left.check_type_with_scope(scope)?;
+                        let right_type: Type = right.check_type_with_scope(scope)?;
+                        Ok(Type::Tup(Box::new(left_type), Box::new(right_type)))
+                    }
                 }
             }
         }
@@ -288,7 +301,93 @@ impl Expr {
 
     // recursively check type of Expr.
     pub fn check_type(&self) -> Result<Type> {
-        self.check_type_with_scope(&mut HashMap::new())
+        self.check_type_with_scope(&mut Scope::datapath_scope())
+    }
+}
+
+/// a Prog is multiple Expr in sequence.
+/// Scope cascades through the Expr:
+/// Expr with Type::Name will in scope for successive Expr
+/// Other Expr will not be evaluated.
+#[derive(Debug)]
+pub struct Prog(pub Vec<Expr>);
+
+use nom::alpha;
+/// Declare a state variable and provide an initial value
+/// (Foo 0) (Bar true)
+named!(
+    decl<(Type, Type)>,
+    delimited!(
+        tag!("("),
+        tuple!(
+            map_res!(alpha, |b| str::from_utf8(b).and_then(|i| Ok(Type::Name(String::from(i))))),
+            map_res!(atom, |a: Result<Expr>| a.and_then(|i| i.check_type()))
+        ),
+        tag!(")")
+    )
+);
+/// a Prog has special syntax *at the beginning* to declare the Flow state variables.
+/// (def (decl) ...)
+named!(
+    defs<Vec<(Type, Type)>>,
+    ws!(delimited!(
+        tag!("("),
+        do_parse!(
+            tag!("def") >> 
+            defs : many1!(decl) >>
+            (
+                defs.into_iter().map(|(name, init_val)| {
+                    match init_val {
+                        x@ Type::Num | x@ Type::Bool => (name, x),
+                        _ => (name, Type::None)
+                    } 
+                }).collect()
+            )
+        ),
+        tag!(")")
+    ))
+);
+
+impl Prog {
+    fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
+        let mut scope = Scope::datapath_scope();
+        use nom::{IResult, Needed};
+        let rest = match defs(source) {
+            IResult::Done(rest, flow_state) => {
+                flow_state
+                    .into_iter()
+                    .map(|(var, typ)| match var {
+                        Type::Name(v) => (Type::Name(format!("Flow.{}", v)), typ),
+                        _ => unreachable!(),
+                    })
+                    .for_each(|(var, typ)| { scope.init(var, typ); });
+
+                Ok(rest)
+            }
+            IResult::Error(e) => Err(Error::from(e)),
+            IResult::Incomplete(Needed::Unknown) => Err(Error::from(String::from("need more src"))),
+            IResult::Incomplete(Needed::Size(s)) => Err(
+                Error::from(format!("need {} more bytes", s)),
+            ),
+        }?;
+
+        let exprs = Expr::new(rest)?
+            .iter()
+            .filter(|&expr| match expr.check_type_with_scope(&mut scope) {
+                Ok(Type::Name(_)) => true,
+                a => {
+                    println!("{:?}", a);
+                    false
+                }
+            })
+            .map(|e| e.clone())
+            .collect();
+
+        Ok((Prog(exprs), scope))
+    }
+
+    pub fn new(source: &[u8]) -> Result<Self> {
+        Self::new_with_scope(source).map(|t| t.0)
     }
 }
 
