@@ -11,6 +11,11 @@ impl From<String> for Error {
         Error(e)
     }
 }
+impl<'a> From<&'a str> for Error {
+    fn from(e: &'a str) -> Error {
+        Error(String::from(e))
+    }
+}
 impl From<nom::simple_errors::Err> for Error {
     fn from(e: nom::simple_errors::Err) -> Error {
         Error(String::from(e.description()))
@@ -23,3 +28,7 @@ impl From<std::string::FromUtf8Error> for Error {
 }
 
 pub mod ast;
+pub mod datapath;
+pub mod prog;
+mod scope;
+pub mod serialize;
