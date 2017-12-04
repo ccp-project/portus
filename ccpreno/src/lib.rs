@@ -79,10 +79,15 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         }
 
         // increase cwnd by 1 / cwnd per packet
-        self.cwnd += 1460u32 * new_bytes_acked / self.cwnd;
+        self.cwnd += 1460u32 * (new_bytes_acked / self.cwnd);
         self.send_pattern();
 
-        println!("got ack: {} cwnd: {}, num_lost: {}", m.ack, self.cwnd, m.loss);
+        println!(
+            "got ack: {} cwnd: {}, num_lost: {}",
+            m.ack,
+            self.cwnd,
+            m.loss
+        );
     }
 
     fn drop(&mut self, _sock_id: u32, d: DropEvent) {
