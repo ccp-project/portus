@@ -10,6 +10,8 @@ use super::Result;
 #[cfg(all(target_os = "linux"))]
 pub mod netlink;
 pub mod unix;
+#[cfg(all(target_os = "linux"))]
+pub mod kp;
 
 pub trait Ipc: 'static + Sync + Send {
     /// Blocking send

@@ -125,6 +125,22 @@ fn netlink(iter: u32) -> Vec<Duration> {
     rx.recv().expect("get rtts")
 }
 
+#[cfg(all(target_os = "linux"))] // kernel-pipe is linux-only
+fn kp(iter: u32) -> Vec<Duration> {
+    let (tx, rx) = mpsc::channel::<Vec<Duration>>();
+
+    let c1 = thread::spawn(move || {
+        let b = portus::ipc::kp::Socket::new()
+            .and_then(|sk| Backend::new(sk))
+            .expect("ipc initialization");
+        let rx = b.listen();
+        tx.send(bench(b, rx, iter)).expect("report rtts");
+    });
+
+    c1.join().expect("join kp thread");
+    rx.recv().expect("get rtts")
+}
+
 #[cfg(not(target_os = "linux"))] // netlink is linux-only
 fn netlink(_: u32) -> Vec<Duration> {
     vec![]
@@ -164,17 +180,26 @@ fn unix(iter: u32) -> Vec<Duration> {
 }
 
 fn main() {
+    let trials = 100000;
     if cfg!(target_os = "linux") {
-        let nl_rtts: Vec<i64> = netlink(10)
+        let nl_rtts: Vec<i64> = netlink(trials)
             .iter()
             .map(|d| d.num_nanoseconds().unwrap())
             .collect();
-        println!("{:?}", nl_rtts);
+       println!("nl:{:?}", nl_rtts);
     }
 
-    let unix_rtts: Vec<i64> = unix(10)
+    if cfg!(target_os = "linux") {
+        let kp_rtts: Vec<i64> = kp(trials)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap())
+            .collect();
+        println!("kp:{:?}", kp_rtts);
+    }
+
+    let unix_rtts: Vec<i64> = unix(trials)
         .iter()
         .map(|d| d.num_nanoseconds().unwrap())
         .collect();
-    println!("{:?}", unix_rtts);
+    println!("unix:{:?}-", unix_rtts);
 }
