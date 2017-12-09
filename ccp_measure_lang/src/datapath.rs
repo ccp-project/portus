@@ -67,7 +67,7 @@ impl Bin {
         p.0
             .iter()
             .map(|e| {
-                // TODO reset Tmp registers for each Expr
+                scope.clear_tmps();
                 compile_expr(&e, &mut scope).map(|t| match t {
                     (instrs, _) => instrs,
                 })
@@ -328,6 +328,60 @@ mod tests {
                     op: Op::If,
                     left: Reg::Tmp(0, Type::Bool(None)),
                     right: Reg::Const(0, Type::Num(None)),
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn prog_reset_tmps() {
+        let foo = b"
+        (def (foo 0) (bar 0))
+        (bind Flow.foo (+ (+ 1 2) 3))
+        (bind Flow.bar (+ (+ 4 5) 6))
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+
+        assert_eq!(
+            b,
+            Bin(vec![
+                Instr {
+                    res: Reg::Tmp(0, Type::Num(None)),
+                    op: Op::Add,
+                    left: Reg::ImmNum(1),
+                    right: Reg::ImmNum(2),
+                },
+                Instr {
+                    res: Reg::Tmp(1, Type::Num(None)),
+                    op: Op::Add,
+                    left: Reg::Tmp(0, Type::Num(None)),
+                    right: Reg::ImmNum(3),
+                },
+                Instr {
+                    res: Reg::Perm(0, Type::Num(Some(0))),
+                    op: Op::Bind,
+                    left: Reg::Perm(0, Type::Num(Some(0))),
+                    right: Reg::Tmp(1, Type::Num(None)),
+                },
+                Instr {
+                    res: Reg::Tmp(0, Type::Num(None)),
+                    op: Op::Add,
+                    left: Reg::ImmNum(4),
+                    right: Reg::ImmNum(5),
+                },
+                Instr {
+                    res: Reg::Tmp(1, Type::Num(None)),
+                    op: Op::Add,
+                    left: Reg::Tmp(0, Type::Num(None)),
+                    right: Reg::ImmNum(6),
+                },
+                Instr {
+                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    op: Op::Bind,
+                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    right: Reg::Tmp(1, Type::Num(None)),
                 },
             ])
         );

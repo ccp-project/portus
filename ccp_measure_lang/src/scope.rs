@@ -51,4 +51,8 @@ impl Scope {
         self.named.insert(name, self.perm[id as usize].clone());
         self.perm[id as usize].clone()
     }
+
+    pub fn clear_tmps(&mut self) {
+        self.tmp.clear()
+    }
 }
