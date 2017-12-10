@@ -1,3 +1,4 @@
+use std::slice::Iter;
 use super::{Error, Result};
 use super::prog::Prog;
 use super::ast::{Expr, Op, Prim};
@@ -51,15 +52,15 @@ impl Reg {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Instr {
-    res: Reg,
-    op: Op,
-    left: Reg,
-    right: Reg,
+pub(crate) struct Instr {
+    pub res: Reg,
+    pub op: Op,
+    pub left: Reg,
+    pub right: Reg,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Bin(pub Vec<Instr>);
+pub(crate) struct Bin(pub Vec<Instr>);
 
 impl Bin {
     /// Given a Prog, call compile_expr() on each Expr, then append the resulting Vec<Instrs>
@@ -221,6 +222,15 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                 }
             }
         }
+    }
+}
+
+impl IntoIterator for Bin {
+    type Item = Instr;
+    type IntoIter = ::std::vec::IntoIter<Instr>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

@@ -32,3 +32,11 @@ pub mod datapath;
 pub mod prog;
 mod scope;
 pub mod serialize;
+
+use prog::Prog;
+use datapath::Bin;
+pub fn compile(src: &[u8]) -> Result<Vec<u8>> {
+    Prog::new_with_scope(src)
+        .and_then(|(p, mut s)| Bin::compile_prog(&p, &mut s))
+        .and_then(|b| serialize::serialize(b))
+}
