@@ -73,10 +73,6 @@ impl Prog {
         // TODO make Expr::new return Iter, make self wrap an iter also
         Ok((Prog(Expr::new(rest)?), scope))
     }
-
-    pub fn new(source: &[u8]) -> Result<Self> {
-        Self::new_with_scope(source).map(|t| t.0)
-    }
 }
 
 #[cfg(test)]

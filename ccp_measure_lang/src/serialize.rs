@@ -10,14 +10,14 @@ pub(crate) fn serialize(b: Bin) -> Result<Vec<u8>> {
 
 impl IntoIterator for Instr {
     type Item = Result<u8>;
-    type IntoIter = instrBytes;
+    type IntoIter = InstrBytes;
 
     fn into_iter(self) -> Self::IntoIter {
-        instrBytes { i: self, which: 0 }
+        InstrBytes { i: self, which: 0 }
     }
 }
 
-pub(crate) struct instrBytes {
+pub(crate) struct InstrBytes {
     i: Instr,
     which: u8,
 }
@@ -34,7 +34,7 @@ pub(crate) struct instrBytes {
 /// |Opcode          |Result Register |Left Register   |Right Register  |
 /// |u8              |u8:typ2,which6  |u8:typ2,which6  |u8:typ2,which6  |
 /// |----------------|----------------|----------------|----------------|
-impl Iterator for instrBytes {
+impl Iterator for InstrBytes {
     type Item = Result<u8>;
 
     /// Yield the bytes of this instruction

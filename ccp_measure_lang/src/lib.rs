@@ -27,14 +27,21 @@ impl From<std::string::FromUtf8Error> for Error {
     }
 }
 
-pub mod ast;
-pub mod datapath;
-pub mod prog;
+mod ast;
+mod datapath;
+mod prog;
 mod scope;
-pub mod serialize;
+mod serialize;
 
 use prog::Prog;
 use datapath::Bin;
+/// compile() uses 4 passes.
+/// The resulting bytes can be passed to the datapath.
+///
+/// 1. Expr::new() (called by Prog::new_with_scope() internally) returns a single AST
+/// 2. Prog::new_with_scope() returns a list of ASTs for multiple expressions
+/// 3. Bin::compile_prog() turns a Prog into a Bin, which is a Vec of datapath Instr
+/// 4. serialize::serialize() serializes a Bin into bytes.
 pub fn compile(src: &[u8]) -> Result<Vec<u8>> {
     Prog::new_with_scope(src)
         .and_then(|(p, mut s)| Bin::compile_prog(&p, &mut s))

@@ -1,4 +1,3 @@
-use std::slice::Iter;
 use super::{Error, Result};
 use super::prog::Prog;
 use super::ast::{Expr, Op, Prim};
@@ -21,7 +20,6 @@ pub(crate) fn check_atom_type(e: &Expr) -> Result<Type> {
                 &Prim::Bool(t) => Ok(Type::Bool(Some(t))),
                 &Prim::Name(ref name) => Ok(Type::Name(name.clone())),
                 &Prim::Num(n) => Ok(Type::Num(Some(n))),
-                &Prim::None => Ok(Type::None),
             }
         }
         _ => Err(Error::from(format!("not an atom: {:?}", e))),
@@ -109,7 +107,6 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     }
                 }
                 &Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
-                &Prim::None => Err(Error::from("unexpected None")),
             }
         }
         &Expr::Sexp(ref o, box ref left_expr, box ref right_expr) => {

@@ -9,7 +9,6 @@ pub enum Prim {
     Bool(bool),
     Name(String),
     Num(u64),
-    None,
 }
 
 #[derive(Clone)]
