@@ -54,6 +54,7 @@ fn serialize_op(o: &Op) -> u8 {
     match o {
         &Op::Add => 0,
         &Op::Bind => 1,
+        &Op::Def => 14, // TODO fix the numbers
         &Op::Div => 2,
         &Op::Equiv => 3,
         &Op::Ewma => 4,

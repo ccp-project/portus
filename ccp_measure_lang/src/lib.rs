@@ -29,11 +29,10 @@ impl From<std::string::FromUtf8Error> for Error {
 
 mod ast;
 mod datapath;
-mod scope;
 mod serialize;
 
 use ast::Prog;
-use datapath::Bin;
+use datapath::{Bin, Scope};
 /// compile() uses 4 passes.
 /// The resulting bytes can be passed to the datapath.
 ///
@@ -41,8 +40,8 @@ use datapath::Bin;
 /// 2. Prog::new_with_scope() returns a list of ASTs for multiple expressions
 /// 3. Bin::compile_prog() turns a Prog into a Bin, which is a Vec of datapath Instr
 /// 4. serialize::serialize() serializes a Bin into bytes.
-pub fn compile(src: &[u8]) -> Result<Vec<u8>> {
+pub fn compile(src: &[u8]) -> Result<(Vec<u8>, Scope)> {
     Prog::new_with_scope(src)
-        .and_then(|(p, mut s)| Bin::compile_prog(&p, &mut s))
-        .and_then(|b| serialize::serialize(b))
+        .and_then(|(p, mut s)| Ok((Bin::compile_prog(&p, &mut s)?, s)))
+        .and_then(|(b, mut s)| Ok((serialize::serialize(b)?, s)))
 }

@@ -28,6 +28,9 @@ pub enum Op {
     Mul, // (mul a b) return a * b
     Sub, // (sub a b) return a - b
 
+    // SPECIAL: cannot be called by user, only generated
+    Def, // top of prog: (def (Foo 0) (Bar 100000000) ...)
+
     // SPECIAL: cannot be bound to temp register
     If, // (if a b) if a == True, evaluate b (write return register), otherwise don't write return register
 
@@ -186,8 +189,7 @@ impl Expr {
     }
 }
 
-use super::datapath::{Type, check_atom_type};
-use super::scope::Scope;
+use super::datapath::{Scope, Type, check_atom_type};
 /// a Prog is multiple Expr in sequence.
 /// Scope cascades through the Expr:
 /// Expr with Type::Name will in scope for successive Expr
@@ -232,7 +234,7 @@ named!(
 );
 
 impl Prog {
-    pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
+    pub(crate) fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
         use nom::{IResult, Needed};
         let rest = match defs(source) {

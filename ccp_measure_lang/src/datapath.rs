@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use super::{Error, Result};
 use super::ast::{Expr, Op, Prim, Prog};
-use super::scope::Scope;
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -49,7 +49,7 @@ impl Reg {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct Instr {
+pub struct Instr {
     pub res: Reg,
     pub op: Op,
     pub left: Reg,
@@ -62,6 +62,10 @@ pub(crate) struct Bin(pub Vec<Instr>);
 impl Bin {
     /// Given a Prog, call compile_expr() on each Expr, then append the resulting Vec<Instrs>
     pub fn compile_prog(p: &Prog, mut scope: &mut Scope) -> Result<Self> {
+        // TODO once compile_expr returns iterator, can chain without
+        // intermediate collect()
+        // this is ugly
+        let i = scope.clone().into_iter().collect::<Vec<Instr>>();
         p.0
             .iter()
             .map(|e| {
@@ -72,7 +76,7 @@ impl Bin {
             })
             .fold(
                 // TODO once compile_expr returns iterator, can just flatMap
-                Ok(vec![]),
+                Ok(i),
                 |acc, rv| match rv { 
                     Ok(mut v) => {
                         acc.and_then(|mut x| {
@@ -87,7 +91,7 @@ impl Bin {
     }
 }
 
-// TODO make iterative instead of recursive, and return Iter<Instr>
+// TODO make iterative instead of recursive, and return impl Iterator<Instr>
 /// Given a single Expr, return
 /// a Vec<Instr> that evaluates that Expr
 /// a Reg in which the result is stored
@@ -216,8 +220,112 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
 
                     Ok((instrs, Reg::None))
                 }
+                &Op::Def => unreachable!(),
             }
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct Scope {
+    named: HashMap<String, Reg>,
+    prim: Vec<Reg>,
+    perm: Vec<Reg>,
+    tmp: Vec<Reg>,
+}
+
+impl Scope {
+    /// Define variables always accessible in the datapath,
+    /// in the context of the most recent packet.
+    /// All datapaths shall recognize these Names.
+    pub(crate) fn new() -> Self {
+        let mut sc = Scope {
+            prim: vec![
+                Reg::Const(0, Type::Num(None)),
+                Reg::Const(1, Type::Num(None)),
+                Reg::Const(2, Type::Num(None)),
+                Reg::Const(3, Type::Num(None)),
+            ],
+            tmp: vec![],
+            perm: vec![],
+            named: HashMap::new(),
+        };
+
+        sc.named.insert(String::from("Rtt"), sc.prim[0].clone());
+        sc.named.insert(String::from("Ack"), sc.prim[1].clone());
+        sc.named.insert(String::from("SndRate"), sc.prim[2].clone());
+        sc.named.insert(String::from("RcvRate"), sc.prim[3].clone());
+
+        sc
+    }
+
+    pub fn get(&self, name: &String) -> Option<&Reg> {
+        self.named.get(name)
+    }
+
+    pub(crate) fn new_tmp(&mut self, t: Type) -> Reg {
+        let id = self.tmp.len() as u8;
+        let r = Reg::Tmp(id, t);
+        self.tmp.push(r);
+        self.tmp[id as usize].clone()
+    }
+
+    pub(crate) fn new_perm(&mut self, name: String, t: Type) -> Reg {
+        let id = self.perm.len() as u8;
+        let r = Reg::Perm(id, t);
+        self.perm.push(r);
+        self.named.insert(name, self.perm[id as usize].clone());
+        self.perm[id as usize].clone()
+    }
+
+    pub(crate) fn clear_tmps(&mut self) {
+        self.tmp.clear()
+    }
+}
+
+pub struct ScopeDefInstrIter {
+    v: ::std::vec::IntoIter<Reg>,
+}
+
+impl ScopeDefInstrIter {
+    fn new(it: ::std::vec::IntoIter<Reg>) -> Self {
+        ScopeDefInstrIter { v: it }
+    }
+}
+
+impl Iterator for ScopeDefInstrIter {
+    type Item = Instr;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let reg = self.v.next()?;
+        match reg {
+            Reg::Perm(_, Type::Num(Some(n))) => {
+                Some(Instr {
+                    res: reg.clone(),
+                    op: Op::Def,
+                    left: reg.clone(),
+                    right: Reg::ImmNum(n),
+                })
+            }
+            Reg::Perm(_, Type::Bool(Some(b))) => {
+                Some(Instr {
+                    res: reg.clone(),
+                    op: Op::Def,
+                    left: reg.clone(),
+                    right: Reg::ImmBool(b),
+                })
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl IntoIterator for Scope {
+    type Item = Instr;
+    type IntoIter = ScopeDefInstrIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ScopeDefInstrIter::new(self.perm.into_iter())
     }
 }
 
@@ -249,6 +357,12 @@ mod tests {
             Bin(vec![
                 Instr {
                     res: Reg::Perm(0, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(0, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
+                Instr {
+                    res: Reg::Perm(0, Type::Num(Some(0))),
                     op: Op::Bind,
                     left: Reg::Perm(0, Type::Num(Some(0))),
                     right: Reg::ImmNum(4),
@@ -270,6 +384,12 @@ mod tests {
         assert_eq!(
             b,
             Bin(vec![
+                Instr {
+                    res: Reg::Perm(0, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(0, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
                 Instr {
                     res: Reg::Tmp(0, Type::Num(None)),
                     op: Op::Add,
@@ -301,6 +421,12 @@ mod tests {
             Bin(vec![
                 Instr {
                     res: Reg::Perm(0, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(0, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
+                Instr {
+                    res: Reg::Perm(0, Type::Num(Some(0))),
                     op: Op::Ewma,
                     left: Reg::ImmNum(2),
                     right: Reg::Const(2, Type::Num(None)),
@@ -322,6 +448,12 @@ mod tests {
         assert_eq!(
             b,
             Bin(vec![
+                Instr {
+                    res: Reg::Perm(0, Type::Num(Some(100000000))),
+                    op: Op::Def,
+                    left: Reg::Perm(0, Type::Num(Some(100000000))),
+                    right: Reg::ImmNum(100000000),
+                },
                 Instr {
                     res: Reg::Tmp(0, Type::Bool(None)),
                     op: Op::Lt,
@@ -352,6 +484,18 @@ mod tests {
         assert_eq!(
             b,
             Bin(vec![
+                Instr {
+                    res: Reg::Perm(0, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(0, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
+                Instr {
+                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
                 Instr {
                     res: Reg::Tmp(0, Type::Num(None)),
                     op: Op::Add,
