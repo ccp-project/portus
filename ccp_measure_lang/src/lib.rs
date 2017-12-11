@@ -29,11 +29,10 @@ impl From<std::string::FromUtf8Error> for Error {
 
 mod ast;
 mod datapath;
-mod prog;
 mod scope;
 mod serialize;
 
-use prog::Prog;
+use ast::Prog;
 use datapath::Bin;
 /// compile() uses 4 passes.
 /// The resulting bytes can be passed to the datapath.

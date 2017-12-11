@@ -1,6 +1,5 @@
 use super::{Error, Result};
-use super::prog::Prog;
-use super::ast::{Expr, Op, Prim};
+use super::ast::{Expr, Op, Prim, Prog};
 use super::scope::Scope;
 
 #[derive(Clone)]
@@ -233,8 +232,7 @@ impl IntoIterator for Bin {
 
 #[cfg(test)]
 mod tests {
-    use ast::Op;
-    use prog::Prog;
+    use ast::{Op, Prog};
     use super::{Bin, Instr, Type, Reg};
     #[test]
     fn prog() {
