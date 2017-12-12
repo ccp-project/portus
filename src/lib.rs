@@ -5,6 +5,7 @@ use std::collections::HashMap;
 extern crate bytes;
 extern crate libc;
 extern crate nix;
+extern crate ccp_measure_lang;
 
 #[macro_use]
 pub mod pattern;
@@ -42,8 +43,15 @@ impl From<std::io::Error> for Error {
     }
 }
 
+impl From<ccp_measure_lang::Error> for Error {
+    fn from(e: ccp_measure_lang::Error) -> Error {
+        Error(format!("ccp_measure_lang err: {:?}", e))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
+use ccp_measure_lang::{Reg, Scope};
 impl<T: Ipc> Backend<T> {
     /// Algorithm implementations use send_pattern() to control the datapath's behavior by
     /// calling send_pattern() with:
@@ -63,14 +71,32 @@ impl<T: Ipc> Backend<T> {
         self.send_msg(Some(sock_id as u16), &buf[..])?;
         Ok(())
     }
+
+    pub fn install_measurement(&self, sock_id: u32, src: &[u8]) -> Result<Scope> {
+        let (bin, sc) = ccp_measure_lang::compile(src)?;
+        let msg = serialize::install_fold::Msg {
+            sid: sock_id,
+            num_instrs: bin.0.len() as u32,
+            instrs: bin,
+        };
+
+        let buf = serialize::serialize(msg)?;
+        self.send_msg(Some(sock_id as u16), &buf[..])?;
+        Ok(sc)
+    }
 }
 
 pub struct Measurement {
-    pub ack: u32,
-    pub rtt_us: u32,
-    pub loss: u32,
-    pub rate_sent: u64,
-    pub rate_achieved: u64,
+    fields: Vec<u64>,
+}
+
+impl Measurement {
+    pub fn get_field(&self, field: &String, sc: &Scope) -> Option<u64> {
+        sc.get(field).and_then(|r| match r {
+            &Reg::Perm(idx, _) => Some(self.fields[idx as usize]),
+            _ => None,
+        })
+    }
 }
 
 macro_rules! drop_dupack_str {
@@ -85,6 +111,7 @@ macro_rules! drop_ecn_str {
     () => ("ecn\0")
 }
 
+// TODO remove this and make the decision in measurement
 pub enum DropEvent {
     DupAck,
     Timeout,
@@ -136,17 +163,14 @@ where
                     flows.insert(c.sid, alg);
                 }
                 Msg::Ms(m) => {
-                    if let Some(alg) = flows.get_mut(&m.sid) {
-                        alg.measurement(
-                            m.sid,
-                            Measurement {
-                                ack: m.ack,
-                                rtt_us: m.rtt_us,
-                                loss: m.loss,
-                                rate_sent: m.rin,
-                                rate_achieved: m.rout,
-                            },
-                        )
+                    if let Some(_alg) = flows.get_mut(&m.sid) {
+                        unimplemented!();
+                        //alg.measurement(
+                        //    m.sid,
+                        //    Measurement {
+                        //        fields: vec![], // TODO fill in deparsing
+                        //    },
+                        //)
                     }
                 }
                 Msg::Dr(d) => {

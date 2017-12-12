@@ -48,7 +48,7 @@ impl Reg {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Instr {
     pub res: Reg,
     pub op: Op,
@@ -56,8 +56,8 @@ pub struct Instr {
     pub right: Reg,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct Bin(pub Vec<Instr>);
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Bin(pub Vec<Instr>);
 
 impl Bin {
     /// Given a Prog, call compile_expr() on each Expr, then append the resulting Vec<Instrs>

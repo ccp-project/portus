@@ -1,11 +1,15 @@
-use std::iter::Iterator;
 use super::{Error, Result};
 use super::ast::Op;
 use super::datapath::{Bin, Instr, Reg};
 
 /// Serialize a Bin to bytes for transfer to the datapath
-pub(crate) fn serialize(b: Bin) -> Result<Vec<u8>> {
-    b.into_iter().flat_map(|i| i.into_iter()).collect()
+impl Bin {
+    pub fn serialize(&self) -> Result<Vec<u8>> {
+        self.clone()
+            .into_iter()
+            .flat_map(|i| i.into_iter())
+            .collect()
+    }
 }
 
 impl IntoIterator for Instr {
@@ -17,7 +21,7 @@ impl IntoIterator for Instr {
     }
 }
 
-pub(crate) struct InstrBytes {
+pub struct InstrBytes {
     i: Instr,
     which: u8,
 }
@@ -124,7 +128,6 @@ fn serialize_reg(r: &Reg) -> Result<u8> {
 mod tests {
     use ast::Op;
     use datapath::{Bin, Instr, Type, Reg};
-    use super::serialize;
     #[test]
     fn do_ser() {
         // make a Bin to serialize
@@ -143,7 +146,7 @@ mod tests {
             },
         ]);
 
-        let v = serialize(b).expect("serialize");
+        let v = b.serialize().expect("serialize");
         assert_eq!(
             v,
             vec![

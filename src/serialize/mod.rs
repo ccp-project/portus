@@ -130,6 +130,7 @@ pub(crate) mod create;
 pub(crate) mod measure;
 pub(crate) mod drop;
 pub(crate) mod pattern;
+pub(crate) mod install_fold;
 mod testmsg;
 
 pub fn serialize<T: AsRawMsg>(m: T) -> Result<Vec<u8>> {
@@ -164,6 +165,7 @@ pub enum Msg<'a> {
     Dr(drop::Msg),
     Ms(measure::Msg),
     Pt(pattern::Msg),
+    Fld(install_fold::Msg),
     Other(RawMsg<'a>),
 }
 
@@ -174,6 +176,7 @@ impl<'a> Msg<'a> {
             drop::DROP => Ok(Msg::Dr(drop::Msg::from_raw_msg(m)?)),
             measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
             pattern::CWND => Ok(Msg::Pt(pattern::Msg::from_raw_msg(m)?)),
+            install_fold::INSTALL_FOLD => Ok(Msg::Fld(install_fold::Msg::from_raw_msg(m)?)),
             _ => Ok(Msg::Other(m)),
         }
     }
