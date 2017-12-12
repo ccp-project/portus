@@ -163,14 +163,8 @@ where
                     flows.insert(c.sid, alg);
                 }
                 Msg::Ms(m) => {
-                    if let Some(_alg) = flows.get_mut(&m.sid) {
-                        unimplemented!();
-                        //alg.measurement(
-                        //    m.sid,
-                        //    Measurement {
-                        //        fields: vec![], // TODO fill in deparsing
-                        //    },
-                        //)
+                    if let Some(alg) = flows.get_mut(&m.sid) {
+                        alg.measurement(m.sid, Measurement { fields: m.fields })
                     }
                 }
                 Msg::Dr(d) => {

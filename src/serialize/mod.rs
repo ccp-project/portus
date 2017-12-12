@@ -19,9 +19,9 @@ pub(crate) fn u32_from_u8s(buf: &[u8]) -> u32 {
     LittleEndian::read_u32(buf)
 }
 
-//pub(crate) fn u64_from_u8s(buf: &[u8]) -> u64 {
-//    LittleEndian::read_u64(buf)
-//}
+pub(crate) fn u64_from_u8s(buf: &[u8]) -> u64 {
+    LittleEndian::read_u64(buf)
+}
 
 /// (type, len, socket_id) header
 /// -----------------------------------
@@ -75,25 +75,24 @@ impl<'a> RawMsg<'a> {
     }
 
     /// For predefined messages, get u64s separately for convenience
-    pub(crate) unsafe fn get_u64s(&self) -> Result<&'a [u64]> {
-        use std::mem;
-        match self.typ {
-            create::CREATE => Ok(&[]),
-            measure::MEASURE => Ok(mem::transmute(&self.bytes[(4 * 3)..(4 * 3 + 8 * 2)])),
-            drop::DROP => Ok(&[]),
-            pattern::CWND => Ok(&[]),
-            _ => Ok(&[]),
-        }
-    }
-
+    //pub(crate) unsafe fn get_u64s(&self) -> Result<&'a [u64]> {
+    //    use std::mem;
+    //    match self.typ {
+    //        create::CREATE => Ok(&[]),
+    //        measure::MEASURE => Ok(mem::transmute(&self.bytes[(4 * 3)..(4 * 3 + 8 * 2)])),
+    //        drop::DROP => Ok(&[]),
+    //        pattern::CWND => Ok(&[]),
+    //        _ => Ok(&[]),
+    //    }
+    //}
     /// For predefined messages, bytes blob is whatever's left (may be nothing)
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
-            create::CREATE => Ok(&self.bytes[4..(self.len as usize - 6)]),
-            measure::MEASURE => Ok(&[]),
+            create::CREATE | measure::MEASURE | pattern::CWND => {
+                Ok(&self.bytes[4..(self.len as usize - 6)])
+            }
             drop::DROP => Ok(&self.bytes[0..(self.len as usize - 6)]),
-            pattern::CWND => Ok(&self.bytes[4..(self.len as usize - 6)]),
             _ => Ok(self.bytes),
         }
     }

@@ -31,19 +31,19 @@ fn test_to_u32() {
     assert_eq!(x, 4325442);
 }
 
-//#[test]
-//fn test_to_u64_0() {
-//    let buf = vec![0x42, 0, 0x42, 0, 0, 0, 0, 0];
-//    let x = super::u64_from_u8s(&buf[..]);
-//    assert_eq!(x, 4325442);
-//}
-//
-//#[test]
-//fn test_to_u64_1() {
-//    let buf = vec![0, 0x42, 0, 0x42, 0, 0x42, 0, 0x42];
-//    let x = super::u64_from_u8s(&buf[..]);
-//    assert_eq!(x, 4755873775377990144);
-//}
+#[test]
+fn test_to_u64_0() {
+    let buf = vec![0x42, 0, 0x42, 0, 0, 0, 0, 0];
+    let x = super::u64_from_u8s(&buf[..]);
+    assert_eq!(x, 4325442);
+}
+
+#[test]
+fn test_to_u64_1() {
+    let buf = vec![0, 0x42, 0, 0x42, 0, 0x42, 0, 0x42];
+    let x = super::u64_from_u8s(&buf[..]);
+    assert_eq!(x, 4755873775377990144);
+}
 
 macro_rules! check_msg {
     ($id: ident, $typ: ty, $m: expr, $got: pat, $x: ident) => (
@@ -80,17 +80,14 @@ check_create_msg!(test_create_1, 15, 15, "nimbus");
 check_create_msg!(test_create_2, 42, 424242, "reno");
 
 macro_rules! check_measure_msg {
-    ($id: ident, $sid:expr, $ack:expr, $rtt:expr, $loss:expr, $rin:expr, $rout:expr) => (
+    ($id: ident, $sid:expr, $fields:expr) => (
         check_msg!(
-            $id, 
+            $id,
             super::measure::Msg,
             super::measure::Msg{
                 sid: $sid,
-                ack: $ack,
-                rtt_us: $rtt,
-                loss: $loss,
-                rin: $rin,
-                rout: $rout,
+                num_fields: $fields.len() as u8,
+                fields: $fields,
             },
             Msg::Ms(mes),
             mes
@@ -98,8 +95,16 @@ macro_rules! check_measure_msg {
     )
 }
 
-check_measure_msg!(test_measure_1, 15, 424242, 65535, 65530, 200000, 150000);
-check_measure_msg!(test_measure_2, 256, 42424242, 65536, 65531, 100000, 50000);
+check_measure_msg!(
+    test_measure_1,
+    15,
+    vec![424242, 65535, 65530, 200000, 150000]
+);
+check_measure_msg!(
+    test_measure_2,
+    256,
+    vec![42424242, 65536, 65531, 100000, 50000]
+);
 
 macro_rules! check_drop_msg {
     ($id: ident, $sid:expr, $ev:expr) => (
@@ -169,10 +174,10 @@ fn bench_flip_create(b: &mut Bencher) {
     b.iter(|| test_create_1())
 }
 
-#[bench]
-fn bench_flip_measure(b: &mut Bencher) {
-    b.iter(|| test_measure_1())
-}
+//#[bench]
+//fn bench_flip_measure(b: &mut Bencher) {
+//    b.iter(|| test_measure_1())
+//}
 
 #[bench]
 fn bench_flip_drop(b: &mut Bencher) {
