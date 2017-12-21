@@ -5,3 +5,4 @@ authors = ["Akshay Narayan <akshayn@mit.edu>"]
 
 [dependencies]
 portus = { path = ".." }
+ccp_measure_lang = { path = "../ccp_measure_lang" }

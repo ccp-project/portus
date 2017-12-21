@@ -1,12 +1,15 @@
+extern crate ccp_measure_lang;
 #[macro_use]
 extern crate portus;
 
 use portus::{CongAlg, DropEvent, Measurement};
 use portus::pattern;
 use portus::ipc::{Ipc, Backend};
+use ccp_measure_lang::Scope;
 
 pub struct Reno<T: Ipc> {
     control_channel: Option<Backend<T>>,
+    sc: Option<Scope>,
     sock_id: u32,
     ss_thresh: u32,
     cwnd: u32,
@@ -18,6 +21,7 @@ impl<T: Ipc> Default for Reno<T> {
     fn default() -> Self {
         Reno {
             control_channel: None,
+            sc: None,
             sock_id: Default::default(),
             ss_thresh: Default::default(),
             cwnd: Default::default(),
@@ -40,6 +44,24 @@ impl<T: Ipc> Reno<T> {
             )
         });
     }
+
+    fn install_fold(&mut self) {
+        let ch = self.control_channel.as_ref().expect(
+            "channel should be initialized",
+        );
+
+        if let Ok(scope) = ch.install_measurement(
+            self.sock_id,
+            "
+                (def (ack 0))
+                (bind Flow.ack (max Flow.ack Ack))
+            "
+                .as_bytes(),
+        )
+        {
+            self.sc = Some(scope);
+        }
+    }
 }
 
 impl<T: Ipc> CongAlg<T> for Reno<T> {
@@ -55,18 +77,24 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.ss_thresh = 0x7fff;
         self.init_cwnd = init_cwnd;
 
+        self.install_fold();
         self.send_pattern();
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
+        let sc = self.sc.as_ref().expect("scope should be initialized");
+        let ack = m.get_field(&String::from("ack"), sc).expect(
+            "expected ack field in returned measurement",
+        ) as u32;
+
         // Handle integer overflow / sequence wraparound
-        let mut new_bytes_acked = if m.ack < self.last_ack {
-            (u32::max_value() - self.last_ack) + m.ack
+        let mut new_bytes_acked = if ack < self.last_ack {
+            (u32::max_value() - self.last_ack) + ack
         } else {
-            m.ack - self.last_ack
+            ack - self.last_ack
         };
 
-        self.last_ack = m.ack;
+        self.last_ack = ack;
         if self.cwnd < self.ss_thresh {
             // increase cwnd by 1 per packet, until ssthresh
             if self.cwnd + new_bytes_acked > self.ss_thresh {
@@ -82,12 +110,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.cwnd += 1460u32 * (new_bytes_acked / self.cwnd);
         self.send_pattern();
 
-        println!(
-            "got ack: {} cwnd: {}, num_lost: {}",
-            m.ack,
-            self.cwnd,
-            m.loss
-        );
+        println!("got ack: {} cwnd: {}", ack, self.cwnd);
     }
 
     fn drop(&mut self, _sock_id: u32, d: DropEvent) {
