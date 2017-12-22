@@ -1,19 +1,17 @@
 #[macro_use]
 extern crate slog;
-
 #[macro_use]
 extern crate portus;
-
 extern crate time;
 
 use time::Timespec;
-use portus::{CongAlg, Measurement};
+use portus::{CongAlg, Datapath, Measurement};
 use portus::pattern;
-use portus::ipc::{Ipc, Backend};
+use portus::ipc::Ipc;
 use portus::lang::Scope;
 
 pub struct Reno<T: Ipc> {
-    control_channel: Option<Backend<T>>,
+    control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
     sc: Option<Scope>,
     sock_id: u32,
@@ -24,42 +22,27 @@ pub struct Reno<T: Ipc> {
     init_cwnd: u32,
 }
 
-impl<T: Ipc> Default for Reno<T> {
-    fn default() -> Self {
-        Reno {
-            control_channel: None,
-            logger: None,
-            sc: None,
-            sock_id: Default::default(),
-            ss_thresh: Default::default(),
-            cwnd: Default::default(),
-            last_ack: Default::default(),
-            last_cwnd_reduction: Timespec::new(0, 0),
-            init_cwnd: Default::default(),
-        }
-    }
-}
-
 impl<T: Ipc> Reno<T> {
     fn send_pattern(&self) {
-        let _ = self.control_channel.as_ref().map(|ch| {
-            ch.send_pattern(
-                self.sock_id,
-                make_pattern!(
-                    pattern::Event::SetCwndAbs(self.cwnd) => 
-                    pattern::Event::WaitNs(1000) => 
-                    pattern::Event::Report
-                ),
-            )
-        });
+        match self.control_channel.send_pattern(
+            self.sock_id,
+            make_pattern!(
+                pattern::Event::SetCwndAbs(self.cwnd) => 
+                pattern::Event::WaitNs(1000) => 
+                pattern::Event::Report
+            ),
+        ) {
+            Ok(_) => (),
+            Err(e) => {
+                self.logger.as_ref().map(|log| {
+                    warn!(log, "send_pattern"; "err" => ?e);
+                });
+            }
+        }
     }
 
-    fn install_fold(&mut self) {
-        let ch = self.control_channel.as_ref().expect(
-            "channel should be initialized",
-        );
-
-        if let Ok(scope) = ch.install_measurement(
+    fn install_fold(&self) -> Option<Scope> {
+        match self.control_channel.install_measurement(
             self.sock_id,
             "
                 (def (ack 0) (loss 0) (rtt 0))
@@ -69,9 +52,9 @@ impl<T: Ipc> Reno<T> {
                 (bind isUrgent (> Flow.loss 0))
             "
                 .as_bytes(),
-        )
-        {
-            self.sc = Some(scope);
+        ) {
+            Ok(s) => Some(s),
+            Err(_) => None,
         }
     }
 
@@ -133,27 +116,31 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
     }
 
     fn create(
-        &mut self,
-        control: Backend<T>,
+        control: Datapath<T>,
         log_opt: Option<slog::Logger>,
         sock_id: u32,
         start_seq: u32,
         init_cwnd: u32,
-    ) {
-        self.control_channel = Some(control);
-        self.logger = log_opt;
-        self.sock_id = sock_id;
-        self.last_ack = start_seq;
-        self.cwnd = init_cwnd;
-        self.ss_thresh = 0x7fffff;
-        self.init_cwnd = init_cwnd;
+    ) -> Self {
+        let mut s = Self {
+            control_channel: control,
+            logger: log_opt,
+            cwnd: init_cwnd,
+            init_cwnd: init_cwnd,
+            last_ack: start_seq,
+            last_cwnd_reduction: time::get_time(),
+            sc: None,
+            sock_id: sock_id,
+            ss_thresh: 0x7fffffff,
+        };
 
-        self.logger.as_ref().map(|log| {
+        s.logger.as_ref().map(|log| {
             debug!(log, "starting reno flow"; "sock_id" => sock_id, "start_seq" => start_seq);
         });
 
-        self.install_fold();
-        self.send_pattern();
+        s.sc = s.install_fold();
+        s.send_pattern();
+        s
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {

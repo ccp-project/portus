@@ -58,11 +58,14 @@ impl From<lang::Error> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+use std::rc::Rc;
+pub struct Datapath<T: Ipc>(Rc<Backend<T>>);
+
 use lang::{Reg, Scope};
-impl<T: Ipc> Backend<T> {
+impl<T: Ipc> Datapath<T> {
     /// Algorithm implementations use send_pattern() to control the datapath's behavior by
     /// calling send_pattern() with:
-    /// 1. An initialized backend b. See note in start() for ownership.
+    /// 1. An initialized backend b.
     /// 2. The flow's sock_id. IPC implementations supporting addressing (e.g. Unix sockets, which can
     /// communicate with many applications using UDP datapaths)  MUST make the address be sock_id
     /// 3. The control pattern prog to install. Implementations can create patterns using make_pattern!.
@@ -75,7 +78,7 @@ impl<T: Ipc> Backend<T> {
         };
 
         let buf = serialize::serialize(msg)?;
-        self.send_msg(Some(sock_id as u16), &buf[..])?;
+        self.0.send_msg(Some(sock_id as u16), &buf[..])?;
         Ok(())
     }
 
@@ -88,7 +91,7 @@ impl<T: Ipc> Backend<T> {
         };
 
         let buf = serialize::serialize(msg)?;
-        self.send_msg(Some(sock_id as u16), &buf[..])?;
+        self.0.send_msg(Some(sock_id as u16), &buf[..])?;
         Ok(sc)
     }
 }
@@ -109,13 +112,12 @@ impl Measurement {
 pub trait CongAlg<T: Ipc> {
     fn name(&self) -> String;
     fn create(
-        &mut self,
-        control: Backend<T>,
+        control: Datapath<T>,
         log: Option<slog::Logger>,
         sock_id: u32,
         start_seq: u32,
         init_cwnd: u32,
-    );
+    ) -> Self;
     fn measurement(&mut self, sock_id: u32, m: Measurement);
 }
 
@@ -124,7 +126,6 @@ pub trait CongAlg<T: Ipc> {
 /// In this use case, an algorithm implementation is a binary which
 /// 1. Initializes an ipc backend (depending on datapath)
 /// 2. Calls start(), passing the backend b and CongAlg alg.
-/// start() takes ownership of b. To use send_pattern() below, clone b first.
 ///
 /// start():
 /// 1. listens for messages from the datapath
@@ -136,10 +137,11 @@ pub trait CongAlg<T: Ipc> {
 pub fn start<T, U>(b: Backend<T>, log_opt: Option<slog::Logger>) -> !
 where
     T: Ipc,
-    U: CongAlg<T> + Default,
+    U: CongAlg<T>,
 {
     let mut flows = HashMap::<u32, U>::new();
-    for m in b.listen().iter() {
+    let backend = std::rc::Rc::new(b);
+    for m in backend.listen().iter() {
         if let Ok(msg) = Msg::from_buf(&m[..]) {
             match msg {
                 Msg::Cr(c) => {
@@ -153,8 +155,13 @@ where
                         debug!(log, "creating new flow"; "sid" => c.sid, "start_seq" => c.start_seq, "init_cwnd" => 10 * 1460);
                     });
 
-                    let mut alg = U::default();
-                    alg.create(b.clone(), log_opt.clone(), c.sid, c.start_seq, 10 * 1460);
+                    let alg = U::create(
+                        Datapath(backend.clone()),
+                        log_opt.clone(),
+                        c.sid,
+                        c.start_seq,
+                        10 * 1460,
+                    );
                     flows.insert(c.sid, alg);
                 }
                 Msg::Ms(m) => {
@@ -168,8 +175,8 @@ where
                 }
                 Msg::Pt(_) | Msg::Fld(_) => {
                     panic!(
-                        "The start() listener should never receive a pattern message, \
-                                     since it is on the CCP side."
+                        "The start() listener should never receive a pattern \
+                        or install_fold message, since it is on the CCP side."
                     )
                 }
                 _ => continue,
