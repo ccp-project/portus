@@ -84,7 +84,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
-        let ack = m.get_field(&String::from("ack"), sc).expect(
+        let ack = m.get_field(&String::from("Flow.ack"), sc).expect(
             "expected ack field in returned measurement",
         ) as u32;
 

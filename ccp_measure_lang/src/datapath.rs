@@ -226,7 +226,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Scope {
     named: HashMap<String, Reg>,
     prim: Vec<Reg>,
