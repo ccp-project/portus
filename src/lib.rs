@@ -5,6 +5,11 @@ use std::collections::HashMap;
 extern crate bytes;
 extern crate libc;
 extern crate nix;
+#[macro_use]
+extern crate slog;
+extern crate slog_term;
+extern crate slog_async;
+
 extern crate ccp_measure_lang;
 
 #[macro_use]
@@ -74,8 +79,6 @@ impl<T: Ipc> Backend<T> {
 
     pub fn install_measurement(&self, sock_id: u32, src: &[u8]) -> Result<Scope> {
         let (bin, sc) = ccp_measure_lang::compile(src)?;
-        println!("fold: {:?}", bin);
-
         let msg = serialize::install_fold::Msg {
             sid: sock_id,
             num_instrs: bin.0.len() as u32,
@@ -83,7 +86,6 @@ impl<T: Ipc> Backend<T> {
         };
 
         let buf = serialize::serialize(msg)?;
-        println!("buf: {:?}", &buf[..]);
         self.send_msg(Some(sock_id as u16), &buf[..])?;
         Ok(sc)
     }
@@ -123,9 +125,16 @@ pub enum DropEvent {
 
 pub trait CongAlg<T: Ipc> {
     fn name(&self) -> String;
-    fn create(&mut self, control: Backend<T>, sock_id: u32, start_seq: u32, init_cwnd: u32);
-    fn measurement(&mut self, sock_id: u32, m: Measurement);
-    fn drop(&mut self, sock_id: u32, d: DropEvent);
+    fn create(
+        &mut self,
+        control: Backend<T>,
+        log: Option<slog::Logger>,
+        sock_id: u32,
+        start_seq: u32,
+        init_cwnd: u32,
+    );
+    fn measurement(&mut self, log: Option<slog::Logger>, sock_id: u32, m: Measurement);
+    fn drop(&mut self, log: Option<slog::Logger>, sock_id: u32, d: DropEvent);
 }
 
 /// Main execution loop of ccp for the static pipeline use case.
@@ -143,7 +152,7 @@ pub trait CongAlg<T: Ipc> {
 /// 1. It receives an invalid drop notification
 /// 2. It receives a pattern control message (only a datapath should receive these)
 /// 3. The IPC channel fails.
-pub fn start<T, U>(b: Backend<T>) -> !
+pub fn start<T, U>(b: Backend<T>, log_opt: Option<slog::Logger>) -> !
 where
     T: Ipc,
     U: CongAlg<T> + Default,
@@ -154,25 +163,36 @@ where
             match msg {
                 Msg::Cr(c) => {
                     if flows.contains_key(&c.sid) {
-                        println!("re-creating already created flow");
+                        log_opt.as_ref().map(|log| {
+                            debug!(log, "re-creating already created flow"; "sid" => c.sid);
+                        });
 
                         let alg = flows.get_mut(&c.sid).unwrap();
-                        alg.create(b.clone(), c.sid, c.start_seq, 10 * 1460);
+                        alg.create(b.clone(), log_opt.clone(), c.sid, c.start_seq, 10 * 1460);
                         continue;
                     }
 
+                    log_opt.as_ref().map(|log| {
+                        debug!(log, "creating new flow"; "sid" => c.sid, "start_seq" => c.start_seq, "init_cwnd" => 10 * 1460);
+                    });
+
                     let mut alg = U::default();
-                    alg.create(b.clone(), c.sid, c.start_seq, 10 * 1460);
+                    alg.create(b.clone(), log_opt.clone(), c.sid, c.start_seq, 10 * 1460);
                     flows.insert(c.sid, alg);
                 }
                 Msg::Ms(m) => {
                     if let Some(alg) = flows.get_mut(&m.sid) {
-                        alg.measurement(m.sid, Measurement { fields: m.fields })
+                        alg.measurement(log_opt.clone(), m.sid, Measurement { fields: m.fields })
+                    } else {
+                        log_opt.as_ref().map(|log| {
+                            debug!(log, "measurement for unknown flow"; "sid" => m.sid);
+                        });
                     }
                 }
                 Msg::Dr(d) => {
                     if let Some(alg) = flows.get_mut(&d.sid) {
                         alg.drop(
+                            log_opt.clone(),
                             d.sid,
                             match d.event.as_ref() {
                                 drop_dupack_str!() => DropEvent::DupAck,
@@ -181,6 +201,10 @@ where
                                 _ => panic!("Unknown drop event type {}", d.event),
                             },
                         )
+                    } else {
+                        log_opt.as_ref().map(|log| {
+                            debug!(log, "measurement for unknown flow"; "sid" => d.sid);
+                        });
                     }
                 }
                 Msg::Pt(_) => {

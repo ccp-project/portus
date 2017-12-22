@@ -1,6 +1,9 @@
-extern crate ccp_measure_lang;
+#[macro_use]
+extern crate slog;
+
 #[macro_use]
 extern crate portus;
+extern crate ccp_measure_lang;
 
 use portus::{CongAlg, DropEvent, Measurement};
 use portus::pattern;
@@ -69,7 +72,14 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         String::from("reno")
     }
 
-    fn create(&mut self, control: Backend<T>, sock_id: u32, start_seq: u32, init_cwnd: u32) {
+    fn create(
+        &mut self,
+        control: Backend<T>,
+        log_opt: Option<slog::Logger>,
+        sock_id: u32,
+        start_seq: u32,
+        init_cwnd: u32,
+    ) {
         self.control_channel = Some(control);
         self.sock_id = sock_id;
         self.last_ack = start_seq;
@@ -77,12 +87,15 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.ss_thresh = 0x7fff;
         self.init_cwnd = init_cwnd;
 
-        println!("create: sid {}, start_seq {}", sock_id, start_seq);
+        log_opt.as_ref().map(|log| {
+            debug!(log, "starting reno flow"; "sock_id" => sock_id, "start_seq" => start_seq);
+        });
+
         self.install_fold();
         self.send_pattern();
     }
 
-    fn measurement(&mut self, _sock_id: u32, m: Measurement) {
+    fn measurement(&mut self, log_opt: Option<slog::Logger>, _sock_id: u32, m: Measurement) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.ack"), sc).expect(
             "expected ack field in returned measurement",
@@ -111,10 +124,12 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.cwnd += 1460u32 * (new_bytes_acked / self.cwnd);
         self.send_pattern();
 
-        println!("got ack: {} cwnd: {}", ack, self.cwnd);
+        log_opt.as_ref().map(|log| {
+            debug!(log, "got ack"; "seq" => ack, "curr_cwnd (B)" => self.cwnd);
+        });
     }
 
-    fn drop(&mut self, _sock_id: u32, d: DropEvent) {
+    fn drop(&mut self, log_opt: Option<slog::Logger>, _sock_id: u32, d: DropEvent) {
         match d {
             DropEvent::DupAck => {
                 self.cwnd /= 2;
@@ -123,14 +138,22 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
                 }
 
                 self.ss_thresh = self.cwnd;
-                println!("got dupack drop: cwnd {}", self.cwnd);
+                log_opt.as_ref().map(|log| {
+                    debug!(log, "dupack"; "curr_cwnd (B)" => self.cwnd);
+                });
             }
             DropEvent::Timeout => {
                 self.ss_thresh /= 2;
                 self.cwnd = self.init_cwnd;
-                println!("got timeout drop: cwnd {}", self.cwnd);
+                log_opt.as_ref().map(|log| {
+                    debug!(log, "timeout"; "curr_cwnd (B)" => self.cwnd);
+                });
             }
-            DropEvent::Ecn => println!("got ecn"),
+            DropEvent::Ecn => {
+                log_opt.as_ref().map(|log| {
+                    debug!(log, "ECN"; "curr_cwnd (B)" => self.cwnd);
+                });
+            }
         }
 
         self.send_pattern();
