@@ -143,14 +143,10 @@ where
         if let Ok(msg) = Msg::from_buf(&m[..]) {
             match msg {
                 Msg::Cr(c) => {
-                    if flows.contains_key(&c.sid) {
+                    if let Some(_) = flows.remove(&c.sid) {
                         log_opt.as_ref().map(|log| {
                             debug!(log, "re-creating already created flow"; "sid" => c.sid);
                         });
-
-                        let alg = flows.get_mut(&c.sid).unwrap();
-                        alg.create(b.clone(), log_opt.clone(), c.sid, c.start_seq, 10 * 1460);
-                        continue;
                     }
 
                     log_opt.as_ref().map(|log| {
