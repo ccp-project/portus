@@ -57,7 +57,7 @@ impl<T: Ipc> Reno<T> {
             self.sock_id,
             "
                 (def (ack 0))
-                (bind Flow.ack (max Flow.ack Ack))
+                (bind Flow.ack (wrapped_max Flow.ack Ack))
             "
                 .as_bytes(),
         )

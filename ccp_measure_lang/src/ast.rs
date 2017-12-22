@@ -24,6 +24,7 @@ pub enum Op {
     Let, // (let (bind a b) c) with variable a bound to b, evaluate c
     Lt, // (< a b) return a < b
     Max, // (max a b) return max(a,b)
+    MaxWrap, // (max a b) return max(a,b) with integer wraparound
     Min, // (min a b) return min(a,b)
     Mul, // (mul a b) return a * b
     Sub, // (sub a b) return a - b
@@ -62,6 +63,7 @@ named!(
         alt!(tag!(">") | tag!("gt"))    => { |_| Ok(Op::Gt) }    | 
         tag!("let")                     => { |_| Ok(Op::Let) }   | 
         alt!(tag!("<") | tag!("lt"))    => { |_| Ok(Op::Lt) }    | 
+        tag!("wrapped_max")             => { |_| Ok(Op::MaxWrap) } |
         tag!("max")                     => { |_| Ok(Op::Max) }   | 
         tag!("min")                     => { |_| Ok(Op::Min) }   | 
         alt!(tag!("*") | tag!("mul"))   => { |_| Ok(Op::Mul) }   |
@@ -327,6 +329,24 @@ mod tests {
             Ok(e) => panic!("false ok: {:?}", e),
             Err(_) => (),
         }
+    }
+
+
+    #[test]
+    fn maxtest() {
+        let foo = b"(wrapped_max 10 20)";
+        let er = Expr::new(foo);
+        let e = er.unwrap();
+        assert_eq!(
+            e,
+            vec![
+                Expr::Sexp(
+                    Op::MaxWrap,
+                    Box::new(Expr::Atom(Prim::Num(10))),
+                    Box::new(Expr::Atom(Prim::Num(20)))
+                ),
+            ]
+        );
     }
 
     #[test]

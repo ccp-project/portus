@@ -117,7 +117,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
             let (mut right_instrs, right) = compile_expr(&right_expr, &mut scope)?;
             instrs.append(&mut right_instrs);
             match o {
-                &Op::Add | &Op::Div | &Op::Max | &Op::Min | &Op::Mul | &Op::Sub => {
+                &Op::Add | &Op::Div | &Op::Max | &Op::MaxWrap | &Op::Min | &Op::Mul | &Op::Sub => {
                     // left and right should have type num
                     match left.get_type() {
                         Ok(Type::Num(_)) => (),
