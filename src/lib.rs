@@ -74,6 +74,8 @@ impl<T: Ipc> Backend<T> {
 
     pub fn install_measurement(&self, sock_id: u32, src: &[u8]) -> Result<Scope> {
         let (bin, sc) = ccp_measure_lang::compile(src)?;
+        println!("fold: {:?}", bin);
+
         let msg = serialize::install_fold::Msg {
             sid: sock_id,
             num_instrs: bin.0.len() as u32,
@@ -81,6 +83,7 @@ impl<T: Ipc> Backend<T> {
         };
 
         let buf = serialize::serialize(msg)?;
+        println!("buf: {:?}", &buf[..]);
         self.send_msg(Some(sock_id as u16), &buf[..])?;
         Ok(sc)
     }

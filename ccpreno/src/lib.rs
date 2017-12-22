@@ -77,6 +77,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.ss_thresh = 0x7fff;
         self.init_cwnd = init_cwnd;
 
+        println!("create: sid {}, start_seq {}", sock_id, start_seq);
         self.install_fold();
         self.send_pattern();
     }
