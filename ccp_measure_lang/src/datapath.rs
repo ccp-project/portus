@@ -245,16 +245,20 @@ impl Scope {
                 Reg::Const(1, Type::Num(None)),
                 Reg::Const(2, Type::Num(None)),
                 Reg::Const(3, Type::Num(None)),
+                Reg::Const(4, Type::Num(None)),
+                Reg::Const(5, Type::Num(None)),
             ],
             tmp: vec![],
             perm: vec![],
             named: HashMap::new(),
         };
 
-        sc.named.insert(String::from("Rtt"), sc.prim[0].clone());
-        sc.named.insert(String::from("Ack"), sc.prim[1].clone());
-        sc.named.insert(String::from("SndRate"), sc.prim[2].clone());
-        sc.named.insert(String::from("RcvRate"), sc.prim[3].clone());
+        sc.named.insert(String::from("Ack"), sc.prim[0].clone());
+        sc.named.insert(String::from("Rtt"), sc.prim[1].clone());
+        sc.named.insert(String::from("Loss"), sc.prim[2].clone());
+        sc.named.insert(String::from("SndRate"), sc.prim[3].clone());
+        sc.named.insert(String::from("RcvRate"), sc.prim[4].clone());
+        sc.named.insert(String::from("SndCwnd"), sc.prim[5].clone());
 
         sc
     }
