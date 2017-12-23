@@ -5,7 +5,7 @@ extern crate slog;
 extern crate portus;
 extern crate ccp_measure_lang;
 
-use portus::{CongAlg, DropEvent, Measurement};
+use portus::{CongAlg, Measurement};
 use portus::pattern;
 use portus::ipc::{Ipc, Backend};
 use ccp_measure_lang::Scope;
@@ -56,8 +56,10 @@ impl<T: Ipc> Reno<T> {
         if let Ok(scope) = ch.install_measurement(
             self.sock_id,
             "
-                (def (ack 0))
+                (def (ack 0) (loss 0))
                 (bind Flow.ack (wrapped_max Flow.ack Ack))
+                (bind Flow.loss (+ Flow.loss Loss))
+                (bind isUrgent (> Flow.loss 0))
             "
                 .as_bytes(),
         )
@@ -99,6 +101,14 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.ack"), sc).expect(
             "expected ack field in returned measurement",
+        ) as u32;
+
+        let wasUrgent = m.get_field(&String::from("isUrgent"), sc).expect(
+            "expected isUrgent field in returned measurement",
+        ) as u32;
+
+        let loss = m.get_field(&String::from("Flow.loss"), sc).expect(
+            "expected loss field in returned measurement",
         ) as u32;
 
         // Handle integer overflow / sequence wraparound

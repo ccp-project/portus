@@ -104,25 +104,6 @@ impl Measurement {
     }
 }
 
-macro_rules! drop_dupack_str {
-    () => ("dupack\0")
-}
-
-macro_rules! drop_timeout_str {
-    () => ("timeout\0")
-}
-
-macro_rules! drop_ecn_str {
-    () => ("ecn\0")
-}
-
-// TODO remove this and make the decision in measurement
-pub enum DropEvent {
-    DupAck,
-    Timeout,
-    Ecn,
-}
-
 pub trait CongAlg<T: Ipc> {
     fn name(&self) -> String;
     fn create(
@@ -134,7 +115,6 @@ pub trait CongAlg<T: Ipc> {
         init_cwnd: u32,
     );
     fn measurement(&mut self, log: Option<slog::Logger>, sock_id: u32, m: Measurement);
-    fn drop(&mut self, log: Option<slog::Logger>, sock_id: u32, d: DropEvent);
 }
 
 /// Main execution loop of ccp for the static pipeline use case.
@@ -149,9 +129,8 @@ pub trait CongAlg<T: Ipc> {
 /// 2. call the appropriate message in alg
 ///
 /// start() will never return (-> !). It will panic if:
-/// 1. It receives an invalid drop notification
-/// 2. It receives a pattern control message (only a datapath should receive these)
-/// 3. The IPC channel fails.
+/// 1. It receives a pattern or install_fold control message (only a datapath should receive these)
+/// 2. The IPC channel fails.
 pub fn start<T, U>(b: Backend<T>, log_opt: Option<slog::Logger>) -> !
 where
     T: Ipc,
@@ -189,25 +168,7 @@ where
                         });
                     }
                 }
-                Msg::Dr(d) => {
-                    if let Some(alg) = flows.get_mut(&d.sid) {
-                        alg.drop(
-                            log_opt.clone(),
-                            d.sid,
-                            match d.event.as_ref() {
-                                drop_dupack_str!() => DropEvent::DupAck,
-                                drop_timeout_str!() => DropEvent::Timeout,
-                                drop_ecn_str!() => DropEvent::Ecn,
-                                _ => panic!("Unknown drop event type {}", d.event),
-                            },
-                        )
-                    } else {
-                        log_opt.as_ref().map(|log| {
-                            debug!(log, "measurement for unknown flow"; "sid" => d.sid);
-                        });
-                    }
-                }
-                Msg::Pt(_) => {
+                Msg::Pt(_) | Msg::Fld(_) => {
                     panic!(
                         "The start() listener should never receive a pattern message, \
                                      since it is on the CCP side."

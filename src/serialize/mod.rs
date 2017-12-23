@@ -68,7 +68,6 @@ impl<'a> RawMsg<'a> {
         match self.typ {
             create::CREATE => Ok(mem::transmute(&self.bytes[0..4])),
             measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 3])),
-            drop::DROP => Ok(&[]),
             pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
         }
@@ -80,7 +79,6 @@ impl<'a> RawMsg<'a> {
     //    match self.typ {
     //        create::CREATE => Ok(&[]),
     //        measure::MEASURE => Ok(mem::transmute(&self.bytes[(4 * 3)..(4 * 3 + 8 * 2)])),
-    //        drop::DROP => Ok(&[]),
     //        pattern::CWND => Ok(&[]),
     //        _ => Ok(&[]),
     //    }
@@ -92,7 +90,6 @@ impl<'a> RawMsg<'a> {
             create::CREATE | measure::MEASURE | pattern::CWND => {
                 Ok(&self.bytes[4..(self.len as usize - 6)])
             }
-            drop::DROP => Ok(&self.bytes[0..(self.len as usize - 6)]),
             _ => Ok(self.bytes),
         }
     }
@@ -127,7 +124,6 @@ pub trait AsRawMsg {
 
 pub(crate) mod create;
 pub(crate) mod measure;
-pub(crate) mod drop;
 pub(crate) mod pattern;
 pub(crate) mod install_fold;
 mod testmsg;
@@ -161,7 +157,6 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
 #[derive(PartialEq)]
 pub enum Msg<'a> {
     Cr(create::Msg),
-    Dr(drop::Msg),
     Ms(measure::Msg),
     Pt(pattern::Msg),
     Fld(install_fold::Msg),
@@ -172,7 +167,6 @@ impl<'a> Msg<'a> {
     fn from_raw_msg(m: RawMsg) -> Result<Msg> {
         match m.typ {
             create::CREATE => Ok(Msg::Cr(create::Msg::from_raw_msg(m)?)),
-            drop::DROP => Ok(Msg::Dr(drop::Msg::from_raw_msg(m)?)),
             measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
             pattern::CWND => Ok(Msg::Pt(pattern::Msg::from_raw_msg(m)?)),
             install_fold::INSTALL_FOLD => Ok(Msg::Fld(install_fold::Msg::from_raw_msg(m)?)),

@@ -106,24 +106,6 @@ check_measure_msg!(
     vec![42424242, 65536, 65531, 100000, 50000]
 );
 
-macro_rules! check_drop_msg {
-    ($id: ident, $sid:expr, $ev:expr) => (
-        check_msg!(
-            $id, 
-            super::drop::Msg,
-            super::drop::Msg{
-                sid: $sid,
-                event: String::from($ev),
-            },
-            Msg::Dr(drp),
-            drp
-        );
-    )
-}
-
-check_drop_msg!(test_drop_1, 15, "TIMEOUT");
-check_drop_msg!(test_drop_2, 42, "DUPACK");
-
 macro_rules! check_pattern_msg {
     ($id: ident, $sid:expr, $p:expr) => (
         check_msg!(
@@ -178,11 +160,6 @@ fn bench_flip_create(b: &mut Bencher) {
 //fn bench_flip_measure(b: &mut Bencher) {
 //    b.iter(|| test_measure_1())
 //}
-
-#[bench]
-fn bench_flip_drop(b: &mut Bencher) {
-    b.iter(|| test_drop_1())
-}
 
 #[bench]
 fn bench_flip_pattern(b: &mut Bencher) {
