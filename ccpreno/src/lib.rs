@@ -5,6 +5,9 @@ extern crate slog;
 extern crate portus;
 extern crate ccp_measure_lang;
 
+extern crate time;
+
+use time::Timespec;
 use portus::{CongAlg, Measurement};
 use portus::pattern;
 use portus::ipc::{Ipc, Backend};
@@ -17,6 +20,7 @@ pub struct Reno<T: Ipc> {
     ss_thresh: u32,
     cwnd: u32,
     last_ack: u32,
+    last_cwnd_reduction: Timespec,
     init_cwnd: u32,
 }
 
@@ -29,6 +33,7 @@ impl<T: Ipc> Default for Reno<T> {
             ss_thresh: Default::default(),
             cwnd: Default::default(),
             last_ack: Default::default(),
+            last_cwnd_reduction: Timespec::new(0, 0),
             init_cwnd: Default::default(),
         }
     }
@@ -56,9 +61,10 @@ impl<T: Ipc> Reno<T> {
         if let Ok(scope) = ch.install_measurement(
             self.sock_id,
             "
-                (def (ack 0) (loss 0))
+                (def (ack 0) (loss 0) (rtt 0))
+                (bind Flow.rtt Rtt)
                 (bind Flow.ack (wrapped_max Flow.ack Ack))
-                (bind Flow.loss (+ Flow.loss Loss))
+                (bind Flow.loss Loss)
                 (bind isUrgent (> Flow.loss 0))
             "
                 .as_bytes(),
@@ -66,6 +72,57 @@ impl<T: Ipc> Reno<T> {
         {
             self.sc = Some(scope);
         }
+    }
+
+    fn get_fields(&mut self, m: Measurement) -> (u32, u32, u32, u32) {
+        let sc = self.sc.as_ref().expect("scope should be initialized");
+        let ack = m.get_field(&String::from("Flow.ack"), sc).expect(
+            "expected ack field in returned measurement",
+        ) as u32;
+
+        let was_urgent = m.get_field(&String::from("isUrgent"), sc).expect(
+            "expected isUrgent field in returned measurement",
+        ) as u32;
+
+        let loss = m.get_field(&String::from("Flow.loss"), sc).expect(
+            "expected loss field in returned measurement",
+        ) as u32;
+
+        let rtt = m.get_field(&String::from("Flow.rtt"), sc).expect(
+            "expected rtt field in returned measurement",
+        ) as u32;
+
+        (ack, was_urgent, loss, rtt)
+    }
+
+    fn handle_urgent(&mut self, log_opt: Option<slog::Logger>, loss: u32, rtt_us: u32) {
+        if time::get_time() - self.last_cwnd_reduction <
+            time::Duration::nanoseconds((rtt_us * 1000) as i64)
+        {
+            return;
+        }
+
+        self.last_cwnd_reduction = time::get_time();
+
+        if loss > self.cwnd / 2 {
+            // treat as timeout if at least half the cwnd was lost
+            self.ss_thresh /= 2;
+            self.cwnd = self.init_cwnd;
+        } else if loss > 0 {
+            // else, treat as isolated loss
+            self.cwnd /= 2;
+            if self.cwnd <= self.init_cwnd {
+                self.cwnd = self.init_cwnd;
+            }
+
+            self.ss_thresh = self.cwnd;
+        }
+
+        log_opt.as_ref().map(|log| {
+            debug!(log, "urgent"; "curr_cwnd (B)" => self.cwnd, "loss" => loss);
+        });
+
+        self.send_pattern();
     }
 }
 
@@ -86,7 +143,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.sock_id = sock_id;
         self.last_ack = start_seq;
         self.cwnd = init_cwnd;
-        self.ss_thresh = 0x7fff;
+        self.ss_thresh = 0x7fffff;
         self.init_cwnd = init_cwnd;
 
         log_opt.as_ref().map(|log| {
@@ -98,18 +155,11 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
     }
 
     fn measurement(&mut self, log_opt: Option<slog::Logger>, _sock_id: u32, m: Measurement) {
-        let sc = self.sc.as_ref().expect("scope should be initialized");
-        let ack = m.get_field(&String::from("Flow.ack"), sc).expect(
-            "expected ack field in returned measurement",
-        ) as u32;
-
-        let wasUrgent = m.get_field(&String::from("isUrgent"), sc).expect(
-            "expected isUrgent field in returned measurement",
-        ) as u32;
-
-        let loss = m.get_field(&String::from("Flow.loss"), sc).expect(
-            "expected loss field in returned measurement",
-        ) as u32;
+        let (ack, was_urgent, loss, rtt) = self.get_fields(m);
+        if was_urgent != 0 {
+            self.handle_urgent(log_opt, loss, rtt);
+            return;
+        }
 
         // Handle integer overflow / sequence wraparound
         let mut new_bytes_acked = if ack < self.last_ack {
@@ -135,37 +185,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.send_pattern();
 
         log_opt.as_ref().map(|log| {
-            debug!(log, "got ack"; "seq" => ack, "curr_cwnd (B)" => self.cwnd);
+            debug!(log, "got ack"; "seq" => ack, "curr_cwnd (B)" => self.cwnd, "loss" => loss, "ssthresh" => self.ss_thresh);
         });
-    }
-
-    fn drop(&mut self, log_opt: Option<slog::Logger>, _sock_id: u32, d: DropEvent) {
-        match d {
-            DropEvent::DupAck => {
-                self.cwnd /= 2;
-                if self.cwnd <= self.init_cwnd {
-                    self.cwnd = self.init_cwnd;
-                }
-
-                self.ss_thresh = self.cwnd;
-                log_opt.as_ref().map(|log| {
-                    debug!(log, "dupack"; "curr_cwnd (B)" => self.cwnd);
-                });
-            }
-            DropEvent::Timeout => {
-                self.ss_thresh /= 2;
-                self.cwnd = self.init_cwnd;
-                log_opt.as_ref().map(|log| {
-                    debug!(log, "timeout"; "curr_cwnd (B)" => self.cwnd);
-                });
-            }
-            DropEvent::Ecn => {
-                log_opt.as_ref().map(|log| {
-                    debug!(log, "ECN"; "curr_cwnd (B)" => self.cwnd);
-                });
-            }
-        }
-
-        self.send_pattern();
     }
 }

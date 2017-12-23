@@ -7,5 +7,6 @@ authors = ["Akshay Narayan <akshayn@mit.edu>"]
 slog = "2"
 slog-term = "2"
 slog-async = "2"
+time="0.1"
 portus = { path = ".." }
 ccp_measure_lang = { path = "../ccp_measure_lang" }
