@@ -54,21 +54,21 @@ use std::str;
 named!(
     op<Result<Op>>,
     alt!(
-        alt!(tag!("+") | tag!("add"))   => { |_| Ok(Op::Add) }   |
-        alt!(tag!(":=") | tag!("bind")) => { |_| Ok(Op::Bind) }  | 
-        tag!("if")                      => { |_| Ok(Op::If) }  | 
-        alt!(tag!("/") | tag!("div"))   => { |_| Ok(Op::Div) }   | 
-        alt!(tag!("==") | tag!("eq"))   => { |_| Ok(Op::Equiv) } | 
-        tag!("ewma")                    => { |_| Ok(Op::Ewma) }  | 
-        alt!(tag!(">") | tag!("gt"))    => { |_| Ok(Op::Gt) }    | 
-        tag!("let")                     => { |_| Ok(Op::Let) }   | 
-        alt!(tag!("<") | tag!("lt"))    => { |_| Ok(Op::Lt) }    | 
+        alt!(tag!("+") | tag!("add"))   => { |_| Ok(Op::Add) }     |
+        alt!(tag!(":=") | tag!("bind")) => { |_| Ok(Op::Bind) }    | 
+        tag!("if")                      => { |_| Ok(Op::If) }      |
+        alt!(tag!("/") | tag!("div"))   => { |_| Ok(Op::Div) }     | 
+        alt!(tag!("==") | tag!("eq"))   => { |_| Ok(Op::Equiv) }   | 
+        tag!("ewma")                    => { |_| Ok(Op::Ewma) }    | 
+        alt!(tag!(">") | tag!("gt"))    => { |_| Ok(Op::Gt) }      | 
+        tag!("let")                     => { |_| Ok(Op::Let) }     | 
+        alt!(tag!("<") | tag!("lt"))    => { |_| Ok(Op::Lt) }      | 
         tag!("wrapped_max")             => { |_| Ok(Op::MaxWrap) } |
-        tag!("max")                     => { |_| Ok(Op::Max) }   | 
-        tag!("min")                     => { |_| Ok(Op::Min) }   | 
-        alt!(tag!("*") | tag!("mul"))   => { |_| Ok(Op::Mul) }   |
+        tag!("max")                     => { |_| Ok(Op::Max) }     | 
+        tag!("min")                     => { |_| Ok(Op::Min) }     | 
+        alt!(tag!("*") | tag!("mul"))   => { |_| Ok(Op::Mul) }     |
         tag!("!if")                     => { |_| Ok(Op::NotIf) }   | 
-        alt!(tag!("-") | tag!("sub"))   => { |_| Ok(Op::Sub) }   |
+        alt!(tag!("-") | tag!("sub"))   => { |_| Ok(Op::Sub) }     |
         atom => { |f: Result<Expr>| Err(Error::from(format!("unexpected token {:?}", f))) }
     )
 );
