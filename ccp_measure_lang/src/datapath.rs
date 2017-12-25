@@ -247,6 +247,7 @@ impl Scope {
                 Reg::Const(3, Type::Num(None)),
                 Reg::Const(4, Type::Num(None)),
                 Reg::Const(5, Type::Num(None)),
+                Reg::Const(6, Type::Num(None)),
             ],
             tmp: vec![],
             perm: vec![],
@@ -259,6 +260,7 @@ impl Scope {
         sc.named.insert(String::from("SndRate"), sc.prim[3].clone());
         sc.named.insert(String::from("RcvRate"), sc.prim[4].clone());
         sc.named.insert(String::from("SndCwnd"), sc.prim[5].clone());
+        sc.named.insert(String::from("Ecn"), sc.prim[6].clone());
 
         sc
     }
