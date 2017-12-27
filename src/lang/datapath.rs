@@ -229,8 +229,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
 #[derive(Debug, Clone)]
 pub struct Scope {
     named: HashMap<String, Reg>,
-    prim: Vec<Reg>,
-    perm: Vec<Reg>,
+    primitive: Vec<Reg>,
+    permanent: Vec<Reg>,
     tmp: Vec<Reg>,
 }
 
@@ -240,7 +240,7 @@ impl Scope {
     /// All datapaths shall recognize these Names.
     pub(crate) fn new() -> Self {
         let mut sc = Scope {
-            prim: vec![
+            primitive: vec![
                 Reg::Const(0, Type::Num(None)),
                 Reg::Const(1, Type::Num(None)),
                 Reg::Const(2, Type::Num(None)),
@@ -251,19 +251,43 @@ impl Scope {
                 Reg::Const(7, Type::Num(None)),
             ],
             tmp: vec![],
-            perm: vec![Reg::Perm(0, Type::Bool(None))],
+            permanent: vec![Reg::Perm(0, Type::Bool(None))],
             named: HashMap::new(),
         };
 
         // available measurement primitives (alphabetical order)
-        sc.named.insert(String::from("Ack"), sc.prim[0].clone());
-        sc.named.insert(String::from("Ecn"), sc.prim[1].clone());
-        sc.named.insert(String::from("Loss"), sc.prim[2].clone());
-        sc.named.insert(String::from("Mss"), sc.prim[3].clone());
-        sc.named.insert(String::from("RcvRate"), sc.prim[4].clone());
-        sc.named.insert(String::from("Rtt"), sc.prim[5].clone());
-        sc.named.insert(String::from("SndCwnd"), sc.prim[6].clone());
-        sc.named.insert(String::from("SndRate"), sc.prim[7].clone());
+        sc.named.insert(
+            String::from("Ack"),
+            sc.primitive[0].clone(),
+        );
+        sc.named.insert(
+            String::from("Ecn"),
+            sc.primitive[1].clone(),
+        );
+        sc.named.insert(
+            String::from("Loss"),
+            sc.primitive[2].clone(),
+        );
+        sc.named.insert(
+            String::from("Mss"),
+            sc.primitive[3].clone(),
+        );
+        sc.named.insert(
+            String::from("RcvRate"),
+            sc.primitive[4].clone(),
+        );
+        sc.named.insert(
+            String::from("Rtt"),
+            sc.primitive[5].clone(),
+        );
+        sc.named.insert(
+            String::from("SndCwnd"),
+            sc.primitive[6].clone(),
+        );
+        sc.named.insert(
+            String::from("SndRate"),
+            sc.primitive[7].clone(),
+        );
 
         // implicit return registers (can bind to these without Def)
 
@@ -272,7 +296,7 @@ impl Scope {
         // - reset it to false
         sc.named.insert(
             String::from("isUrgent"),
-            sc.perm[0].clone(),
+            sc.permanent[0].clone(),
         );
 
         sc
@@ -290,11 +314,11 @@ impl Scope {
     }
 
     pub(crate) fn new_perm(&mut self, name: String, t: Type) -> Reg {
-        let id = self.perm.len() as u8;
+        let id = self.permanent.len() as u8;
         let r = Reg::Perm(id, t);
-        self.perm.push(r);
-        self.named.insert(name, self.perm[id as usize].clone());
-        self.perm[id as usize].clone()
+        self.permanent.push(r);
+        self.named.insert(name, self.permanent[id as usize].clone());
+        self.permanent[id as usize].clone()
     }
 
     pub(crate) fn clear_tmps(&mut self) {
@@ -347,7 +371,7 @@ impl IntoIterator for Scope {
     type IntoIter = ScopeDefInstrIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        ScopeDefInstrIter::new(self.perm.into_iter())
+        ScopeDefInstrIter::new(self.permanent.into_iter())
     }
 }
 
