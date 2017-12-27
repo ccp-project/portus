@@ -96,7 +96,7 @@ impl<T: Ipc> Reno<T> {
 
     fn handle_urgent(&mut self, log_opt: Option<slog::Logger>, loss: u32, rtt_us: u32) {
         if time::get_time() - self.last_cwnd_reduction <
-            time::Duration::nanoseconds((rtt_us * 1000) as i64)
+            time::Duration::nanoseconds((rtt_us as u64 * 1000) as i64)
         {
             return;
         }
