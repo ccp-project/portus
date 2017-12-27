@@ -449,7 +449,7 @@ mod tests {
                     res: Reg::Perm(1, Type::Num(Some(0))),
                     op: Op::Ewma,
                     left: Reg::ImmNum(2),
-                    right: Reg::Const(5, Type::Num(None)),
+                    right: Reg::Const(6, Type::Num(None)),
                 },
             ])
         );
@@ -477,14 +477,14 @@ mod tests {
                 Instr {
                     res: Reg::Tmp(0, Type::Bool(None)),
                     op: Op::Lt,
-                    left: Reg::Const(3, Type::Num(None)),
+                    left: Reg::Const(4, Type::Num(None)),
                     right: Reg::Perm(1, Type::Num(Some(100000000))),
                 },
                 Instr {
                     res: Reg::Perm(1, Type::Num(Some(100000000))),
                     op: Op::If,
                     left: Reg::Tmp(0, Type::Bool(None)),
-                    right: Reg::Const(3, Type::Num(None)),
+                    right: Reg::Const(4, Type::Num(None)),
                 },
             ])
         );
