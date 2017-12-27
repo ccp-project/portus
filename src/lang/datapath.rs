@@ -248,6 +248,7 @@ impl Scope {
                 Reg::Const(4, Type::Num(None)),
                 Reg::Const(5, Type::Num(None)),
                 Reg::Const(6, Type::Num(None)),
+                Reg::Const(7, Type::Num(None)),
             ],
             tmp: vec![],
             perm: vec![Reg::Perm(0, Type::Bool(None))],
@@ -258,10 +259,11 @@ impl Scope {
         sc.named.insert(String::from("Ack"), sc.prim[0].clone());
         sc.named.insert(String::from("Ecn"), sc.prim[1].clone());
         sc.named.insert(String::from("Loss"), sc.prim[2].clone());
-        sc.named.insert(String::from("RcvRate"), sc.prim[3].clone());
-        sc.named.insert(String::from("Rtt"), sc.prim[4].clone());
-        sc.named.insert(String::from("SndCwnd"), sc.prim[5].clone());
-        sc.named.insert(String::from("SndRate"), sc.prim[6].clone());
+        sc.named.insert(String::from("Mss"), sc.prim[3].clone());
+        sc.named.insert(String::from("RcvRate"), sc.prim[4].clone());
+        sc.named.insert(String::from("Rtt"), sc.prim[5].clone());
+        sc.named.insert(String::from("SndCwnd"), sc.prim[6].clone());
+        sc.named.insert(String::from("SndRate"), sc.prim[7].clone());
 
         // implicit return registers (can bind to these without Def)
 
@@ -449,7 +451,7 @@ mod tests {
                     res: Reg::Perm(1, Type::Num(Some(0))),
                     op: Op::Ewma,
                     left: Reg::ImmNum(2),
-                    right: Reg::Const(6, Type::Num(None)),
+                    right: Reg::Const(7, Type::Num(None)),
                 },
             ])
         );
@@ -477,14 +479,14 @@ mod tests {
                 Instr {
                     res: Reg::Tmp(0, Type::Bool(None)),
                     op: Op::Lt,
-                    left: Reg::Const(4, Type::Num(None)),
+                    left: Reg::Const(5, Type::Num(None)),
                     right: Reg::Perm(1, Type::Num(Some(100000000))),
                 },
                 Instr {
                     res: Reg::Perm(1, Type::Num(Some(100000000))),
                     op: Op::If,
                     left: Reg::Tmp(0, Type::Bool(None)),
-                    right: Reg::Const(4, Type::Num(None)),
+                    right: Reg::Const(5, Type::Num(None)),
                 },
             ])
         );
