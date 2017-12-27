@@ -1,4 +1,10 @@
+#[macro_use]
+extern crate slog;
+extern crate slog_term;
+extern crate slog_async;
 extern crate portus;
+
+use slog::Drain;
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -32,7 +38,7 @@ impl portus::serialize::AsRawMsg for TestMsg {
 }
 
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
-fn test() {
+fn test(log: slog::Logger) {
     use std::process::Command;
     use portus::ipc::Backend;
     use portus::serialize::AsRawMsg;
@@ -49,33 +55,34 @@ fn test() {
         .current_dir("./src/ipc/test-nl-kernel")
         .output()
         .expect("make failed to start");
-    println!("make clean...");
-    println!("{}", String::from_utf8_lossy(&mkcl.stdout));
+    debug!(log, "make clean");
+    trace!(log, "make clean"; "output" => ?String::from_utf8_lossy(&mkcl.stdout));
 
     // compile kernel module
     let mk = Command::new("make")
         .current_dir("./src/ipc/test-nl-kernel")
         .output()
         .expect("make failed to start");
-    println!("make...");
-    println!("{}", String::from_utf8_lossy(&mk.stdout));
+    debug!(log, "make");
+    trace!(log, "make"; "output" => ?String::from_utf8_lossy(&mk.stdout));
 
     use std::thread;
     let (tx, rx) = std::sync::mpsc::channel::<bool>();
 
     // listen
+    let listen_log = log.clone();
     let c1 = thread::spawn(move || {
         let b = portus::ipc::netlink::Socket::new()
             .and_then(|sk| Backend::new(sk))
             .expect("ipc initialization");
         let rx = b.listen();
-        println!("listen...");
+        debug!(listen_log, "listen");
         tx.send(true).expect("sync");
         let msg = rx.recv().expect("receive message");
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
         assert_eq!(got, "hello, netlink\0\0"); // word aligned
 
-        println!("send...");
+        debug!(listen_log, "send");
         let msg = TestMsg(String::from("hello, kernel\0\0\0\0\0")); // word aligned
         let test = msg.clone();
         let buf = portus::serialize::serialize(msg).expect("serialize");
@@ -94,7 +101,7 @@ fn test() {
 
     // load kernel module
     rx.recv().expect("sync");
-    println!("insmod...");
+    debug!(log, "insmod");
     Command::new("sudo")
         .arg("insmod")
         .arg("./src/ipc/test-nl-kernel/nltest.ko")
@@ -103,25 +110,29 @@ fn test() {
 
     c1.join().expect("join netlink thread");
 
-    println!("rmmod...");
+    debug!(log, "rmmod");
     Command::new("sudo")
         .arg("rmmod")
         .arg("nltest")
         .output()
         .expect("rmmod failed");
-    println!("\x1B[32m{}\x1B[0m", "nltest ok");
+    info!(log, "nltest ok");
 }
 
 #[cfg(not(target_os = "linux"))] // netlink is linux-only
-fn test() {
+fn test(log: slog::Logger) {
+    warn!(log, "netlink only works on linux.");
     return;
 }
 
-fn main() {
-    if !cfg!(target_os = "linux") {
-        println!("netlink only works on linux.");
-        return;
-    }
+fn make_logger() -> slog::Logger {
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    slog::Logger::root(drain, o!())
+}
 
-    test();
+fn main() {
+    let log = make_logger();
+    test(log);
 }
