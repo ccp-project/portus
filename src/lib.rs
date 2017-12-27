@@ -116,7 +116,7 @@ pub trait CongAlg<T: Ipc> {
         start_seq: u32,
         init_cwnd: u32,
     );
-    fn measurement(&mut self, log: Option<slog::Logger>, sock_id: u32, m: Measurement);
+    fn measurement(&mut self, sock_id: u32, m: Measurement);
 }
 
 /// Main execution loop of ccp for the static pipeline use case.
@@ -159,7 +159,7 @@ where
                 }
                 Msg::Ms(m) => {
                     if let Some(alg) = flows.get_mut(&m.sid) {
-                        alg.measurement(log_opt.clone(), m.sid, Measurement { fields: m.fields })
+                        alg.measurement(m.sid, Measurement { fields: m.fields })
                     } else {
                         log_opt.as_ref().map(|log| {
                             debug!(log, "measurement for unknown flow"; "sid" => m.sid);

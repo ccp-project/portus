@@ -14,6 +14,7 @@ use portus::lang::Scope;
 
 pub struct Reno<T: Ipc> {
     control_channel: Option<Backend<T>>,
+    logger: Option<slog::Logger>,
     sc: Option<Scope>,
     sock_id: u32,
     ss_thresh: u32,
@@ -27,6 +28,7 @@ impl<T: Ipc> Default for Reno<T> {
     fn default() -> Self {
         Reno {
             control_channel: None,
+            logger: None,
             sc: None,
             sock_id: Default::default(),
             ss_thresh: Default::default(),
@@ -94,7 +96,7 @@ impl<T: Ipc> Reno<T> {
         (ack, was_urgent, loss, rtt)
     }
 
-    fn handle_urgent(&mut self, log_opt: Option<slog::Logger>, loss: u32, rtt_us: u32) {
+    fn handle_urgent(&mut self, loss: u32, rtt_us: u32) {
         if time::get_time() - self.last_cwnd_reduction <
             time::Duration::nanoseconds((rtt_us as u64 * 1000) as i64)
         {
@@ -117,7 +119,7 @@ impl<T: Ipc> Reno<T> {
             self.ss_thresh = self.cwnd;
         }
 
-        log_opt.as_ref().map(|log| {
+        self.logger.as_ref().map(|log| {
             debug!(log, "urgent"; "curr_cwnd (B)" => self.cwnd, "loss" => loss);
         });
 
@@ -139,13 +141,14 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         init_cwnd: u32,
     ) {
         self.control_channel = Some(control);
+        self.logger = log_opt;
         self.sock_id = sock_id;
         self.last_ack = start_seq;
         self.cwnd = init_cwnd;
         self.ss_thresh = 0x7fffff;
         self.init_cwnd = init_cwnd;
 
-        log_opt.as_ref().map(|log| {
+        self.logger.as_ref().map(|log| {
             debug!(log, "starting reno flow"; "sock_id" => sock_id, "start_seq" => start_seq);
         });
 
@@ -153,10 +156,10 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.send_pattern();
     }
 
-    fn measurement(&mut self, log_opt: Option<slog::Logger>, _sock_id: u32, m: Measurement) {
+    fn measurement(&mut self, _sock_id: u32, m: Measurement) {
         let (ack, was_urgent, loss, rtt) = self.get_fields(m);
         if was_urgent != 0 {
-            self.handle_urgent(log_opt, loss, rtt);
+            self.handle_urgent(loss, rtt);
             return;
         }
 
@@ -183,7 +186,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.cwnd += 1460u32 * (new_bytes_acked / self.cwnd);
         self.send_pattern();
 
-        log_opt.as_ref().map(|log| {
+        self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; "seq" => ack, "curr_cwnd (B)" => self.cwnd, "loss" => loss, "ssthresh" => self.ss_thresh);
         });
     }
