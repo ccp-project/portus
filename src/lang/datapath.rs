@@ -248,10 +248,12 @@ impl Scope {
                 Reg::Const(4, Type::Num(None)),
                 Reg::Const(5, Type::Num(None)),
                 Reg::Const(6, Type::Num(None)),
-                Reg::Const(7, Type::Num(None)),
             ],
             tmp: vec![],
-            permanent: vec![Reg::Perm(0, Type::Bool(None))],
+            permanent: vec![
+                Reg::Perm(0, Type::Bool(None)),
+                Reg::Perm(1, Type::Num(None)),
+            ],
             named: HashMap::new(),
         };
 
@@ -281,12 +283,8 @@ impl Scope {
             sc.primitive[5].clone(),
         );
         sc.named.insert(
-            String::from("SndCwnd"),
-            sc.primitive[6].clone(),
-        );
-        sc.named.insert(
             String::from("SndRate"),
-            sc.primitive[7].clone(),
+            sc.primitive[6].clone(),
         );
 
         // implicit return registers (can bind to these without Def)
@@ -297,6 +295,15 @@ impl Scope {
         sc.named.insert(
             String::from("isUrgent"),
             sc.permanent[0].clone(),
+        );
+
+        // By default, Cwnd is set to the value that the send pattern sets,
+        // like a constant.
+        // However, if a fold function writes to Cwnd, the
+        // congestion window is updated, just as if a send pattern had changed it.
+        sc.named.insert(
+            String::from("Cwnd"),
+            sc.permanent[1].clone(),
         );
 
         sc
@@ -359,7 +366,7 @@ impl Iterator for ScopeDefInstrIter {
                         right: Reg::ImmBool(b),
                     })
                 }
-                Reg::Perm(_, Type::Bool(None)) => continue, // implicit bool register
+                Reg::Perm(_, _) => continue, // implicit bool register
                 _ => unreachable!(),
             }
         }
@@ -402,15 +409,15 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Def,
-                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Bind,
-                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::ImmNum(4),
                 },
             ])
@@ -431,9 +438,9 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Def,
-                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -443,9 +450,9 @@ mod tests {
                     right: Reg::ImmNum(3),
                 },
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Bind,
-                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::Tmp(0, Type::Num(None)),
                 },
             ])
@@ -466,16 +473,16 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Def,
-                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Ewma,
                     left: Reg::ImmNum(2),
-                    right: Reg::Const(7, Type::Num(None)),
+                    right: Reg::Const(6, Type::Num(None)),
                 },
             ])
         );
@@ -495,19 +502,19 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(100000000))),
+                    res: Reg::Perm(2, Type::Num(Some(100000000))),
                     op: Op::Def,
-                    left: Reg::Perm(1, Type::Num(Some(100000000))),
+                    left: Reg::Perm(2, Type::Num(Some(100000000))),
                     right: Reg::ImmNum(100000000),
                 },
                 Instr {
                     res: Reg::Tmp(0, Type::Bool(None)),
                     op: Op::Lt,
                     left: Reg::Const(5, Type::Num(None)),
-                    right: Reg::Perm(1, Type::Num(Some(100000000))),
+                    right: Reg::Perm(2, Type::Num(Some(100000000))),
                 },
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(100000000))),
+                    res: Reg::Perm(2, Type::Num(Some(100000000))),
                     op: Op::If,
                     left: Reg::Tmp(0, Type::Bool(None)),
                     right: Reg::Const(5, Type::Num(None)),
@@ -531,15 +538,15 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
-                    op: Op::Def,
-                    left: Reg::Perm(1, Type::Num(Some(0))),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
                     res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Def,
                     left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
+                Instr {
+                    res: Reg::Perm(3, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(3, Type::Num(Some(0))),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -555,9 +562,9 @@ mod tests {
                     right: Reg::ImmNum(3),
                 },
                 Instr {
-                    res: Reg::Perm(1, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Bind,
-                    left: Reg::Perm(1, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::Tmp(1, Type::Num(None)),
                 },
                 Instr {
@@ -573,9 +580,9 @@ mod tests {
                     right: Reg::ImmNum(6),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: Reg::Perm(3, Type::Num(Some(0))),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: Reg::Perm(3, Type::Num(Some(0))),
                     right: Reg::Tmp(1, Type::Num(None)),
                 },
             ])
