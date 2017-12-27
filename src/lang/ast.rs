@@ -446,7 +446,7 @@ mod tests {
         );
     }
 
-    use datapath::Type;
+    use lang::datapath::Type;
     #[test]
     fn defs() {
         let foo = b"(def (Foo 0) (Bar 0) (Baz 0))";

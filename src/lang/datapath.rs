@@ -360,7 +360,7 @@ impl IntoIterator for Bin {
 
 #[cfg(test)]
 mod tests {
-    use ast::{Op, Prog};
+    use lang::ast::{Op, Prog};
     use super::{Bin, Instr, Type, Reg};
     #[test]
     fn prog() {

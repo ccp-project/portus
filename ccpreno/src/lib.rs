@@ -3,7 +3,6 @@ extern crate slog;
 
 #[macro_use]
 extern crate portus;
-extern crate ccp_measure_lang;
 
 extern crate time;
 
@@ -11,7 +10,7 @@ use time::Timespec;
 use portus::{CongAlg, Measurement};
 use portus::pattern;
 use portus::ipc::{Ipc, Backend};
-use ccp_measure_lang::Scope;
+use portus::lang::Scope;
 
 pub struct Reno<T: Ipc> {
     control_channel: Option<Backend<T>>,

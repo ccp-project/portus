@@ -127,8 +127,8 @@ fn serialize_reg(r: &Reg) -> Result<u8> {
 
 #[cfg(test)]
 mod tests {
-    use ast::Op;
-    use datapath::{Bin, Instr, Type, Reg};
+    use lang::ast::Op;
+    use lang::datapath::{Bin, Instr, Type, Reg};
     #[test]
     fn do_ser() {
         // make a Bin to serialize

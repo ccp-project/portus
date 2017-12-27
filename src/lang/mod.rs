@@ -1,7 +1,5 @@
-#![feature(box_patterns)]
-
-#[macro_use]
-extern crate nom;
+use std;
+use nom;
 
 #[derive(Debug)]
 pub struct Error(pub String);
@@ -31,11 +29,11 @@ mod ast;
 mod datapath;
 mod serialize;
 
-pub use datapath::Bin;
-pub use datapath::Reg;
-pub use datapath::Scope;
+pub use self::datapath::Bin;
+pub use self::datapath::Reg;
+pub use self::datapath::Scope;
 
-use ast::Prog;
+use self::ast::Prog;
 
 /// compile() uses 3 passes to yield Instrs.
 ///

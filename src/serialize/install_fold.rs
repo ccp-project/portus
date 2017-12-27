@@ -1,7 +1,7 @@
 use std::io::prelude::*;
 use Result;
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};
-use ccp_measure_lang::Bin;
+use lang::Bin;
 
 pub(crate) const INSTALL_FOLD: u8 = 4;
 

@@ -1,21 +1,23 @@
+#![feature(box_patterns)]
 #![cfg_attr(feature = "bench", feature(test))]
-
-use std::collections::HashMap;
 
 extern crate bytes;
 extern crate libc;
 extern crate nix;
 #[macro_use]
+extern crate nom;
+#[macro_use]
 extern crate slog;
-extern crate slog_term;
 extern crate slog_async;
+extern crate slog_term;
 
-extern crate ccp_measure_lang;
-
+pub mod ipc;
+pub mod lang;
 #[macro_use]
 pub mod pattern;
-pub mod ipc;
 pub mod serialize;
+
+use std::collections::HashMap;
 
 use ipc::Ipc;
 use ipc::Backend;
@@ -48,15 +50,15 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<ccp_measure_lang::Error> for Error {
-    fn from(e: ccp_measure_lang::Error) -> Error {
-        Error(format!("ccp_measure_lang err: {:?}", e))
+impl From<lang::Error> for Error {
+    fn from(e: lang::Error) -> Error {
+        Error(format!("lang err: {:?}", e))
     }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-use ccp_measure_lang::{Reg, Scope};
+use lang::{Reg, Scope};
 impl<T: Ipc> Backend<T> {
     /// Algorithm implementations use send_pattern() to control the datapath's behavior by
     /// calling send_pattern() with:
@@ -78,7 +80,7 @@ impl<T: Ipc> Backend<T> {
     }
 
     pub fn install_measurement(&self, sock_id: u32, src: &[u8]) -> Result<Scope> {
-        let (bin, sc) = ccp_measure_lang::compile(src)?;
+        let (bin, sc) = lang::compile(src)?;
         let msg = serialize::install_fold::Msg {
             sid: sock_id,
             num_instrs: bin.0.len() as u32,

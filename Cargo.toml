@@ -7,11 +7,11 @@ authors = ["Akshay Narayan <akshayn@csail.mit.edu>"]
 bytes="0.4.5"
 libc="0.2"
 nix="0.9.0"
+nom = "^3.2"
 slog = "2"
-slog-term = "2"
 slog-async = "2"
+slog-term = "2"
 time="0.1"
-ccp_measure_lang = { path = "./ccp_measure_lang" }
 
 [features]
 bench = []
