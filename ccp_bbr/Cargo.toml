@@ -1,0 +1,11 @@
+[package]
+name = "ccp_bbr"
+version = "0.0.1"
+authors = ["Akshay Narayan <akshayn@mit.edu>"]
+
+[dependencies]
+slog = "2"
+slog-term = "2"
+slog-async = "2"
+time="0.1"
+portus = { path = ".." }
