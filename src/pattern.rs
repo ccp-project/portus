@@ -7,7 +7,8 @@ use std::io::prelude::*;
 pub enum Event {
     SetCwndAbs(u32), // bytes
     WaitNs(u32), // ns
-    SetRateAbs(u32), // bit/s
+    SetRateAbs(u32), // bytes/s
+    SetRateAbsWithCwnd(u32), // bytes/s
     SetRateRel(f32), // no units
     WaitRtts(f32), // no units
     Report, // no units
@@ -19,6 +20,7 @@ const SETRATEREL: u8 = 2;
 const WAIT: u8 = 3;
 const WAITREL: u8 = 4;
 const REPORT: u8 = 5;
+const SETRATEWITHCWND: u8 = 6;
 
 macro_rules! write_event {
     ($t: ident, $buf: ident, $w: ident, $x: expr) => (
@@ -49,6 +51,9 @@ impl Event {
             &Event::SetRateAbs(x) => {
                 write_event!(SETRATE, buf, w, x);
             }
+            &Event::SetRateAbsWithCwnd(x) => {
+                write_event!(SETRATEWITHCWND, buf, w, x);
+            }
             &Event::SetRateRel(f) => {
                 write_event!(SETRATEREL, buf, w, (f * 1e3) as u32);
             }
@@ -77,6 +82,7 @@ impl Event {
             match (typ, len) {
                 (SETCWND, 6) => Ok(Event::SetCwndAbs(num)),
                 (SETRATE, 6) => Ok(Event::SetRateAbs(num)),
+                (SETRATEWITHCWND, 6) => Ok(Event::SetRateAbsWithCwnd(num)),
                 (WAIT, 6) => Ok(Event::WaitNs(num)),
                 (SETRATEREL, 6) => Ok(Event::SetRateRel((num as f32) / 1e3)),
                 (WAITREL, 6) => Ok(Event::WaitRtts((num as f32) / 1e3)),
