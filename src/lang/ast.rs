@@ -143,6 +143,7 @@ named!(
         val: alt_complete!(
             tag!("true")  => { |_| Ok(Prim::Bool(true)) }  |
             tag!("false") => { |_| Ok(Prim::Bool(false)) } |
+            tag!("+infinity") => { |_| Ok(Prim::Num(u64::max_value())) } |
             num => { |n: u64| Ok(Prim::Num(n)) } |
             name => { |n: &[u8]| match String::from_utf8(n.to_vec()) {
                 Ok(s) => Ok(Prim::Name(s)),
@@ -460,6 +461,26 @@ mod tests {
                     (Type::Name(String::from("Foo")), Type::Num(Some(0))),
                     (Type::Name(String::from("Bar")), Type::Num(Some(0))),
                     (Type::Name(String::from("Baz")), Type::Num(Some(0))),
+                ]
+            );
+            }
+            IResult::Error(e) => panic!(e),
+            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
+            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+        }
+    }
+
+    #[test]
+    fn infinity() {
+        let foo = b"(def (Foo +infinity))";
+        use nom::{IResult, Needed};
+        match super::defs(foo) {
+            IResult::Done(r, me) => {
+                assert_eq!(r, &[]);
+                assert_eq!(
+                me,
+                vec![
+                    (Type::Name(String::from("Foo")), Type::Num(Some(u64::max_value()))),
                 ]
             );
             }

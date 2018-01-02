@@ -78,12 +78,12 @@ fn serialize_op(o: &Op) -> u8 {
 fn serialize_reg(r: &Reg) -> Result<u8> {
     match r {
         &Reg::ImmNum(num) => {
-            if num > (1 << 6) {
+            if num == u64::max_value() || num <= (1 << 6) {
+                Ok((num & 0b00111111) as u8)
+            } else {
                 Err(Error::from(
                     format!("ImmNum too big (max 6 bits): {:?}", num),
                 ))
-            } else {
-                Ok((num & 0b00111111) as u8)
             }
         }
         &Reg::ImmBool(bl) => Ok((0b00000001 & (bl as u8)) as u8),
