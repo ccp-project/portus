@@ -17,7 +17,6 @@ pub struct Reno<T: Ipc> {
     sock_id: u32,
     ss_thresh: u32,
     cwnd: u32,
-    last_ack: u32,
     last_cwnd_reduction: Timespec,
     init_cwnd: u32,
 }
@@ -45,10 +44,10 @@ impl<T: Ipc> Reno<T> {
         match self.control_channel.install_measurement(
             self.sock_id,
             "
-                (def (ack 0) (loss 0) (rtt 0))
-                (bind Flow.rtt Rtt)
-                (bind Flow.ack (wrapped_max Flow.ack Ack))
-                (bind Flow.loss Loss)
+                (def (acked 0) (loss 0) (rtt 0))
+                (bind Flow.rtt Pkt.rtt_sample_us)
+                (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
+                (bind Flow.loss Pkt.lost_pkts_sample)
                 (bind isUrgent (> Flow.loss 0))
             "
                 .as_bytes(),
@@ -60,7 +59,7 @@ impl<T: Ipc> Reno<T> {
 
     fn get_fields(&mut self, m: Measurement) -> (u32, u32, u32, u32) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
-        let ack = m.get_field(&String::from("Flow.ack"), sc).expect(
+        let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
             "expected ack field in returned measurement",
         ) as u32;
 
@@ -119,7 +118,6 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         control: Datapath<T>,
         log_opt: Option<slog::Logger>,
         sock_id: u32,
-        start_seq: u32,
         init_cwnd: u32,
     ) -> Self {
         let mut s = Self {
@@ -127,7 +125,6 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
             logger: log_opt,
             cwnd: init_cwnd,
             init_cwnd: init_cwnd,
-            last_ack: start_seq,
             last_cwnd_reduction: time::get_time(),
             sc: None,
             sock_id: sock_id,
@@ -135,7 +132,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         };
 
         s.logger.as_ref().map(|log| {
-            debug!(log, "starting reno flow"; "sock_id" => sock_id, "start_seq" => start_seq);
+            debug!(log, "starting reno flow"; "sock_id" => sock_id);
         });
 
         s.sc = s.install_fold();
@@ -144,20 +141,12 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
-        let (ack, was_urgent, loss, rtt) = self.get_fields(m);
+        let (mut new_bytes_acked, was_urgent, loss, rtt) = self.get_fields(m);
         if was_urgent != 0 {
             self.handle_urgent(loss, rtt);
             return;
         }
 
-        // Handle integer overflow / sequence wraparound
-        let mut new_bytes_acked = if ack < self.last_ack {
-            (u32::max_value() - self.last_ack) + ack
-        } else {
-            ack - self.last_ack
-        };
-
-        self.last_ack = ack;
         if self.cwnd < self.ss_thresh {
             // increase cwnd by 1 per packet, until ssthresh
             if self.cwnd + new_bytes_acked > self.ss_thresh {
@@ -174,7 +163,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.send_pattern();
 
         self.logger.as_ref().map(|log| {
-            debug!(log, "got ack"; "seq" => ack, "curr_cwnd (B)" => self.cwnd, "loss" => loss, "ssthresh" => self.ss_thresh);
+            debug!(log, "got ack"; "curr_cwnd (B)" => self.cwnd, "loss" => loss, "ssthresh" => self.ss_thresh);
         });
     }
 }

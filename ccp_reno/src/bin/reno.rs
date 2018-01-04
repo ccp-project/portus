@@ -4,9 +4,9 @@ extern crate slog_term;
 extern crate slog_async;
 use slog::Drain;
 
-extern crate ccpreno;
+extern crate ccp_reno;
 extern crate portus;
-use ccpreno::Reno;
+use ccp_reno::Reno;
 use portus::ipc::Backend;
 
 fn make_logger() -> slog::Logger {
