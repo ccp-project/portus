@@ -57,10 +57,10 @@ impl<T: Ipc> Bbr<T> {
             self.sock_id,
             "
                 (def (loss 0) (rtt 0) (rin 0) (rout 0))
-                (bind Flow.loss Loss)
-                (bind Flow.rtt (ewma 3 Rtt))
-                (bind Flow.rin SndRate)
-                (bind Flow.rout (max Flow.rout RcvRate))
+                (bind Flow.loss (+ Flow.loss Pkt.lost_pkts_sample))
+                (bind Flow.rtt (ewma 3 Pkt.rtt_sample_us))
+                (bind Flow.rin Pkt.rate_outgoing)
+                (bind Flow.rout (max Flow.rout Pkt.rate_incoming))
             "
                 .as_bytes(),
         ) {
@@ -100,7 +100,6 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
         control: Datapath<T>,
         log_opt: Option<slog::Logger>,
         sock_id: u32,
-        start_seq: u32,
         init_cwnd: u32,
     ) -> Self {
         let mut s = Self {
@@ -113,7 +112,7 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
         };
 
         s.logger.as_ref().map(|log| {
-            debug!(log, "starting bbr flow"; "sock_id" => sock_id, "start_seq" => start_seq);
+            debug!(log, "starting bbr flow"; "sock_id" => sock_id);
         });
 
         s.sc = s.install_fold();
