@@ -17,7 +17,6 @@ pub struct Dctcp<T: Ipc> {
     sock_id: u32,
     ss_thresh: u32,
     cwnd: u32,
-    last_ack: u32,
     last_cwnd_reduction: Timespec,
     init_cwnd: u32,
     alpha: f32,
@@ -29,7 +28,7 @@ impl<T: Ipc> Dctcp<T> {
             self.sock_id,
             make_pattern!(
                 pattern::Event::SetCwndAbs(self.cwnd) => 
-                pattern::Event::WaitRtts(1) => 
+                pattern::Event::WaitRtts(1.0) => 
                 pattern::Event::Report
             ),
         ) {
@@ -47,10 +46,10 @@ impl<T: Ipc> Dctcp<T> {
             self.sock_id,
             "
                 (def (ack 0) (loss 0) (rtt 0) (ecns 0))
-                (bind Flow.ecns (+ Flow.ecns Ecn))
-                (bind Flow.rtt Rtt)
-                (bind Flow.ack (wrapped_max Flow.ack Ack))
-                (bind Flow.loss Loss)
+                (bind Flow.ecns (+ Flow.ecns Pkt.ecn_bytes))
+                (bind Flow.rtt Pkt.rtt_sample_us)
+                (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
+                (bind Flow.loss Pkt.lost_pkts_sample)
                 (bind isUrgent (> Flow.loss 0))
             "
                 .as_bytes(),
@@ -60,7 +59,7 @@ impl<T: Ipc> Dctcp<T> {
         }
     }
 
-    fn get_fields(&mut self, m: Measurement) -> (u32, u32, u32, u32) {
+    fn get_fields(&mut self, m: Measurement) -> (u32, u32, u32, u32, u32) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.ack"), sc).expect(
             "expected ack field in returned measurement",
@@ -125,7 +124,6 @@ impl<T: Ipc> CongAlg<T> for Dctcp<T> {
         control: Datapath<T>,
         log_opt: Option<slog::Logger>,
         sock_id: u32,
-        start_seq: u32,
         init_cwnd: u32,
     ) -> Self {
         let mut s = Self {
@@ -133,16 +131,15 @@ impl<T: Ipc> CongAlg<T> for Dctcp<T> {
             logger: log_opt,
             cwnd: init_cwnd,
             init_cwnd: init_cwnd,
-            last_ack: start_seq,
             last_cwnd_reduction: time::get_time(),
             sc: None,
             sock_id: sock_id,
             ss_thresh: 0x7fffffff,
-            alpha: 0,
+            alpha: 0.0,
         };
 
         s.logger.as_ref().map(|log| {
-            debug!(log, "starting dctcp flow"; "sock_id" => sock_id, "start_seq" => start_seq);
+            debug!(log, "starting dctcp flow"; "sock_id" => sock_id);
         });
 
         s.sc = s.install_fold();
@@ -151,20 +148,12 @@ impl<T: Ipc> CongAlg<T> for Dctcp<T> {
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
-        let (ack, was_urgent, loss, rtt, ecns) = self.get_fields(m);
+        let (mut new_bytes_acked, was_urgent, loss, rtt, ecns) = self.get_fields(m);
         if was_urgent != 0 {
             self.handle_urgent(loss, rtt);
             return;
         }
 
-        // Handle integer overflow / sequence wraparound
-        let mut new_bytes_acked = if ack < self.last_ack {
-            (u32::max_value() - self.last_ack) + ack
-        } else {
-            ack - self.last_ack
-        };
-
-        self.last_ack = ack;
         if self.cwnd < self.ss_thresh {
             // increase cwnd by 1 per packet, until ssthresh
             if self.cwnd + new_bytes_acked > self.ss_thresh {
@@ -179,9 +168,9 @@ impl<T: Ipc> CongAlg<T> for Dctcp<T> {
         // update DCTCP alpha
         // alpha <- (1 - g) * alpha + g * F
         // where F is the fraction of ECN-marked packets in the last window
-        self.alpha = 0.2 * self.alpha + 0.8 * (ecns / self.cwnd);
-        if (ecns > 0) {
-            self.cwnd = (self.cwnd as f32 * (1 - self.alpha / 2)) as u32;
+        self.alpha = 0.2 * self.alpha + 0.8 * (ecns as f32 / self.cwnd as f32);
+        if ecns > 0 {
+            self.cwnd = (self.cwnd as f32 * (1.0 - self.alpha / 2.0)) as u32;
         } else {
             // increase cwnd by 1 / cwnd per packet
             self.cwnd += 1460u32 * (new_bytes_acked / self.cwnd);
@@ -190,7 +179,7 @@ impl<T: Ipc> CongAlg<T> for Dctcp<T> {
         self.send_pattern();
 
         self.logger.as_ref().map(|log| {
-            debug!(log, "got ack"; "seq" => ack, "curr_cwnd (B)" => self.cwnd, "loss" => loss, "ssthresh" => self.ss_thresh);
+            debug!(log, "got ack"; "curr_cwnd (B)" => self.cwnd, "loss" => loss, "ssthresh" => self.ss_thresh);
         });
     }
 }
