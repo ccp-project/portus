@@ -25,7 +25,6 @@ fn test_ser_over_ipc() {
             got,
             serialize::Msg::Cr(serialize::create::Msg {
                 sid: 42,
-                start_seq: 42,
                 cong_alg: String::from("foobar"),
             })
         );
@@ -39,7 +38,6 @@ fn test_ser_over_ipc() {
         // serialize a message
         let m = serialize::create::Msg {
             sid: 42,
-            start_seq: 42,
             cong_alg: String::from("foobar"),
         };
 
@@ -81,7 +79,6 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
                 got,
                 serialize::Msg::Cr(serialize::create::Msg {
                     sid: 42,
-                    start_seq: 42,
                     cong_alg: String::from("foobar"),
                 })
             );
@@ -97,7 +94,6 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
         let b2 = ipc::Backend::new(sk2).expect("init backend");
         let m = serialize::create::Msg {
             sid: 42,
-            start_seq: 42,
             cong_alg: String::from("foobar"),
         };
 

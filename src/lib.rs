@@ -115,7 +115,6 @@ pub trait CongAlg<T: Ipc> {
         control: Datapath<T>,
         log: Option<slog::Logger>,
         sock_id: u32,
-        start_seq: u32,
         init_cwnd: u32,
     ) -> Self;
     fn measurement(&mut self, sock_id: u32, m: Measurement);
@@ -152,16 +151,11 @@ where
                     }
 
                     log_opt.as_ref().map(|log| {
-                        debug!(log, "creating new flow"; "sid" => c.sid, "start_seq" => c.start_seq, "init_cwnd" => 10 * 1460);
+                        debug!(log, "creating new flow"; "sid" => c.sid, "init_cwnd" => 10 * 1460);
                     });
 
-                    let alg = U::create(
-                        Datapath(backend.clone()),
-                        log_opt.clone(),
-                        c.sid,
-                        c.start_seq,
-                        10 * 1460,
-                    );
+                    let alg =
+                        U::create(Datapath(backend.clone()), log_opt.clone(), c.sid, 10 * 1460);
                     flows.insert(c.sid, alg);
                 }
                 Msg::Ms(m) => {

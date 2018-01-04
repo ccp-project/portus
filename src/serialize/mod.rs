@@ -66,7 +66,6 @@ impl<'a> RawMsg<'a> {
     pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
         use std::mem;
         match self.typ {
-            create::CREATE => Ok(mem::transmute(&self.bytes[0..4])),
             measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 3])),
             pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
@@ -87,9 +86,8 @@ impl<'a> RawMsg<'a> {
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
-            create::CREATE | measure::MEASURE | pattern::CWND => {
-                Ok(&self.bytes[4..(self.len as usize - 6)])
-            }
+            measure::MEASURE | pattern::CWND => Ok(&self.bytes[4..(self.len as usize - 6)]),
+            create::CREATE => Ok(&self.bytes[0..(self.len as usize - 6)]),
             _ => Ok(self.bytes),
         }
     }

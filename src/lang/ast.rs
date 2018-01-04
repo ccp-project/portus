@@ -133,7 +133,7 @@ named!(
 use nom::is_alphanumeric;
 named!(
     name<&[u8]>,
-    take_while1!(|u: u8| is_alphanumeric(u) || u == '.' as u8)
+    take_while1!(|u: u8| is_alphanumeric(u) || u == '.' as u8 || u == '_' as u8)
 );
 
 use nom::rest;

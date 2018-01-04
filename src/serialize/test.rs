@@ -61,13 +61,12 @@ macro_rules! check_msg {
 }
 
 macro_rules! check_create_msg {
-    ($id: ident, $sid:expr, $sseq:expr, $alg:expr) => (
+    ($id: ident, $sid:expr, $alg:expr) => (
         check_msg!(
             $id, 
             super::create::Msg,
             super::create::Msg{
                 sid: $sid,
-                start_seq: $sseq,
                 cong_alg: String::from($alg),
             },
             Msg::Cr(crm),
@@ -76,8 +75,8 @@ macro_rules! check_create_msg {
     )
 }
 
-check_create_msg!(test_create_1, 15, 15, "nimbus");
-check_create_msg!(test_create_2, 42, 424242, "reno");
+check_create_msg!(test_create_1, 15, "nimbus");
+check_create_msg!(test_create_2, 42, "reno");
 
 macro_rules! check_measure_msg {
     ($id: ident, $sid:expr, $fields:expr) => (

@@ -248,6 +248,13 @@ impl Scope {
                 Reg::Const(4, Type::Num(None)),
                 Reg::Const(5, Type::Num(None)),
                 Reg::Const(6, Type::Num(None)),
+                Reg::Const(7, Type::Num(None)),
+                Reg::Const(8, Type::Num(None)),
+                Reg::Const(9, Type::Num(None)),
+                Reg::Const(10, Type::Num(None)),
+                Reg::Const(11, Type::Num(None)),
+                Reg::Const(12, Type::Num(None)),
+                Reg::Const(13, Type::Num(None)),
             ],
             tmp: vec![],
             permanent: vec![
@@ -259,32 +266,60 @@ impl Scope {
 
         // available measurement primitives (alphabetical order)
         sc.named.insert(
-            String::from("Ack"),
+            String::from("Pkt.bytes_acked"),
             sc.primitive[0].clone(),
         );
         sc.named.insert(
-            String::from("Ecn"),
+            String::from("Pkt.packets_acked"),
             sc.primitive[1].clone(),
         );
         sc.named.insert(
-            String::from("Loss"),
+            String::from("Pkt.bytes_misordered"),
             sc.primitive[2].clone(),
         );
         sc.named.insert(
-            String::from("Mss"),
+            String::from("Pkt.packets_misordered"),
             sc.primitive[3].clone(),
         );
         sc.named.insert(
-            String::from("RcvRate"),
+            String::from("Pkt.ecn_bytes"),
             sc.primitive[4].clone(),
         );
         sc.named.insert(
-            String::from("Rtt"),
+            String::from("Pkt.ecn_packets"),
             sc.primitive[5].clone(),
         );
         sc.named.insert(
-            String::from("SndRate"),
+            String::from("Pkt.lost_pkts_sample"),
             sc.primitive[6].clone(),
+        );
+        sc.named.insert(
+            String::from("Pkt.was_timeout"),
+            sc.primitive[7].clone(),
+        );
+        sc.named.insert(
+            String::from("Pkt.rtt_sample_us"),
+            sc.primitive[8].clone(),
+        );
+        sc.named.insert(
+            String::from("Pkt.rate_outgoing"),
+            sc.primitive[9].clone(),
+        );
+        sc.named.insert(
+            String::from("Pkt.rate_incoming"),
+            sc.primitive[10].clone(),
+        );
+        sc.named.insert(
+            String::from("Pkt.bytes_in_flight"),
+            sc.primitive[11].clone(),
+        );
+        sc.named.insert(
+            String::from("Pkt.packets_in_flight"),
+            sc.primitive[12].clone(),
+        );
+        sc.named.insert(
+            String::from("Pkt.snd_cwnd"),
+            sc.primitive[13].clone(),
         );
 
         // implicit return registers (can bind to these without Def)
@@ -463,7 +498,7 @@ mod tests {
     fn prog2() {
         let foo = b"
         (def (foo 0))
-        (bind Flow.foo (ewma 2 SndRate))
+        (bind Flow.foo (ewma 2 Pkt.rate_outgoing))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -482,7 +517,7 @@ mod tests {
                     res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Ewma,
                     left: Reg::ImmNum(2),
-                    right: Reg::Const(6, Type::Num(None)),
+                    right: Reg::Const(9, Type::Num(None)),
                 },
             ])
         );
@@ -491,8 +526,8 @@ mod tests {
     #[test]
     fn prog3() {
         let foo = b"
-        (def (foo 100000000))
-        (bind Flow.foo (if (< Rtt Flow.foo) Rtt))
+        (def (foo +infinity))
+        (bind Flow.foo (if (< Pkt.rtt_sample_us Flow.foo) Pkt.rtt_sample_us))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -502,22 +537,22 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(100000000))),
+                    res: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(100000000))),
-                    right: Reg::ImmNum(100000000),
+                    left: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+                    right: Reg::ImmNum(u64::max_value()),
                 },
                 Instr {
                     res: Reg::Tmp(0, Type::Bool(None)),
                     op: Op::Lt,
-                    left: Reg::Const(5, Type::Num(None)),
-                    right: Reg::Perm(2, Type::Num(Some(100000000))),
+                    left: Reg::Const(8, Type::Num(None)),
+                    right: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(100000000))),
+                    res: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
                     op: Op::If,
                     left: Reg::Tmp(0, Type::Bool(None)),
-                    right: Reg::Const(5, Type::Num(None)),
+                    right: Reg::Const(8, Type::Num(None)),
                 },
             ])
         );
