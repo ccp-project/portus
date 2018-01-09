@@ -27,7 +27,7 @@ impl<T: Ipc> Reno<T> {
             self.sock_id,
             make_pattern!(
                 pattern::Event::SetCwndAbs(self.cwnd) => 
-                pattern::Event::WaitNs(1000) => 
+                pattern::Event::WaitRtts(1.0) => 
                 pattern::Event::Report
             ),
         ) {
@@ -44,11 +44,14 @@ impl<T: Ipc> Reno<T> {
         match self.control_channel.install_measurement(
             self.sock_id,
             "
-                (def (acked 0) (loss 0) (rtt 0))
+                (def (acked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
+                (bind Flow.inflight Pkt.packets_in_flight)
                 (bind Flow.rtt Pkt.rtt_sample_us)
                 (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
                 (bind Flow.loss Pkt.lost_pkts_sample)
-                (bind isUrgent (> Flow.loss 0))
+                (bind Flow.timeout Pkt.was_timeout)
+                (bind isUrgent Pkt.was_timeout)
+                (bind isUrgent (!if isUrgent (> Flow.loss 0)))
             "
                 .as_bytes(),
         ) {
@@ -57,7 +60,7 @@ impl<T: Ipc> Reno<T> {
         }
     }
 
-    fn get_fields(&mut self, m: Measurement) -> (u32, u32, u32, u32) {
+    fn get_fields(&mut self, m: Measurement) -> (u32, bool, bool, u32, u32, u32) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
             "expected ack field in returned measurement",
@@ -65,6 +68,14 @@ impl<T: Ipc> Reno<T> {
 
         let was_urgent = m.get_field(&String::from("isUrgent"), sc).expect(
             "expected isUrgent field in returned measurement",
+        ) as u32;
+
+        let was_timeout = m.get_field(&String::from("Flow.timeout"), sc).expect(
+            "expected timeout field in returned measurement",
+        ) as u32;
+
+        let inflight = m.get_field(&String::from("Flow.inflight"), sc).expect(
+            "expected inflight field in returned measurement",
         ) as u32;
 
         let loss = m.get_field(&String::from("Flow.loss"), sc).expect(
@@ -75,10 +86,10 @@ impl<T: Ipc> Reno<T> {
             "expected rtt field in returned measurement",
         ) as u32;
 
-        (ack, was_urgent, loss, rtt)
+        (ack, was_urgent == 1, was_timeout == 1, loss, rtt, inflight)
     }
 
-    fn handle_urgent(&mut self, loss: u32, rtt_us: u32) {
+    fn handle_urgent(&mut self, was_timeout: bool, loss: u32, rtt_us: u32) {
         if time::get_time() - self.last_cwnd_reduction <
             time::Duration::nanoseconds((rtt_us as u64 * 1000) as i64)
         {
@@ -87,10 +98,21 @@ impl<T: Ipc> Reno<T> {
 
         self.last_cwnd_reduction = time::get_time();
 
-        if loss > self.cwnd / 2 {
-            // treat as timeout if at least half the cwnd was lost
+        if was_timeout {
             self.ss_thresh /= 2;
+            if self.ss_thresh < self.init_cwnd {
+                self.ss_thresh = self.init_cwnd;
+            }
+
             self.cwnd = self.init_cwnd;
+
+            self.logger.as_ref().map(|log| {
+                warn!(log, "timeout"; 
+                    "curr_cwnd (pkts)" => self.cwnd / 1460, 
+                    "ssthresh" => self.ss_thresh,
+                    "loss" => loss,
+                );
+            });
         } else if loss > 0 {
             // else, treat as isolated loss
             self.cwnd /= 2;
@@ -99,11 +121,11 @@ impl<T: Ipc> Reno<T> {
             }
 
             self.ss_thresh = self.cwnd;
-        }
 
-        self.logger.as_ref().map(|log| {
-            debug!(log, "urgent"; "curr_cwnd (B)" => self.cwnd, "loss" => loss);
-        });
+            self.logger.as_ref().map(|log| {
+                info!(log, "urgent"; "curr_cwnd (pkts)" => self.cwnd / 1460, "loss" => loss);
+            });
+        }
 
         self.send_pattern();
     }
@@ -141,12 +163,13 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
-        let (mut new_bytes_acked, was_urgent, loss, rtt) = self.get_fields(m);
-        if was_urgent != 0 {
-            self.handle_urgent(loss, rtt);
+        let (acked, was_urgent, was_timeout, loss, rtt, inflight) = self.get_fields(m);
+        if was_urgent {
+            self.handle_urgent(was_timeout, loss, rtt);
             return;
         }
 
+        let mut new_bytes_acked = acked;
         if self.cwnd < self.ss_thresh {
             // increase cwnd by 1 per packet, until ssthresh
             if self.cwnd + new_bytes_acked > self.ss_thresh {
@@ -163,7 +186,13 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.send_pattern();
 
         self.logger.as_ref().map(|log| {
-            debug!(log, "got ack"; "curr_cwnd (B)" => self.cwnd, "loss" => loss, "ssthresh" => self.ss_thresh);
+            debug!(log, "got ack"; 
+                "acked(bytes)" => acked, 
+                "curr_cwnd (pkts)" => self.cwnd / 1460, 
+                "inflight (pkts)" => inflight, 
+                "loss" => loss, 
+                "ssthresh" => self.ss_thresh
+            );
         });
     }
 }
