@@ -8,4 +8,5 @@ slog = "2"
 slog-term = "2"
 slog-async = "2"
 time="0.1"
+lazy_static="1.0"
 portus = { path = ".." }
