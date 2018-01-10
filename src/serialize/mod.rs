@@ -66,8 +66,7 @@ impl<'a> RawMsg<'a> {
     pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
         use std::mem;
         match self.typ {
-            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4 * 3])),
-            pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
+            measure::MEASURE | pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
         }
     }
