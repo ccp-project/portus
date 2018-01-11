@@ -8,4 +8,4 @@ Cargo.lock
 *.cmd
 *.tmp*
 *.mod.c
-
+*.rustfmt
