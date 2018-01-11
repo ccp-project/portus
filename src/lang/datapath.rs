@@ -104,16 +104,21 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
             match t {
                 &Prim::Bool(b) => Ok((vec![], Reg::ImmBool(b))),
                 &Prim::Name(ref name) => {
-                    match scope.get(&name) {
-                        Some(reg) => Ok((vec![], reg.clone())),
-                        _ => Err(Error::from(format!("unknown name {:?}", name))),
+                    if scope.has(&name) {
+                        let reg = scope.get(&name).unwrap();
+                        Ok((vec![], reg.clone()))
+                    } else {
+                        Ok((
+                            vec![],
+                            scope.new_perm(name.clone(), Type::Name(name.clone())),
+                        ))
                     }
                 }
                 &Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
             }
         }
         &Expr::Sexp(ref o, box ref left_expr, box ref right_expr) => {
-            let (mut instrs, left) = compile_expr(&left_expr, &mut scope)?;
+            let (mut instrs, mut left) = compile_expr(&left_expr, &mut scope)?;
             let (mut right_instrs, right) = compile_expr(&right_expr, &mut scope)?;
             instrs.append(&mut right_instrs);
             match o {
@@ -121,11 +126,15 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left and right should have type num
                     match left.get_type() {
                         Ok(Type::Num(_)) => (),
-                        x => return Err(Error::from(format!("expected Num, got {:?}", x))),
+                        x => return Err(Error::from(format!("{:?} expected Num, got {:?}", o, x))),
                     }
                     match right.get_type() {
                         Ok(Type::Num(_)) => (),
-                        x => return Err(Error::from(format!("expected Num, got {:?}", x))),
+                        x => {
+                            return Err(Error::from(
+                                format!("{:?} expected Num, got {:?}: {:?}", o, x, scope),
+                            ))
+                        }
                     }
 
                     let res = scope.new_tmp(Type::Num(None));
@@ -161,6 +170,13 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                 }
                 &Op::Bind => {
                     // (bind a b) assign variable a to value b
+
+                    // if type(left) is None, give it type of right
+                    if let Ok(Type::Name(s)) = left.get_type() {
+                        let right_type = right.get_type().unwrap();
+                        left = scope.update_type(&s, right_type)?;
+                    }
+
                     // left must be a mutable register
                     // and if right is a Reg::None, we have to replace it
                     match (&left, &right) {
@@ -229,8 +245,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
 #[derive(Debug, Clone)]
 pub struct Scope {
     named: HashMap<String, Reg>,
-    primitive: Vec<Reg>,
-    permanent: Vec<Reg>,
+    num_perm: u8,
     tmp: Vec<Reg>,
 }
 
@@ -240,86 +255,67 @@ impl Scope {
     /// All datapaths shall recognize these Names.
     pub(crate) fn new() -> Self {
         let mut sc = Scope {
-            primitive: vec![
-                Reg::Const(0, Type::Num(None)),
-                Reg::Const(1, Type::Num(None)),
-                Reg::Const(2, Type::Num(None)),
-                Reg::Const(3, Type::Num(None)),
-                Reg::Const(4, Type::Num(None)),
-                Reg::Const(5, Type::Num(None)),
-                Reg::Const(6, Type::Num(None)),
-                Reg::Const(7, Type::Num(None)),
-                Reg::Const(8, Type::Num(None)),
-                Reg::Const(9, Type::Num(None)),
-                Reg::Const(10, Type::Num(None)),
-                Reg::Const(11, Type::Num(None)),
-                Reg::Const(12, Type::Num(None)),
-                Reg::Const(13, Type::Num(None)),
-            ],
-            tmp: vec![],
-            permanent: vec![
-                Reg::Perm(0, Type::Bool(None)),
-                Reg::Perm(1, Type::Num(None)),
-            ],
             named: HashMap::new(),
+            num_perm: 2u8,
+            tmp: vec![],
         };
 
         // available measurement primitives (alphabetical order)
         sc.named.insert(
             String::from("Pkt.bytes_acked"),
-            sc.primitive[0].clone(),
+            Reg::Const(0, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.packets_acked"),
-            sc.primitive[1].clone(),
+            Reg::Const(1, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.bytes_misordered"),
-            sc.primitive[2].clone(),
+            Reg::Const(2, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.packets_misordered"),
-            sc.primitive[3].clone(),
+            Reg::Const(3, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.ecn_bytes"),
-            sc.primitive[4].clone(),
+            Reg::Const(4, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.ecn_packets"),
-            sc.primitive[5].clone(),
+            Reg::Const(5, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.lost_pkts_sample"),
-            sc.primitive[6].clone(),
+            Reg::Const(6, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.was_timeout"),
-            sc.primitive[7].clone(),
+            Reg::Const(7, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.rtt_sample_us"),
-            sc.primitive[8].clone(),
+            Reg::Const(8, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.rate_outgoing"),
-            sc.primitive[9].clone(),
+            Reg::Const(9, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.rate_incoming"),
-            sc.primitive[10].clone(),
+            Reg::Const(10, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.bytes_in_flight"),
-            sc.primitive[11].clone(),
+            Reg::Const(11, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.packets_in_flight"),
-            sc.primitive[12].clone(),
+            Reg::Const(12, Type::Num(None)),
         );
         sc.named.insert(
             String::from("Pkt.snd_cwnd"),
-            sc.primitive[13].clone(),
+            Reg::Const(13, Type::Num(None)),
         );
 
         // implicit return registers (can bind to these without Def)
@@ -329,7 +325,7 @@ impl Scope {
         // - reset it to false
         sc.named.insert(
             String::from("isUrgent"),
-            sc.permanent[0].clone(),
+            Reg::Perm(0, Type::Bool(None)),
         );
 
         // By default, Cwnd is set to the value that the send pattern sets,
@@ -338,10 +334,14 @@ impl Scope {
         // congestion window is updated, just as if a send pattern had changed it.
         sc.named.insert(
             String::from("Cwnd"),
-            sc.permanent[1].clone(),
+            Reg::Perm(1, Type::Num(None)),
         );
 
         sc
+    }
+
+    pub fn has(&self, name: &String) -> bool {
+        self.named.contains_key(name)
     }
 
     pub fn get(&self, name: &String) -> Option<&Reg> {
@@ -356,11 +356,29 @@ impl Scope {
     }
 
     pub(crate) fn new_perm(&mut self, name: String, t: Type) -> Reg {
-        let id = self.permanent.len() as u8;
+        let id = self.num_perm;
+        self.num_perm += 1;
         let r = Reg::Perm(id, t);
-        self.permanent.push(r);
-        self.named.insert(name, self.permanent[id as usize].clone());
-        self.permanent[id as usize].clone()
+        self.named.insert(name, r.clone());
+        r
+    }
+
+    /// if the Type was initially None, update it now that we know what it is.
+    pub(crate) fn update_type(&mut self, name: &String, t: Type) -> Result<Reg> {
+        self.named
+            .get_mut(name)
+            .ok_or(Error::from(format!("Unknown {:?}", name)))
+            .and_then(|old_reg| match old_reg {
+                &mut Reg::Perm(idx, Type::Name(_)) => {
+                    *old_reg = Reg::Perm(idx, t.clone());
+                    Ok(old_reg.clone())
+                }
+                _ => Err(Error::from(format!(
+                    "update_type: only Perm(_, Type::None) allowed: {:?}",
+                    old_reg
+                ))),
+            })
+
     }
 
     pub(crate) fn clear_tmps(&mut self) {
@@ -369,11 +387,11 @@ impl Scope {
 }
 
 pub struct ScopeDefInstrIter {
-    v: ::std::vec::IntoIter<Reg>,
+    v: ::std::collections::hash_map::IntoIter<String, Reg>,
 }
 
 impl ScopeDefInstrIter {
-    fn new(it: ::std::vec::IntoIter<Reg>) -> Self {
+    fn new(it: ::std::collections::hash_map::IntoIter<String, Reg>) -> Self {
         ScopeDefInstrIter { v: it }
     }
 }
@@ -383,7 +401,11 @@ impl Iterator for ScopeDefInstrIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let reg = self.v.next()?;
+            let (name, reg) = self.v.next()?;
+            if !name.as_str().starts_with("Flow.") {
+                continue;
+            }
+
             match reg {
                 Reg::Perm(_, Type::Num(Some(n))) => {
                     return Some(Instr {
@@ -412,8 +434,8 @@ impl IntoIterator for Scope {
     type Item = Instr;
     type IntoIter = ScopeDefInstrIter;
 
-    fn into_iter(self) -> Self::IntoIter {
-        ScopeDefInstrIter::new(self.permanent.into_iter())
+    fn into_iter(self) -> ScopeDefInstrIter {
+        ScopeDefInstrIter::new(self.named.into_iter())
     }
 }
 
@@ -460,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn prog1() {
+    fn def() {
         let foo = b"
         (def (foo 0))
         (bind Flow.foo (+ 2 3))
@@ -495,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn prog2() {
+    fn ewma() {
         let foo = b"
         (def (foo 0))
         (bind Flow.foo (ewma 2 Pkt.rate_outgoing))
@@ -524,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn prog3() {
+    fn infinity_if() {
         let foo = b"
         (def (foo +infinity))
         (bind Flow.foo (if (< Pkt.rtt_sample_us Flow.foo) Pkt.rtt_sample_us))
@@ -559,11 +581,11 @@ mod tests {
     }
 
     #[test]
-    fn prog_reset_tmps() {
+    fn intermediate() {
         let foo = b"
-        (def (foo 0) (bar 0))
-        (bind Flow.foo (+ (+ 1 2) 3))
-        (bind Flow.bar (+ (+ 4 5) 6))
+        (def (foo 0))
+        (bind bar 3)
+        (bind Flow.foo (+ 2 bar))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -579,9 +601,45 @@ mod tests {
                     right: Reg::ImmNum(0),
                 },
                 Instr {
-                    res: Reg::Perm(3, Type::Num(Some(0))),
+                    res: Reg::Perm(3, Type::Num(Some(3))),
+                    op: Op::Bind,
+                    left: Reg::Perm(3, Type::Num(Some(3))),
+                    right: Reg::ImmNum(3),
+                },
+                Instr {
+                    res: Reg::Tmp(0, Type::Num(None)),
+                    op: Op::Add,
+                    left: Reg::ImmNum(2),
+                    right: Reg::Perm(3, Type::Num(Some(3))),
+                },
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    op: Op::Bind,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::Tmp(0, Type::Num(None)),
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn prog_reset_tmps() {
+        let foo = b"
+        (def (foo 0))
+        (bind Flow.foo (+ (+ 1 2) 3))
+        (bind Flow.foo (+ (+ 4 5) 6))
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+
+        assert_eq!(
+            b,
+            Bin(vec![
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Def,
-                    left: Reg::Perm(3, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -615,9 +673,9 @@ mod tests {
                     right: Reg::ImmNum(6),
                 },
                 Instr {
-                    res: Reg::Perm(3, Type::Num(Some(0))),
+                    res: Reg::Perm(2, Type::Num(Some(0))),
                     op: Op::Bind,
-                    left: Reg::Perm(3, Type::Num(Some(0))),
+                    left: Reg::Perm(2, Type::Num(Some(0))),
                     right: Reg::Tmp(1, Type::Num(None)),
                 },
             ])
