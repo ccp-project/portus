@@ -317,6 +317,10 @@ impl Scope {
             String::from("Pkt.snd_cwnd"),
             Reg::Const(13, Type::Num(None)),
         );
+        sc.named.insert(
+            String::from("Pkt.now"),
+            Reg::Const(14, Type::Num(None)),
+        );
 
         // implicit return registers (can bind to these without Def)
 
