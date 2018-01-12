@@ -1,9 +1,11 @@
+extern crate clap;
+
 #[macro_use]
 extern crate slog;
 #[macro_use]
 extern crate portus;
 
-use portus::{CongAlg, Datapath, Measurement};
+use portus::{CongAlg, Config, Datapath, DatapathInfo, Measurement};
 use portus::pattern;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
@@ -17,6 +19,23 @@ pub struct Reno<T: Ipc> {
     cwnd: u32,
     curr_cwnd_reduction: u32,
     init_cwnd: u32,
+}
+
+pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
+
+#[derive(Clone)]
+pub struct RenoConfig {
+    pub ss_thresh: u32,
+    pub init_cwnd: u32,
+}
+
+impl Default for RenoConfig {
+    fn default() -> Self {
+        RenoConfig {
+            ss_thresh: DEFAULT_SS_THRESH,
+            init_cwnd: 0,
+        }
+    }
 }
 
 impl<T: Ipc> Reno<T> {
@@ -64,7 +83,7 @@ impl<T: Ipc> Reno<T> {
         let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
             "expected acked field in returned measurement",
         ) as u32;
-        
+
         let sack = m.get_field(&String::from("Flow.sacked"), sc).expect(
             "expected sacked field in returned measurement",
         ) as u32;
@@ -128,7 +147,7 @@ impl<T: Ipc> Reno<T> {
     /// Handle sacked or lost packets
     /// Only call with loss > 0 || sacked > 0
     fn cwnd_reduction(&mut self, loss: u32, sacked: u32, acked: u32) {
-        // if loss indicator is nonzero  
+        // if loss indicator is nonzero
         // AND the losses in the lossy cwnd have not yet been accounted for
         // OR there is a partial ACK AND cwnd was probing ss_thresh
         if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
@@ -140,7 +159,7 @@ impl<T: Ipc> Reno<T> {
             self.ss_thresh = self.cwnd;
             self.send_pattern();
         }
-        
+
         self.curr_cwnd_reduction += sacked + loss;
         self.logger.as_ref().map(|log| {
             info!(log, "loss"; "curr_cwnd (pkts)" => self.cwnd / 1448, "loss" => loss, "sacked" => sacked, "curr_cwnd_deficit" => self.curr_cwnd_reduction);
@@ -149,29 +168,31 @@ impl<T: Ipc> Reno<T> {
 }
 
 impl<T: Ipc> CongAlg<T> for Reno<T> {
+    type Config = RenoConfig;
+
     fn name(&self) -> String {
         String::from("reno")
     }
 
-    fn create(
-        control: Datapath<T>,
-        log_opt: Option<slog::Logger>,
-        sock_id: u32,
-        init_cwnd: u32,
-    ) -> Self {
+    fn create(control: Datapath<T>, cfg: Config<T, Reno<T>>, info: DatapathInfo) -> Self {
         let mut s = Self {
             control_channel: control,
-            logger: log_opt,
-            cwnd: init_cwnd,
-            init_cwnd: init_cwnd,
+            logger: cfg.logger,
+            cwnd: info.init_cwnd,
+            init_cwnd: info.init_cwnd,
             curr_cwnd_reduction: 0,
             sc: None,
-            sock_id: sock_id,
-            ss_thresh: 0x7fffffff,
+            sock_id: info.sock_id,
+            ss_thresh: cfg.config.ss_thresh,
         };
 
+        if cfg.config.init_cwnd != 0 {
+            s.cwnd = cfg.config.init_cwnd;
+            s.init_cwnd = cfg.config.init_cwnd;
+        }
+
         s.logger.as_ref().map(|log| {
-            debug!(log, "starting reno flow"; "sock_id" => sock_id);
+            debug!(log, "starting reno flow"; "sock_id" => info.sock_id);
         });
 
         s.sc = s.install_fold();

@@ -1,9 +1,10 @@
 [package]
 name = "ccp_bbr"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Akshay Narayan <akshayn@mit.edu>"]
 
 [dependencies]
+clap="2.29"
 slog = "2"
 slog-term = "2"
 slog-async = "2"
