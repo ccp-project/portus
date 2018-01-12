@@ -61,12 +61,18 @@ macro_rules! check_msg {
 }
 
 macro_rules! check_create_msg {
-    ($id: ident, $sid:expr, $alg:expr) => (
+    ($id: ident, $sid:expr, $cwnd:expr, $mss:expr, $sip:expr, $sport:expr, $dip:expr, $dport:expr, $alg:expr) => (
         check_msg!(
             $id, 
             super::create::Msg,
             super::create::Msg{
                 sid: $sid,
+                init_cwnd: $cwnd,
+                mss: $mss,
+                src_ip: $sip,
+                src_port: $sport,
+                dst_ip: $dip,
+                dst_port: $dport,
                 cong_alg: String::from($alg),
             },
             Msg::Cr(crm),
@@ -75,8 +81,17 @@ macro_rules! check_create_msg {
     )
 }
 
-check_create_msg!(test_create_1, 15, "nimbus");
-check_create_msg!(test_create_2, 42, "reno");
+check_create_msg!(
+    test_create_1,
+    15,
+    1448 * 10,
+    1448,
+    0,
+    4242,
+    0,
+    4242,
+    "nimbus"
+);
 
 macro_rules! check_measure_msg {
     ($id: ident, $sid:expr, $fields:expr) => (

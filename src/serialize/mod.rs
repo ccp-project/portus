@@ -66,6 +66,7 @@ impl<'a> RawMsg<'a> {
     pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
         use std::mem;
         match self.typ {
+            create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
             measure::MEASURE | pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
         }
@@ -86,7 +87,7 @@ impl<'a> RawMsg<'a> {
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
             measure::MEASURE | pattern::CWND => Ok(&self.bytes[4..(self.len as usize - 6)]),
-            create::CREATE => Ok(&self.bytes[0..(self.len as usize - 6)]),
+            create::CREATE => Ok(&self.bytes[(4 * 6)..(self.len as usize - 6)]),
             _ => Ok(self.bytes),
         }
     }

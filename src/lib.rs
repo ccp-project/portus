@@ -203,7 +203,15 @@ where
                     }
 
                     cfg.logger.as_ref().map(|log| {
-                        debug!(log, "creating new flow"; "sid" => c.sid, "init_cwnd" => 10 * 1460);
+                        debug!(log, "creating new flow"; 
+                               "sid" => c.sid, 
+                               "init_cwnd" => c.init_cwnd,
+                               "mss"  =>  c.mss,
+                               "src_ip"  =>  c.src_ip,
+                               "src_port"  =>  c.src_port,
+                               "dst_ip"  =>  c.dst_ip,
+                               "dst_port"  =>  c.dst_port,
+                        );
                     });
 
                     let alg = U::create(
@@ -211,12 +219,12 @@ where
                         cfg.clone(),
                         DatapathInfo {
                             sock_id: c.sid,
-                            init_cwnd: 10 * 1448u32, // TODO
-                            mss: 1448u32, // TODO
-                            src_ip: 0, // TODO
-                            src_port: 0, // TODO
-                            dst_ip: 0, // TODO
-                            dst_port: 0, // TODO
+                            init_cwnd: c.init_cwnd,
+                            mss: c.mss,
+                            src_ip: c.src_ip,
+                            src_port: c.src_port,
+                            dst_ip: c.dst_ip,
+                            dst_port: c.dst_port,
                         },
                     );
                     flows.insert(c.sid, alg);

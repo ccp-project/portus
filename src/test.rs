@@ -23,9 +23,10 @@ fn test_ser_over_ipc() {
         let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
         assert_eq!(
             got,
-            serialize::Msg::Cr(serialize::create::Msg {
+            serialize::Msg::Ms(serialize::measure::Msg {
                 sid: 42,
-                cong_alg: String::from("foobar"),
+                num_fields: 1,
+                fields: vec![0],
             })
         );
     });
@@ -36,9 +37,10 @@ fn test_ser_over_ipc() {
         let b2 = ipc::Backend::new(sk2).expect("init backend");
 
         // serialize a message
-        let m = serialize::create::Msg {
+        let m = serialize::measure::Msg {
             sid: 42,
-            cong_alg: String::from("foobar"),
+            num_fields: 1,
+            fields: vec![0],
         };
 
         let buf = serialize::serialize(m.clone()).expect("serialize");
@@ -77,9 +79,10 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
             let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
             assert_eq!(
                 got,
-                serialize::Msg::Cr(serialize::create::Msg {
+                serialize::Msg::Ms(serialize::measure::Msg {
                     sid: 42,
-                    cong_alg: String::from("foobar"),
+                    num_fields: 1,
+                    fields: vec![0],
                 })
             );
 
@@ -92,9 +95,10 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let sk2 = sk.clone();
     thread::spawn(move || {
         let b2 = ipc::Backend::new(sk2).expect("init backend");
-        let m = serialize::create::Msg {
+        let m = serialize::measure::Msg {
             sid: 42,
-            cong_alg: String::from("foobar"),
+            num_fields: 1,
+            fields: vec![0],
         };
 
         loop {
