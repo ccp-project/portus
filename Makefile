@@ -1,7 +1,7 @@
 all: build test 
 
 build:
-	cargo build --all
+	cargo +nightly build --all
 
 OS := $(shell uname)
 test: build
