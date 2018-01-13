@@ -151,11 +151,11 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left and right should have type num
                     match left.get_type() {
                         Ok(Type::Num(_)) => (),
-                        x => return Err(Error::from(format!("expected Num, got {:?}", x))),
+                        x => return Err(Error::from(format!("{:?} expected Num, got {:?}", o, x))),
                     }
                     match right.get_type() {
                         Ok(Type::Num(_)) => (),
-                        x => return Err(Error::from(format!("expected Num, got {:?}", x))),
+                        x => return Err(Error::from(format!("{:?} expected Num, got {:?}", o, x))),
                     }
 
                     let res = scope.new_tmp(Type::Bool(None));
