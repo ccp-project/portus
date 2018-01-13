@@ -45,7 +45,6 @@ use std::sync::mpsc;
 use portus::serialize::AsRawMsg;
 fn bench<T: Ipc>(
     b: Backend<T>,
-    addr: Option<u16>,
     rx: mpsc::Receiver<Vec<u8>>,
     iter: u32,
 ) -> Vec<Duration> {
@@ -53,7 +52,7 @@ fn bench<T: Ipc>(
         .map(|_| {
             let then = time::get_time();
             let msg = portus::serialize::serialize(TimeMsg(then)).expect("serialize");
-            b.send_msg(addr, &msg[..]).expect("send ts");
+            b.send_msg(&msg[..]).expect("send ts");
 
             let echo = rx.recv().expect("receive echo");
             if let portus::serialize::Msg::Other(raw) =
@@ -104,7 +103,7 @@ fn netlink(iter: u32) -> Vec<Duration> {
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
         assert_eq!(got, "hello, netlink\0\0"); // word aligned
 
-        tx.send(bench(b, None, rx, iter)).expect("report rtts");
+        tx.send(bench(b, rx, iter)).expect("report rtts");
     });
 
     rx.recv().expect("wait to insmod");
@@ -137,24 +136,25 @@ fn unix(iter: u32) -> Vec<Duration> {
 
     // listen
     let c1 = thread::spawn(move || {
-        let b = portus::ipc::unix::Socket::new(0)
+        let b = portus::ipc::unix::Socket::new("in", "out")
             .and_then(|sk| Backend::new(sk))
             .expect("ipc initialization");
         let rx = b.listen();
         ready_rx.recv().expect("sync");
-        tx.send(bench(b, Some(42424), rx, iter)).expect(
+        tx.send(bench(b, rx, iter)).expect(
             "report rtts",
         );
     });
 
     // echo-er
     let c2 = thread::spawn(move || {
-        let sk = portus::ipc::unix::Socket::new(42424).expect("sk init");
+        let sk = portus::ipc::unix::Socket::new("out","in")
+            .expect("sk init");
         let mut buf = [0u8; 1024];
         ready_tx.send(true).expect("sync");
         for _ in 0..iter {
             let rcv = sk.recv(&mut buf[..]).expect("recv");
-            sk.send(None, rcv).expect("echo");
+            sk.send(rcv).expect("echo");
         }
     });
 

@@ -96,7 +96,7 @@ impl super::Ipc for Socket {
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     // |                      Process ID (PID)                       |
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    fn send(&self, _: Option<u16>, buf: &[u8]) -> Result<()> {
+    fn send(&self, buf: &[u8]) -> Result<()> {
         let len = NLMSG_HDRSIZE + buf.len();
         let mut msg = Vec::<u8>::with_capacity(len);
         msg.resize(4, 0u8);

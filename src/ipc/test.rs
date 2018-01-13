@@ -11,7 +11,7 @@ impl FakeIpc {
 }
 
 impl Ipc for FakeIpc {
-    fn send(&self, _: Option<u16>, msg: &[u8]) -> Result<(), super::Error> {
+    fn send(&self, msg: &[u8]) -> Result<(), super::Error> {
         let mut x = self.0.lock().unwrap();
         (*x).extend(msg);
         Ok(())
@@ -41,7 +41,7 @@ fn test_unix() {
 
     let (tx, rx) = std::sync::mpsc::channel();
     let c1 = thread::spawn(move || {
-        let sk1 = super::unix::Socket::new(0).expect("init socket");
+        let sk1 = super::unix::Socket::new("in", "out").expect("init socket");
         let b1 = super::Backend::new(sk1).expect("init backend");
         let r1 = b1.listen();
         tx.send(true).expect("chan send");
@@ -52,9 +52,9 @@ fn test_unix() {
 
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
-        let sk2 = super::unix::Socket::new(42424).expect("init socket");
+        let sk2 = super::unix::Socket::new("out", "in").expect("init socket");
         let b2 = super::Backend::new(sk2).expect("init backend");
-        b2.send_msg(None, "hello, world".as_bytes()).expect(
+        b2.send_msg("hello, world".as_bytes()).expect(
             "send message",
         );
     });

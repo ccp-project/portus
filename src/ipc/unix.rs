@@ -4,8 +4,9 @@ use std::os::unix::net::UnixDatagram;
 use super::Error;
 use super::Result;
 
-macro_rules! port_to_addr {
-    ($x:expr) => (format!("/tmp/ccp/{}", $x));
+macro_rules! unix_addr {
+    // TODO for now assumes just a single CCP (id=0)
+    ($x:expr) => (format!("/tmp/ccp/0/{}", $x));
 }
 
 macro_rules! translate_result {
@@ -14,76 +15,43 @@ macro_rules! translate_result {
 
 pub struct Socket {
     sk: UnixDatagram,
-    is_connected: bool,
+    dest : String
+
 }
 
 impl Socket {
     // Only the CCP process is allowed to use id = 0.
     // For all other datapaths, they should use a known unique identifier
     // such as the port number.
-    pub fn new(port: u16) -> Result<Self> {
+    pub fn new(bind_to : &str, send_to : &str) -> Result<Self> {
+        let bind_to_addr = unix_addr!(bind_to.to_string());
+        let send_to_addr = unix_addr!(send_to.to_string());
         // create dir if not already exists
-        match std::fs::create_dir("/tmp/ccp").err() {
+        match std::fs::create_dir_all("/tmp/ccp/0").err() {
             Some(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
             Some(e) => Err(e),
             None => Ok(()),
         }?;
 
-        let in_addr = port_to_addr!(port);
-
         // unlink before bind
-        match std::fs::remove_file(&in_addr).err() {
+        match std::fs::remove_file(&bind_to_addr).err() {
             Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Some(e) => Err(e),
             None => Ok(()),
         }?;
-        let sock = UnixDatagram::bind(in_addr)?;
+        let sock = UnixDatagram::bind(bind_to_addr)?;
 
-        if port != 0 {
-            sock.connect(port_to_addr!(0))?;
-            Ok(Socket {
-                sk: sock,
-                is_connected: true,
-            })
-        } else {
-            Ok(Socket {
-                sk: sock,
-                is_connected: false,
-            })
-        }
+        Ok(Socket {
+            sk: sock,
+            dest: send_to_addr
+        })
     }
+
 }
 
 impl super::Ipc for Socket {
-    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<()> {
-        match self {
-            &Socket {
-                ref sk,
-                is_connected: true,
-            } => {
-                if let Some(_) = addr {
-                    Err(super::Error(
-                        String::from("No addr for connected unix socket"),
-                    ))
-                } else {
-                    translate_result!(sk.send(msg))
-                }
-            }
-
-            &Socket {
-                ref sk,
-                is_connected: false,
-            } => {
-                match addr {
-                    Some(a) => translate_result!(sk.send_to(msg, port_to_addr!(a))),
-                    None => {
-                        Err(super::Error(
-                            String::from("Need addr for unconnected unix socket"),
-                        ))
-                    }
-                }
-            }
-        }
+    fn send(&self, msg: &[u8]) -> Result<()> {
+        translate_result!(self.sk.send_to(msg, self.dest.clone()))
     }
 
     // return the number of bytes read if successful.
@@ -107,17 +75,14 @@ mod tests {
         use std;
         use ipc::Ipc;
 
-        let sk1 = super::Socket::new(0).expect("recv socket init");
-        assert!(!sk1.is_connected);
-
-        let sk2 = super::Socket::new(42424).expect("send socket init");
-        assert!(sk2.is_connected);
+        let sk1 = super::Socket::new("out", "in").expect("recv socket init");
+        let sk2 = super::Socket::new("in", "out").expect("send socket init");
 
         use std::thread;
 
         let c2 = thread::spawn(move || {
             let msg = "hello, world".as_bytes();
-            sk2.send(None, &msg).expect("send msg");
+            sk2.send(&msg).expect("send msg");
             sk2.close().expect("close sender");
         });
 

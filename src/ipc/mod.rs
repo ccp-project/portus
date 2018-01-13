@@ -13,7 +13,7 @@ pub mod unix;
 
 pub trait Ipc: 'static + Sync + Send {
     /// Blocking send
-    fn send(&self, addr: Option<u16>, msg: &[u8]) -> Result<()>;
+    fn send(&self, msg: &[u8]) -> Result<()>;
     /// Blocking listen. Return value is a slice into the provided buffer. Should not allocate.
     fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]>;
     /// Close the underlying sockets
@@ -38,8 +38,8 @@ impl<T: Ipc> Backend<T> {
     }
 
     /// Blocking send.
-    pub fn send_msg(&self, addr: Option<u16>, msg: &[u8]) -> Result<()> {
-        self.sock.send(addr, msg).map_err(|e| Error::from(e))
+    pub fn send_msg(&self, msg: &[u8]) -> Result<()> {
+        self.sock.send(msg).map_err(|e| Error::from(e))
     }
 
     /// Start listening on the IPC socket

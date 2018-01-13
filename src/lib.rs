@@ -79,7 +79,7 @@ impl<T: Ipc> Datapath<T> {
         };
 
         let buf = serialize::serialize(msg)?;
-        self.0.send_msg(Some(sock_id as u16), &buf[..])?;
+        self.0.send_msg(&buf[..])?;
         Ok(())
     }
 
@@ -92,7 +92,7 @@ impl<T: Ipc> Datapath<T> {
         };
 
         let buf = serialize::serialize(msg)?;
-        self.0.send_msg(Some(sock_id as u16), &buf[..])?;
+        self.0.send_msg(&buf[..])?;
         Ok(sc)
     }
 }

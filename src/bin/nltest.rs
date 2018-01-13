@@ -94,7 +94,7 @@ fn test(log: slog::Logger) {
         let msg = TestMsg(String::from("hello, kernel"));
         let test = msg.clone();
         let buf = portus::serialize::serialize(msg).expect("serialize");
-        b.send_msg(None, &buf[..]).expect("send response");
+        b.send_msg(&buf[..]).expect("send response");
 
         let echo = rx.recv().expect("receive echo");
         if let portus::serialize::Msg::Other(raw) =

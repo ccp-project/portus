@@ -44,7 +44,7 @@ fn test_ser_over_ipc() {
         };
 
         let buf = serialize::serialize(m.clone()).expect("serialize");
-        b2.send_msg(None, &buf[..]).expect("send message");
+        b2.send_msg(&buf[..]).expect("send message");
     });
 
     c2.join().expect("join sender thread");
@@ -111,7 +111,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
 
             // send a message
             let buf = serialize::serialize(m.clone()).expect("serialize");
-            b2.send_msg(None, &buf[..]).expect("send message");
+            b2.send_msg(&buf[..]).expect("send message");
         }
     });
 
