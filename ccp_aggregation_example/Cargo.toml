@@ -1,0 +1,12 @@
+[package]
+name = "ccp_aggregation_example"
+version = "0.2.0"
+authors = ["Akshay Narayan <akshayn@mit.edu>"]
+
+[dependencies]
+clap = "2.29"
+portus = { path = ".." }
+slog = "2"
+slog-async = "2"
+slog-term = "2"
+time = "0.1"
