@@ -166,7 +166,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct DatapathInfo {
     pub sock_id: u32,
     pub init_cwnd: u32,
@@ -177,11 +177,12 @@ pub struct DatapathInfo {
     pub dst_port: u32,
 }
 
-/// Main execution loop of ccp for the static pipeline use case.
+/// Main CCP execution loop for a single congestion control algorithm.
 /// Blocks "forever".
 /// In this use case, an algorithm implementation is a binary which
-/// 1. Initializes an ipc backend (depending on datapath)
-/// 2. Calls start(), passing the backend b and a Config with optional
+/// 1. Provides a U corresponding a to a single flow's congestion state.
+/// 2. Initializes an ipc backend (depending on datapath)
+/// 3. Calls start(), passing the backend b and a Config with optional
 /// logger and command line argument structure.
 ///
 /// start():
@@ -243,6 +244,111 @@ where
                             debug!(log, "measurement for unknown flow"; "sid" => m.sid);
                         });
                     }
+                }
+                Msg::Pt(_) | Msg::Fld(_) => {
+                    panic!(
+                        "The start() listener should never receive a pattern \
+                        or install_fold message, since it is on the CCP side."
+                    )
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    panic!("The IPC receive channel closed.");
+}
+
+/// Implementations of congestion control across multiple flows.
+pub trait Aggregator {
+    /// Aggregators define this type to keep state when binning flows into aggregates.
+    type Key: From<DatapathInfo> + std::cmp::Eq + std::hash::Hash + Copy;
+
+    /// If a new flow corresponds to an existing aggregate, replace the create() method
+    /// from CongAlg with new_flow() to notify the aggregate of a new flow arrival.
+    fn new_flow(&mut self, info: DatapathInfo);
+}
+
+/// Main CCP execution loop for an aggregate congestion control algorithm
+/// Blocks "forever".
+/// In this use case, an algorithm implementation is a binary which
+/// 1. Corresponds to an aggregate of flows, all using the same congestion control.
+/// 2. Initializes an ipc backend (depending on datapath)
+/// 3. Calls start(), passing the backend b and a Config with optional
+/// logger and command line argument structure.
+///
+/// start_aggregator():
+/// 1. listens for messages from the datapath
+/// 2. call the appropriate message in U: impl CongAlg + Aggregator
+///
+/// start_aggregator() will never return (-> !). It will panic if:
+/// 1. It receives a pattern or install_fold control message (only a datapath should receive these)
+/// 2. The IPC channel fails.
+pub fn start_aggregator<I, U>(b: Backend<I>, cfg: Config<I, U>) -> !
+where
+    I: Ipc,
+    U: CongAlg<I> + Aggregator,
+{
+    let mut aggregates = HashMap::<U::Key, U>::new();
+    let mut flows = HashMap::<u32, U::Key>::new();
+    let backend = std::rc::Rc::new(b);
+    for m in backend.listen().iter() {
+        if let Ok(msg) = Msg::from_buf(&m[..]) {
+            match msg {
+                Msg::Cr(c) => {
+                    let d = DatapathInfo {
+                        sock_id: c.sid,
+                        init_cwnd: c.init_cwnd,
+                        mss: c.mss,
+                        src_ip: c.src_ip,
+                        src_port: c.src_port,
+                        dst_ip: c.dst_ip,
+                        dst_port: c.dst_port,
+                    };
+
+                    let k = U::Key::from(d);
+                    aggregates
+                        .get_mut(&k)
+                        .and_then(|agg| {
+                            agg.new_flow(d);
+                            Some(())
+                        })
+                        .or_else(|| {
+                            let agg = U::create(
+                                Datapath(backend.clone()),
+                                cfg.clone(),
+                                DatapathInfo {
+                                    sock_id: c.sid,
+                                    init_cwnd: c.init_cwnd,
+                                    mss: c.mss,
+                                    src_ip: c.src_ip,
+                                    src_port: c.src_port,
+                                    dst_ip: c.dst_ip,
+                                    dst_port: c.dst_port,
+                                },
+                            );
+
+                            aggregates.insert(k, agg);
+                            Some(())
+                        });
+
+                    flows.insert(d.sock_id, k);
+                }
+                Msg::Ms(m) => {
+                    let sid = m.sid;
+                    flows
+                        .get(&sid)
+                        .and_then(|key| {
+                            aggregates.get_mut(&key).and_then(move |agg| {
+                                agg.measurement(sid, Measurement { fields: m.fields });
+                                Some(())
+                            })
+                        })
+                        .or_else(|| {
+                            cfg.logger.as_ref().map(|log| {
+                                debug!(log, "measurement for unknown flow"; "sid" => sid);
+                            })
+                        });
                 }
                 Msg::Pt(_) | Msg::Fld(_) => {
                     panic!(
