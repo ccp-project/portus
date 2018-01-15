@@ -130,7 +130,7 @@ impl Measurement {
 
 pub trait CongAlg<T: Ipc> {
     type Config: Clone;
-    fn name(&self) -> String;
+    fn name() -> String;
     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
     fn measurement(&mut self, sock_id: u32, m: Measurement);
 }

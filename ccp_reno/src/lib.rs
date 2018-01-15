@@ -170,7 +170,7 @@ impl<T: Ipc> Reno<T> {
 impl<T: Ipc> CongAlg<T> for Reno<T> {
     type Config = RenoConfig;
 
-    fn name(&self) -> String {
+    fn name() -> String {
         String::from("reno")
     }
 

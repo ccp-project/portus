@@ -202,7 +202,7 @@ impl<T: Ipc> Bbr<T> {
 impl<T: Ipc> CongAlg<T> for Bbr<T> {
     type Config = BbrConfig;
 
-    fn name(&self) -> String {
+    fn name() -> String {
         String::from("bbr")
     }
 
