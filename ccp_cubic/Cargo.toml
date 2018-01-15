@@ -1,0 +1,12 @@
+[package]
+name = "ccp_cubic"
+version = "0.1.0"
+authors = ["Prateesh Goyal <prateesh@mit.edu>"]
+
+[dependencies]
+clap="2.29"
+slog = "2"
+slog-term = "2"
+slog-async = "2"
+time="0.1"
+portus = { path = ".." }
