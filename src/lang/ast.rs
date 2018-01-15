@@ -200,15 +200,19 @@ use super::datapath::{Scope, Type, check_atom_type};
 #[derive(Debug)]
 pub struct Prog(pub Vec<Expr>);
 
-use nom::alpha;
 /// Declare a state variable and provide an initial value
-/// (Foo 0) (Bar true)
+/// Optionally use Flow. as a variable prefix, to match the fold function body
+/// (Foo 0) (Flow.this_is_allowed 14) (Bar true) 
 named!(
     decl<(Type, Type)>,
     delimited!(
         tag!("("),
         tuple!(
-            map_res!(alpha, |b| str::from_utf8(b).and_then(|i| Ok(Type::Name(String::from(i))))),
+			map_res!(do_parse!(
+				opt!(tag!("Flow.")) >>
+				n: name >>
+				(n)
+			), |b| str::from_utf8(b).and_then(|i| Ok(Type::Name(String::from(i))))),
             map_res!(atom, |a: Result<Expr>| a.and_then(|i| check_atom_type(&i)))
         ),
         tag!(")")
@@ -461,6 +465,28 @@ mod tests {
                     (Type::Name(String::from("Foo")), Type::Num(Some(0))),
                     (Type::Name(String::from("Bar")), Type::Num(Some(0))),
                     (Type::Name(String::from("Baz")), Type::Num(Some(0))),
+                ]
+            );
+            }
+            IResult::Error(e) => panic!(e),
+            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
+            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+        }
+    }
+
+    #[test]
+    fn defs1() {
+        let foo = b"(def (Foo 0) (Flow.this_is_allowed 14) (Bar true))";
+        use nom::{IResult, Needed};
+        match super::defs(foo) {
+            IResult::Done(r, me) => {
+                assert_eq!(r, &[]);
+                assert_eq!(
+                me,
+                vec![
+                    (Type::Name(String::from("Foo")), Type::Num(Some(0))),
+                    (Type::Name(String::from("this_is_allowed")), Type::Num(Some(14))),
+                    (Type::Name(String::from("Bar")), Type::Bool(Some(true))),
                 ]
             );
             }

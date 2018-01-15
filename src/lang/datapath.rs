@@ -685,4 +685,74 @@ mod tests {
             ])
         );
     }
+
+    #[test]
+    fn underscored_state_variable() {
+        let foo = b"
+            (def (foo_bar 0))
+			(bind Flow.foo_bar (+ 1 2))
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+
+        assert_eq!(
+            b,
+            Bin(vec![
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
+                Instr {
+                    res: Reg::Tmp(0, Type::Num(None)),
+                    op: Op::Add,
+                    left: Reg::ImmNum(1),
+                    right: Reg::ImmNum(2),
+                },
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    op: Op::Bind,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::Tmp(0, Type::Num(None)),
+                },
+            ])
+        );
+    }
+    
+	#[test]
+    fn optional_flow_prefix() {
+        let foo = b"
+            (def (Flow.foo_bar 0))
+			(bind Flow.foo_bar (+ 1 2))
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+
+        assert_eq!(
+            b,
+            Bin(vec![
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
+                Instr {
+                    res: Reg::Tmp(0, Type::Num(None)),
+                    op: Op::Add,
+                    left: Reg::ImmNum(1),
+                    right: Reg::ImmNum(2),
+                },
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    op: Op::Bind,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::Tmp(0, Type::Num(None)),
+                },
+            ])
+        );
+    }
 }
