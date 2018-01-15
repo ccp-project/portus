@@ -1,6 +1,7 @@
 use super::{Error, Result};
 use super::ast::Op;
 use super::datapath::{Bin, Instr, Reg};
+use ::serialize::u32_to_u8s;
 
 /// Serialize a Bin to bytes for transfer to the datapath
 impl Bin {
@@ -36,7 +37,7 @@ pub struct InstrBytes {
 /// serialization format:
 /// |----------------|----------------|----------------|----------------|
 /// |Opcode          |Result Register |Left Register   |Right Register  |
-/// |u8              |u8:typ2,which6  |u8:typ2,which6  |u8:typ2,which6  |
+/// |u8              |u8:typ2,which6  |u32:typ2,which30|u32:typ2,which30|
 /// |----------------|----------------|----------------|----------------|
 impl Iterator for InstrBytes {
     type Item = Result<u8>;
@@ -44,13 +45,22 @@ impl Iterator for InstrBytes {
     /// Yield the bytes of this instruction
     fn next(&mut self) -> Option<Result<u8>> {
         self.which += 1;
-        match self.which {
-            1 => Some(Ok(serialize_op(&self.i.op))),
-            2 => Some(serialize_reg(&self.i.res)),
-            3 => Some(serialize_reg(&self.i.left)),
-            4 => Some(serialize_reg(&self.i.right)),
-            _ => None,
+        let reg = match self.which {
+            0 => unreachable!(),
+            1 => { return Some(Ok(serialize_op(&self.i.op))); }
+            2 => { return Some(serialize_reg_u8(&self.i.res)); }
+            3 | 4 | 5 | 6 => serialize_reg_u32(&self.i.left),
+            7 | 8 | 9 | 10 => serialize_reg_u32(&self.i.right),
+            _ => {return None},
+        };
+
+        if reg.is_err() {
+            return Some(reg.map(|_| unreachable!()));
         }
+                
+        let mut buf = [0u8; 4];
+        u32_to_u8s(&mut buf, reg.unwrap());
+        Some(Ok(buf[((self.which - 3) % 4) as usize]))
     }
 }
 
@@ -75,18 +85,9 @@ fn serialize_op(o: &Op) -> u8 {
     }
 }
 
-fn serialize_reg(r: &Reg) -> Result<u8> {
+fn serialize_reg_u8(r: &Reg) -> Result<u8> {
     match r {
-        &Reg::ImmNum(num) => {
-            if num == u64::max_value() || num <= (1 << 6) {
-                Ok((num & 0b00111111) as u8)
-            } else {
-                Err(Error::from(
-                    format!("ImmNum too big (max 6 bits): {:?}", num),
-                ))
-            }
-        }
-        &Reg::ImmBool(bl) => Ok((0b00000001 & (bl as u8)) as u8),
+        &Reg::ImmNum(_) | &Reg::ImmBool(_) => Err(Error::from(format!("Cannot fit immediate in 8 bit register"))),
         &Reg::Const(i, _) => {
             let reg = if i > (1 << 6) {
                 return Err(Error::from(format!(
@@ -125,6 +126,56 @@ fn serialize_reg(r: &Reg) -> Result<u8> {
     }
 }
 
+fn serialize_reg_u32(r: &Reg) -> Result<u32> {
+    match r {
+        &Reg::ImmNum(num) => {
+            if num == u64::max_value() || num < (1 << 31) {
+                Ok(num as u32 & 0x3fff_ffff)
+            } else {
+                Err(Error::from(
+                    format!("ImmNum too big (max 30 bits): {:?}", num),
+                ))
+            }
+        }
+        &Reg::ImmBool(bl) => Ok(bl as u32),
+        &Reg::Const(i, _) => {
+            let reg = if i > 15 {
+                return Err(Error::from(format!(
+                    "Const Register index too big (max 15): {:?}",
+                    i
+                )));
+            } else {
+                i as u32 | 0xc000_0000
+            };
+
+            Ok((reg & 0x7fff_ffff) as u32)
+        }
+        &Reg::Tmp(i, _) => {
+            let reg = if i > 15 {
+                return Err(Error::from(
+                    format!("Tmp Register index too big (max 15): {:?}", i),
+                ));
+            } else {
+                i as u32 | 0xc000_0000
+            };
+
+            Ok((reg & 0xbfff_ffff) as u32)
+        }
+        &Reg::Perm(i, _) => {
+            let reg = if i > 15 {
+                return Err(Error::from(
+                    format!("Perm Register index too big (max 15): {:?}", i),
+                ));
+            } else {
+                i as u32 | 0xc000_0000
+            };
+
+            Ok((reg & 0xffff_ffff) as u32)
+        }
+        &Reg::None => unreachable!(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use lang::ast::Op;
@@ -151,8 +202,50 @@ mod tests {
         assert_eq!(
             v,
             vec![
-                0, 128, 2, 3,    // add instr
-                1, 192, 192, 128 // bind instr
+                0, 0x80, 2, 0, 0, 0, 3, 0, 0, 0,    // add instr
+                1, 0xc0, 0, 0, 0, 0xc0, 0, 0, 0, 0x80 // bind instr
+            ]
+        );
+    }
+    
+    #[test]
+    fn do_ser_max_imm() {
+        // make a Bin to serialize
+        let b = Bin(vec![
+            Instr {
+                res: Reg::Tmp(0, Type::Num(None)),
+                op: Op::Add,
+                left: Reg::ImmNum(0x3fff_ffff),
+                right: Reg::ImmNum(0x3fff_ffff),
+            },
+        ]);
+
+        let v = b.serialize().expect("serialize");
+        assert_eq!(
+            v,
+            vec![
+                0, 0x80, 0xff, 0xff, 0xff, 0x3f, 0xff, 0xff, 0xff, 0x3f,    // add instr
+            ]
+        );
+    }
+    
+    #[test]
+    fn do_ser_def_max_imm() {
+        // make a Bin to serialize
+        let b = Bin(vec![
+            Instr {
+                res: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+                op: Op::Def,
+                left: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+                right: Reg::ImmNum(u64::max_value()),
+            },
+        ]);
+
+        let v = b.serialize().expect("serialize");
+        assert_eq!(
+            v,
+            vec![
+                14, 0xc2, 2, 0, 0, 0xc0, 0xff, 0xff, 0xff, 0x3f,    // def instr
             ]
         );
     }
