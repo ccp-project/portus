@@ -122,7 +122,13 @@ pub struct Measurement {
 impl Measurement {
     pub fn get_field(&self, field: &String, sc: &Scope) -> Option<u64> {
         sc.get(field).and_then(|r| match r {
-            &Reg::Perm(idx, _) => Some(self.fields[idx as usize]),
+            &Reg::Perm(idx, _) => {
+                if idx as usize >= self.fields.len() {
+                    return None;
+                }
+
+                Some(self.fields[idx as usize])
+            },
             _ => None,
         })
     }
