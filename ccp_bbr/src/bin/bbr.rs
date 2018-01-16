@@ -66,7 +66,7 @@ fn main() {
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
         .unwrap_or(Default::default());
 
-    info!(log, "starting CCP BBR");
+    info!(log, "starting CCP BBR"; "ipc" => ipc.clone());
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
@@ -93,7 +93,7 @@ fn main() {
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
         .unwrap_or(Default::default());
 
-    info!(log, "starting CCP BBR");
+    info!(log, "starting CCP BBR"; "ipc" => ipc.clone());
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
