@@ -21,7 +21,7 @@ int nl_send_msg(unsigned long data, char *payload, size_t msg_size);
  */
 struct __attribute__((packed, aligned(2))) CcpMsgHeader {
     uint8_t Type;
-    uint8_t Len;
+    uint32_t Len;
     uint32_t SocketId;
 };
 
@@ -36,7 +36,7 @@ void nl_recv_msg(struct sk_buff *skb) {
     // read header to get length
     memcpy(&hdr, nlmsg_data(nlh), sizeof(struct CcpMsgHeader));
 
-    res = nl_send_msg(0, nlmsg_data(nlh), hdr.Len);
+    res = nl_send_msg(0, nlmsg_data(nlh), (hdr.Len << 1) + 1);
     if (res < 0) {
         pr_info("echo send failed: %d\n", res);
     }

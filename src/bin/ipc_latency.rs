@@ -13,8 +13,8 @@ struct TimeMsg(time::Timespec);
 
 use std::io::prelude::*;
 impl portus::serialize::AsRawMsg for TimeMsg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
-        (0xff, portus::serialize::HDR_LENGTH + 8 + 4 as u8, 0)
+    fn get_hdr(&self) -> (u8, u32, u32) {
+        (0xff, portus::serialize::HDR_LENGTH + 8 + 4, 0)
     }
 
     fn get_u32s<W: Write>(&self, _: &mut W) -> portus::Result<()> {

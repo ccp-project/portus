@@ -24,10 +24,10 @@ fn deserialize_fields(buf: &[u8]) -> Result<Vec<u64>> {
 }
 
 impl AsRawMsg for Msg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
+    fn get_hdr(&self) -> (u8, u32, u32) {
         (
             MEASURE,
-            HDR_LENGTH + 4 + self.num_fields * 8 as u8,
+            HDR_LENGTH + 4 + self.num_fields as u32 * 8,
             self.sid,
         )
     }

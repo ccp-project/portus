@@ -13,8 +13,8 @@ struct TestMsg(String);
 
 use std::io::prelude::*;
 impl portus::serialize::AsRawMsg for TestMsg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
-        (0xff, portus::serialize::HDR_LENGTH + self.0.len() as u8, 0)
+    fn get_hdr(&self) -> (u8, u32, u32) {
+        (0xff, portus::serialize::HDR_LENGTH + self.0.len() as u32, 0)
     }
 
     fn get_u32s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
@@ -32,8 +32,12 @@ impl portus::serialize::AsRawMsg for TestMsg {
 
     fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
         let b = msg.get_bytes()?;
-        let got = std::str::from_utf8(&b[..]).expect("parse message to str");
-        Ok(TestMsg(String::from(got)))
+        let got: String = std::str::from_utf8(&b[..])
+            .expect("parse message to str")
+            .chars()
+            .take_while(|b| *b != '\0')
+            .collect();
+        Ok(TestMsg(got))
     }
 }
 
@@ -79,11 +83,15 @@ fn test(log: slog::Logger) {
         debug!(listen_log, "listen");
         tx.send(true).expect("sync");
         let msg = rx.recv().expect("receive message");
-        let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
-        assert_eq!(got, "hello, netlink\0\0"); // word aligned
+        let got: String = std::str::from_utf8(&msg[..])
+            .expect("parse message to str")
+            .chars()
+            .take_while(|b| *b != '\0')
+            .collect();
+        assert_eq!(got, "hello, netlink"); // word aligned
 
         debug!(listen_log, "send");
-        let msg = TestMsg(String::from("hello, kernel\0\0\0\0\0")); // word aligned
+        let msg = TestMsg(String::from("hello, kernel"));
         let test = msg.clone();
         let buf = portus::serialize::serialize(msg).expect("serialize");
         b.send_msg(None, &buf[..]).expect("send response");

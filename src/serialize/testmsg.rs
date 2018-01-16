@@ -9,8 +9,8 @@ use super::{AsRawMsg, RawMsg, HDR_LENGTH};
 pub struct Msg(pub String);
 
 impl AsRawMsg for Msg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
-        (0xff, HDR_LENGTH + self.0.len() as u8, 0)
+    fn get_hdr(&self) -> (u8, u32, u32) {
+        (0xff, HDR_LENGTH + self.0.len() as u32, 0)
     }
 
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {

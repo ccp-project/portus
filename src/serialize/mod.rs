@@ -23,29 +23,31 @@ pub(crate) fn u64_from_u8s(buf: &[u8]) -> u64 {
     LittleEndian::read_u64(buf)
 }
 
-/// (type, len, socket_id) header
+/// (type, len >> 2, socket_id) header
 /// -----------------------------------
 /// | Msg Type | Len (B)  | Uint32    |
 /// | (1 B)    | (1 B)    | (32 bits) |
 /// -----------------------------------
 /// total: 6 Bytes
 ///
-pub const HDR_LENGTH: u8 = 6;
-fn serialize_header(typ: u8, len: u8, sid: u32) -> Vec<u8> {
-    let mut hdr = Vec::new();
-    hdr.push(typ);
-    hdr.push(len);
-    let mut buf = [0u8; 4];
-    u32_to_u8s(&mut buf, sid);
-    hdr.extend(&buf[..]);
-    hdr
+pub const HDR_LENGTH: u32 = 6;
+fn serialize_header(typ: u8, len: u32, sid: u32) -> Vec<u8> {
+    let mut hdr = [0u8; 6];
+    hdr[0] = typ;
+    if len % 1 == 1 {
+        hdr[1] = (len >> 1) as u8 + 1;
+    } else {
+        hdr[1] = (len >> 1) as u8;
+    }
+    u32_to_u8s(&mut hdr[2..], sid);
+    hdr.to_vec()
 }
 
-fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u8, u32)> {
+fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u32, u32)> {
     let mut hdr = [0u8; 6];
     buf.read_exact(&mut hdr)?;
     let typ = hdr[0];
-    let len = hdr[1];
+    let len = (hdr[1] as u32) << 1;
     let sid = u32_from_u8s(&hdr[2..]);
 
     Ok((typ, len, sid))
@@ -56,7 +58,7 @@ fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u8, u32)> {
 #[derive(PartialEq)]
 pub struct RawMsg<'a> {
     pub typ: u8,
-    pub len: u8,
+    pub len: u32,
     pub sid: u32,
     bytes: &'a [u8],
 }
@@ -105,7 +107,7 @@ impl<'a> RawMsg<'a> {
 /// Message types wanting to become "predefined" (and as such take advantage of get_u32s and
 /// get_u64s below) should edit this file accordingly (see `impl RawMsg`)
 pub trait AsRawMsg {
-    fn get_hdr(&self) -> (u8, u8, u32);
+    fn get_hdr(&self) -> (u8, u32, u32);
     fn get_u32s<W: Write>(&self, _: &mut W) -> Result<()> {
         Ok(())
     }

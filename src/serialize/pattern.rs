@@ -14,10 +14,10 @@ pub struct Msg {
 }
 
 impl AsRawMsg for Msg {
-    fn get_hdr(&self) -> (u8, u8, u32) {
+    fn get_hdr(&self) -> (u8, u32, u32) {
         (
             CWND,
-            HDR_LENGTH + 4 + self.pattern.len_bytes() as u8,
+            HDR_LENGTH + 4 + self.pattern.len_bytes() as u32,
             self.sid,
         )
     }
