@@ -122,10 +122,10 @@ pub trait AsRawMsg {
         Self: std::marker::Sized;
 }
 
-pub(crate) mod create;
-pub(crate) mod measure;
-pub(crate) mod pattern;
-pub(crate) mod install_fold;
+pub mod create;
+pub mod measure;
+pub mod pattern;
+pub mod install_fold;
 mod testmsg;
 
 pub fn serialize<T: AsRawMsg>(m: T) -> Result<Vec<u8>> {
