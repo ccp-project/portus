@@ -116,7 +116,7 @@ impl<T: Ipc> Dctcp<T> {
 }
 
 impl<T: Ipc> CongAlg<T> for Dctcp<T> {
-    fn name(&self) -> String {
+    fn name() -> String {
         String::from("dctcp")
     }
 

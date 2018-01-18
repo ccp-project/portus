@@ -70,7 +70,7 @@ fn main() {
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new(0).and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new("in", "out").and_then(|sk| Backend::new(sk)).expect(
                 "ipc initialization",
             );
 
@@ -97,7 +97,7 @@ fn main() {
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new(0).and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new("in", "out").and_then(|sk| Backend::new(sk)).expect(
                 "ipc initialization",
             );
 

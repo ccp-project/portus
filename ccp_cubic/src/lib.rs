@@ -260,7 +260,7 @@ impl<T: Ipc> Cubic<T> {
 impl<T: Ipc> CongAlg<T> for Cubic<T> {
     type Config = CubicConfig;
 
-    fn name(&self) -> String {
+    fn name() -> String {
         String::from("cubic")
     }
 
