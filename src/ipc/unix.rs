@@ -68,7 +68,7 @@ impl super::Ipc for Socket {
 
 #[cfg(test)]
 mod tests {
-    // this doesn't work on Darwin currently. Not sure why.
+    // TODO : this doesn't work on Darwin currently. Not sure why.
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn test_sk() {
@@ -78,7 +78,7 @@ mod tests {
         let sk1 = super::Socket::new("out", "in").expect("recv socket init");
         let sk2 = super::Socket::new("in", "out").expect("send socket init");
 
-        use std::thread;
+        use std::{time,thread};
 
         let c2 = thread::spawn(move || {
             let msg = "hello, world".as_bytes();
@@ -87,6 +87,8 @@ mod tests {
         });
 
         let mut msg = [0u8; 128];
+        // TODO : no idea why this sleep is necessary, fixes for now
+        thread::sleep(time::Duration::from_millis(1));
         let buf = sk1.recv(&mut msg).expect("receive msg");
         sk1.close().expect("close receiver");
         let got = std::str::from_utf8(buf).expect("parse string");
