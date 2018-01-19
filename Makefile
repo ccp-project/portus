@@ -8,6 +8,7 @@ test: build
 	cargo +nightly test --features bench --all
 ifeq ($(OS), Linux)
 	sudo ./target/debug/nltest
+	sudo ./target/debug/kptest
 else
 endif
 

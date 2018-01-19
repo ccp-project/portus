@@ -56,6 +56,7 @@ impl super::Ipc for Socket {
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     #[test]
@@ -74,3 +75,4 @@ mod tests {
         assert_eq!(got, "hello, world");
     }
 }
+*/
