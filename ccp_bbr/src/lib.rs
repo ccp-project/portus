@@ -134,21 +134,13 @@ impl<T: Ipc> Bbr<T> {
         }
     }
 
-    fn get_probe_bw_fields(&mut self, m: Measurement) -> (u32, u32, f64) {
+    fn get_probe_bw_fields(&mut self, m: Measurement) -> Option<(u32, u32, f64)> {
         let sc = self.sc.as_ref().expect("scope should be initialized");
-        let rtt = m.get_field(&String::from("Flow.minrtt"), sc).expect(
-            "expected minrtt field in returned measurement",
-        ) as u32;
+        let rtt = m.get_field(&String::from("Flow.minrtt"), sc).map(|x| x as u32)?;
+        let loss = m.get_field(&String::from("Flow.loss"), sc).map(|x| x as u32)?;
+        let rate = m.get_field(&String::from("Flow.rate"), sc).map(|x| x as f64)?;
 
-        let loss = m.get_field(&String::from("Flow.loss"), sc).expect(
-            "expected loss field in returned measurement",
-        ) as u32;
-
-        let rate = m.get_field(&String::from("Flow.rate"), sc).expect(
-            "expected rate field in returned measurement",
-        ) as f64;
-
-        (loss, rtt, rate)
+        Some((loss, rtt, rate))
     }
 
     fn send_probe_rtt_pattern(&self) {
@@ -258,7 +250,12 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
                 });
             }
             BbrMode::ProbeBw => {
-                let (loss, minrtt, rate) = self.get_probe_bw_fields(m);
+                let fields = self.get_probe_bw_fields(m);
+                if fields.is_none() {
+                    return;
+                }
+
+                let (loss, minrtt, rate) = fields.unwrap();
 
                 if minrtt < self.min_rtt_us {
                     self.min_rtt_us = minrtt;
