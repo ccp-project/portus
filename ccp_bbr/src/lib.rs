@@ -54,6 +54,7 @@ pub struct Bbr<T: Ipc> {
     sock_id: u32,
     probe_rtt_interval: time::Duration,
     bottle_rate: f64,
+    bottle_rate_timeout: time::Timespec,
     min_rtt_us: u32,
     min_rtt_timeout: time::Timespec,
     curr_mode: BbrMode,
@@ -205,8 +206,9 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
             sc: None,
             logger: cfg.logger,
             probe_rtt_interval: cfg.config.probe_rtt_interval,
-            bottle_rate: 0.0,
-            min_rtt_us: 100000000,
+            bottle_rate: 125000.0,
+            bottle_rate_timeout: time::now().to_timespec() + cfg.config.probe_rtt_interval,
+            min_rtt_us: 1000000,
             min_rtt_timeout: time::now().to_timespec() + cfg.config.probe_rtt_interval,
             curr_mode: BbrMode::ProbeBw,
         };
@@ -239,6 +241,11 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
         match self.curr_mode {
             BbrMode::ProbeRtt => {
                 self.min_rtt_us = self.get_probe_rtt_minrtt(m);
+                if time::now().to_timespec() > self.bottle_rate_timeout {
+                    self.bottle_rate_timeout = time::now().to_timespec() + self.probe_rtt_interval;
+                    self.bottle_rate = 125000.0;
+                }
+
                 self.sc = self.install_probe_bw_fold();
                 self.send_probe_bw_pattern();
                 self.curr_mode = BbrMode::ProbeBw;
@@ -264,12 +271,14 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
 
                 if time::now().to_timespec() > self.min_rtt_timeout {
                     self.curr_mode = BbrMode::ProbeRtt;
+                    self.min_rtt_us = 0x3fff_ffff;
                     self.sc = self.install_probe_rtt_fold();
                     self.send_probe_rtt_pattern();
                 }
 
                 if self.bottle_rate < rate {
                     self.bottle_rate = rate;
+                    self.bottle_rate_timeout = time::now().to_timespec() + self.probe_rtt_interval;
                     self.send_probe_bw_pattern();
                 }
 
