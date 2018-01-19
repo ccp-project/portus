@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate time;
 
 #[macro_use]
 extern crate slog;
@@ -18,7 +19,9 @@ pub struct Reno<T: Ipc> {
     ss_thresh: u32,
     cwnd: u32,
     curr_cwnd_reduction: u32,
+    last_cwnd_reduction: time::Timespec,
     init_cwnd: u32,
+    rtt: u32,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
@@ -44,7 +47,7 @@ impl<T: Ipc> Reno<T> {
             self.sock_id,
             make_pattern!(
                 pattern::Event::SetCwndAbs(self.cwnd) => 
-                pattern::Event::WaitRtts(1.0) => 
+                pattern::Event::WaitNs(10_000_000) => 
                 pattern::Event::Report
             ),
         ) {
@@ -121,7 +124,7 @@ impl<T: Ipc> Reno<T> {
         }
 
         // increase cwnd by 1 / cwnd per packet
-        self.cwnd += 1448u32 * (new_bytes_acked / self.cwnd);
+        self.cwnd += (1448. * (new_bytes_acked as f64 / self.cwnd as f64)) as u32;
     }
 
     fn handle_timeout(&mut self) {
@@ -147,11 +150,16 @@ impl<T: Ipc> Reno<T> {
     /// Handle sacked or lost packets
     /// Only call with loss > 0 || sacked > 0
     fn cwnd_reduction(&mut self, loss: u32, sacked: u32, acked: u32) {
+        if time::now().to_timespec() - self.last_cwnd_reduction > time::Duration::microseconds((self.rtt as f64 * 2.0) as i64) {
+            self.curr_cwnd_reduction = 0;
+        }
+
         // if loss indicator is nonzero
         // AND the losses in the lossy cwnd have not yet been accounted for
         // OR there is a partial ACK AND cwnd was probing ss_thresh
         if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
             self.cwnd /= 2;
+            self.last_cwnd_reduction = time::now().to_timespec();
             if self.cwnd <= self.init_cwnd {
                 self.cwnd = self.init_cwnd;
             }
@@ -162,7 +170,13 @@ impl<T: Ipc> Reno<T> {
 
         self.curr_cwnd_reduction += sacked + loss;
         self.logger.as_ref().map(|log| {
-            info!(log, "loss"; "curr_cwnd (pkts)" => self.cwnd / 1448, "loss" => loss, "sacked" => sacked, "curr_cwnd_deficit" => self.curr_cwnd_reduction);
+            info!(log, "loss"; 
+                "curr_cwnd (pkts)" => self.cwnd / 1448, 
+                "loss" => loss, 
+                "sacked" => sacked, 
+                "curr_cwnd_deficit" => self.curr_cwnd_reduction,
+                "since_last_drop" => ?(time::now().to_timespec() - self.last_cwnd_reduction),
+            );
         });
     }
 }
@@ -181,9 +195,11 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
             cwnd: info.init_cwnd,
             init_cwnd: info.init_cwnd,
             curr_cwnd_reduction: 0,
+            last_cwnd_reduction: time::now().to_timespec() - time::Duration::milliseconds(500),
             sc: None,
             sock_id: info.sock_id,
             ss_thresh: cfg.config.ss_thresh,
+            rtt: 0,
         };
 
         if cfg.config.init_cwnd != 0 {
@@ -202,6 +218,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
         let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(m);
+        self.rtt = rtt;
         if was_timeout {
             self.handle_timeout();
             return;
@@ -230,7 +247,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; 
                 "acked(pkts)" => acked / 1448u32, 
-                "curr_cwnd (pkts)" => self.cwnd / 1460, 
+                "curr_cwnd (pkts)" => self.cwnd / 1448u32, 
                 "inflight (pkts)" => inflight, 
                 "loss" => loss, 
                 "ssthresh" => self.ss_thresh,
