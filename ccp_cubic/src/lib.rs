@@ -21,6 +21,7 @@ pub struct Cubic<T: Ipc> {
     pkt_size: u32,
     init_cwnd: f64,
     cwnd: f64,
+    last_cwnd_reduction: time::Timespec,
     
 //state for cubic
     ss_thresh: f64,
@@ -40,7 +41,7 @@ pub struct Cubic<T: Ipc> {
     cubic_rtt: f64,
 }
 
-pub const DEFAULT_SS_THRESH: f64 = 0x7fffffff as f64;
+pub const DEFAULT_SS_THRESH: f64 = 0x3fff_ffff as f64;
 
 #[derive(Clone)]
 pub struct CubicConfig {
@@ -249,6 +250,11 @@ impl<T: Ipc> Cubic<T> {
     /// Handle sacked or lost packets
     /// Only call with loss > 0 || sacked > 0
     fn cwnd_reduction(&mut self, loss: u32, sacked: u32, acked: u32) {
+        // if it has been two RTTs since the last reduction, clear the cwnd deficit.
+        if time::now().to_timespec() - self.last_cwnd_reduction > time::Duration::microseconds((self.cubic_rtt * 1e6 * 2.0) as i64) {
+            self.curr_cwnd_reduction = 0;
+        }
+
         // if loss indicator is nonzero
         // AND the losses in the lossy cwnd have not yet been accounted for
         // OR there is a partial ACK AND cwnd was probing ss_thresh
@@ -261,6 +267,7 @@ impl<T: Ipc> Cubic<T> {
             }
 
             self.cwnd = self.cwnd * (1.0 - self.beta);
+            self.last_cwnd_reduction = time::now().to_timespec();
             if self.cwnd <= self.init_cwnd {
                 self.cwnd = self.init_cwnd;
             }
@@ -271,9 +278,43 @@ impl<T: Ipc> Cubic<T> {
 
         self.curr_cwnd_reduction += sacked + loss;
         self.logger.as_ref().map(|log| {
-            info!(log, "loss"; "curr_cwnd (pkts)" => self.cwnd, "loss" => loss, "sacked" => sacked, "curr_cwnd_deficit" => self.curr_cwnd_reduction);
+            info!(log, "loss"; 
+                "curr_cwnd (pkts)" => self.cwnd, 
+                "loss" => loss, 
+                "sacked" => sacked, 
+                "curr_cwnd_deficit" => self.curr_cwnd_reduction,
+                "since_last_drop" => ?(time::now().to_timespec() - self.last_cwnd_reduction),
+            );
         });
     }
+
+    //fn cwnd_reduction_timed(&mut self, loss: u32, sacked: u32, _acked: u32) {
+    //    if time::now().to_timespec() > self.last_cwnd_reduction + time::Duration::milliseconds((self.cubic_rtt * 1000.) as i64) {
+    //        self.last_cwnd_reduction = time::now().to_timespec();
+    //        self.epoch_start = -0.1;
+    //        if self.cwnd < self.wlast_max && self.fast_convergence {
+    //            self.wlast_max = self.cwnd * ((2.0 - self.beta) / 2.0);
+    //        } else {
+    //            self.wlast_max = self.cwnd;
+    //        }
+
+    //        self.cwnd = self.cwnd * (1.0 - self.beta);
+    //        if self.cwnd <= self.init_cwnd {
+    //            self.cwnd = self.init_cwnd;
+    //        }
+
+    //        self.ss_thresh = self.cwnd;
+    //        self.send_pattern();
+
+    //        self.logger.as_ref().map(|log| {
+    //            info!(log, "loss"; "curr_cwnd (pkts)" => self.cwnd, "loss" => loss, "sacked" => sacked, "curr_cwnd_deficit" => self.curr_cwnd_reduction);
+    //        });
+    //    } else {
+    //        self.logger.as_ref().map(|log| {
+    //            info!(log, "skipping loss"; "curr_cwnd (pkts)" => self.cwnd, "loss" => loss, "sacked" => sacked, "curr_cwnd_deficit" => self.curr_cwnd_reduction);
+    //        });
+    //    }
+    //}
 }
 
 impl<T: Ipc> CongAlg<T> for Cubic<T> {
@@ -290,10 +331,11 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
             curr_cwnd_reduction: 0,
             sc: None,
             sock_id: info.sock_id,
-            init_cwnd: cfg.config.init_cwnd/1500.0,
-            ss_thresh: cfg.config.ss_thresh/1500.0,
-            pkt_size: 1500u32,
-            cwnd: cfg.config.init_cwnd/1500.0,
+            init_cwnd: cfg.config.init_cwnd,
+            ss_thresh: cfg.config.ss_thresh,
+            pkt_size: info.mss,
+            cwnd: cfg.config.init_cwnd,
+            last_cwnd_reduction: time::now().to_timespec() - time::Duration::milliseconds(500),
             cwnd_cnt: 0.0f64,
             tcp_friendliness: true,
             beta: 0.3f64,
@@ -312,7 +354,7 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
 
 
         s.logger.as_ref().map(|log| {
-            debug!(log, "starting reno flow"; "sock_id" => info.sock_id);
+            debug!(log, "starting cubic flow"; "sock_id" => info.sock_id);
         });
 
         s.sc = s.install_fold();
@@ -326,8 +368,15 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
             self.handle_timeout();
             return;
         }
-	self.cubic_rtt = (rtt as f64)*0.000001;
+
+        self.cubic_rtt = (rtt as f64)*0.000001;
+
+        //if loss > 0 {
+        //    self.cwnd_reduction_timed(loss, sacked, acked);
+        //    return;
+        //}
         // increase the cwnd corresponding to new in-order cumulative ACKs
+
         self.cubic_increase_with_slow_start(acked,rtt);
 
         if loss > 0 || sacked > 0 {
