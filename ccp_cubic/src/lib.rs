@@ -37,6 +37,7 @@ pub struct Cubic<T: Ipc> {
     k: f64,
     ack_cnt: f64,
     cnt: f64,
+    cubic_rtt: f64,
 }
 
 pub const DEFAULT_SS_THRESH: f64 = 0x7fffffff as f64;
@@ -58,19 +59,37 @@ impl Default for CubicConfig {
 
 impl<T: Ipc> Cubic<T> {
     fn send_pattern(&self) {
-        match self.control_channel.send_pattern(
-            self.sock_id,
-            make_pattern!(
-                pattern::Event::SetCwndAbs((self.cwnd * (self.pkt_size as f64)) as u32) => 
-                pattern::Event::WaitRtts(0.5) => 
-                pattern::Event::Report
-            ),
-        ) {
-            Ok(_) => (),
-            Err(e) => {
-                self.logger.as_ref().map(|log| {
-                    warn!(log, "send_pattern"; "err" => ?e);
-                });
+        if self.cubic_rtt < 0.2 {
+            match self.control_channel.send_pattern(
+                self.sock_id,
+                make_pattern!(
+                    pattern::Event::SetCwndAbs((self.cwnd * (self.pkt_size as f64)) as u32) => 
+                    pattern::Event::WaitRtts(1.0) => 
+                    pattern::Event::Report
+                ),
+            ) {
+                Ok(_) => (),
+                Err(e) => {
+                    self.logger.as_ref().map(|log| {
+                        warn!(log, "send_pattern"; "err" => ?e);
+                    });
+                }
+            }
+        } else {
+            match self.control_channel.send_pattern(
+                self.sock_id,
+                make_pattern!(
+                    pattern::Event::SetCwndAbs((self.cwnd * (self.pkt_size as f64)) as u32) => 
+                    pattern::Event::WaitNs(100_000_000) => 
+                    pattern::Event::Report
+                ),
+            ) {
+                Ok(_) => (),
+                Err(e) => {
+                    self.logger.as_ref().map(|log| {
+                        warn!(log, "send_pattern"; "err" => ?e);
+                    });
+                }
             }
         }
     }
@@ -288,6 +307,7 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
             k: 0.0f64,
             ack_cnt: 0.0f64,
             cnt: 0.0f64,
+            cubic_rtt: 0.1f64,
         };
 
 
@@ -306,7 +326,7 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
             self.handle_timeout();
             return;
         }
-
+	self.cubic_rtt = (rtt as f64)*0.000001;
         // increase the cwnd corresponding to new in-order cumulative ACKs
         self.cubic_increase_with_slow_start(acked,rtt);
 
