@@ -277,7 +277,7 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
             cwnd: cfg.config.init_cwnd/1500.0,
             cwnd_cnt: 0.0f64,
             tcp_friendliness: true,
-            beta: 0.2f64,
+            beta: 0.3f64,
             fast_convergence: true,
             c: 0.4f64,
             wlast_max: 0.0f64,
