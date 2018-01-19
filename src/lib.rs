@@ -260,13 +260,13 @@ where
 }
 
 /// Implementations of congestion control across multiple flows.
-pub trait Aggregator {
+pub trait Aggregator<T: Ipc> {
     /// Aggregators define this type to keep state when binning flows into aggregates.
     type Key: From<DatapathInfo> + std::cmp::Eq + std::hash::Hash + Copy;
 
     /// If a new flow corresponds to an existing aggregate, replace the create() method
     /// from CongAlg with new_flow() to notify the aggregate of a new flow arrival.
-    fn new_flow(&mut self, info: DatapathInfo);
+    fn new_flow(&mut self, info: DatapathInfo, control: Datapath<T>);
 }
 
 /// Main CCP execution loop for an aggregate congestion control algorithm
@@ -287,7 +287,7 @@ pub trait Aggregator {
 pub fn start_aggregator<I, U>(b: Backend<I>, cfg: Config<I, U>) -> !
 where
     I: Ipc,
-    U: CongAlg<I> + Aggregator,
+    U: CongAlg<I> + Aggregator<I>,
 {
     let mut aggregates = HashMap::<U::Key, U>::new();
     let mut flows = HashMap::<u32, U::Key>::new();
@@ -310,7 +310,8 @@ where
                     aggregates
                         .get_mut(&k)
                         .and_then(|agg| {
-                            agg.new_flow(d);
+                            agg.new_flow(d,
+                                         Datapath(backend.clone()));
                             Some(())
                         })
                         .or_else(|| {

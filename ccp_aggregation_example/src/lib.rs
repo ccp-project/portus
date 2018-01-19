@@ -5,21 +5,23 @@ extern crate slog;
 #[macro_use]
 extern crate portus;
 
-use std::Vec;
+use std::vec::Vec;
 use portus::{Aggregator, CongAlg, Config, Datapath, DatapathInfo, Measurement};
 use portus::pattern;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 
 pub struct AggregationExample<T: Ipc> {
-    control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
     sc: Option<Scope>,
     cwnd: u32,
     curr_cwnd_reduction: u32,
     init_cwnd: u32,
+    ss_thresh: u32,
     sub_flows: Vec<(u32, Datapath<T>)>,
 }
+
+pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
 
 #[derive(Clone)]
 pub struct AggregationExampleConfig {}
@@ -43,11 +45,13 @@ impl From<DatapathInfo> for AggregationExampleKey {
     }
 }
 
-impl<T: Ipc> Aggregator for AggregationExample<T> {
+impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
     type Key = AggregationExampleKey;
     
-    fn new_flow(&mut self, info: DatapathInfo, control: control: Datapath<T>) {
-        self.sub_flows.push(
+    fn new_flow(&mut self, info: DatapathInfo, control: Datapath<T>) {
+        self.install_fold(info.sock_id, &control);
+        self.sub_flows.push((info.sock_id, control));
+        self.send_pattern();
     }
 }
 
@@ -60,21 +64,23 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
 
     fn create(control: Datapath<T>, cfg: Config<T, AggregationExample<T>>, info: DatapathInfo) -> Self {
         let mut s = Self {
-            control_channel: control,
             logger: cfg.logger,
             cwnd: info.init_cwnd,
             init_cwnd: info.init_cwnd,
             curr_cwnd_reduction: 0,
+            ss_thresh: DEFAULT_SS_THRESH,
             sc: None,
-            sub_flows: vec![(info.sock_id, control),],
+            sub_flows: vec![],
         };
+
+        s.sc = s.install_fold(info.sock_id, &control);
+        s.sub_flows.push((info.sock_id, control));
 
         s.logger.as_ref().map(|log| {
             debug!(log, "starting new aggregate"; "flow_sock_id" => info.sock_id);
         });
 
-        s.sc = s.install_fold();
-        s.send_pattern(info.sock_id);
+        s.send_pattern();
         s
     }
 
@@ -118,27 +124,42 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
 }
 
 impl<T: Ipc> AggregationExample<T> {
-    fn send_pattern(&self, which: u32) {
-        match self.control_channel.send_pattern(
-            which,
-            make_pattern!(
-                pattern::Event::SetCwndAbs(self.cwnd) => 
-                pattern::Event::WaitRtts(1.0) => 
-                pattern::Event::Report
-            ),
-        ) {
-            Ok(_) => (),
-            Err(e) => {
-                self.logger.as_ref().map(|log| {
-                    warn!(log, "send_pattern"; "err" => ?e);
-                });
-            }
-        }
+    /* Function that determines congestion window per flow */
+    /* For now, simplistically just divide the overall cwnd by the number of */
+    /* flows. Can only be called when the connection vector is non-empty */
+    fn get_window(&self) -> u32 {
+        // Currently, window is independent of the socket (split evenly)
+        self.cwnd / (self.sub_flows.len() as u32)
     }
 
-    fn install_fold(&self) -> Option<Scope> {
-        match self.control_channel.install_measurement(
-            self.sock_id,
+    /* Patterns are sent repeatedly to all connections that are part of an */
+    /* aggregate. Loop over connections */
+    fn send_pattern(&self) {
+        self.sub_flows.iter().for_each(|flow| {
+            let &(sock_id, ref control_channel) = flow;
+            let flow_cwnd = self.get_window();
+            match control_channel.send_pattern(
+                sock_id,
+                make_pattern!(
+                    pattern::Event::SetCwndAbs(flow_cwnd) => 
+                    pattern::Event::WaitRtts(1.0) => 
+                    pattern::Event::Report
+                ),
+            ) {
+                Ok(_) => (),
+                Err(e) => {
+                    self.logger.as_ref().map(|log| {
+                        warn!(log, "send_pattern"; "err" => ?e);
+                    });
+                }
+            }
+        });
+    }
+
+    /* Install fold once for each connection */
+    fn install_fold(&self, sock_id: u32, control_channel: &Datapath<T>) -> Option<Scope> {
+        match control_channel.install_measurement(
+            sock_id,
             "
                 (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
                 (bind Flow.inflight Pkt.packets_in_flight)
@@ -149,7 +170,7 @@ impl<T: Ipc> AggregationExample<T> {
                 (bind Flow.timeout Pkt.was_timeout)
                 (bind isUrgent Pkt.was_timeout)
                 (bind isUrgent (!if isUrgent (> Flow.loss 0)))
-            "
+             "
                 .as_bytes(),
         ) {
             Ok(s) => Some(s),
@@ -209,7 +230,9 @@ impl<T: Ipc> AggregationExample<T> {
             self.ss_thresh = self.init_cwnd;
         }
 
-        self.cwnd = self.init_cwnd;
+        let num_flows = self.sub_flows.len() as u32;
+        // Congestion window update to reflect timeout for one flow
+        self.cwnd = ((self.cwnd * (num_flows-1)) / num_flows) + self.init_cwnd;
         self.curr_cwnd_reduction = 0;
 
         self.logger.as_ref().map(|log| {
@@ -230,7 +253,9 @@ impl<T: Ipc> AggregationExample<T> {
         // AND the losses in the lossy cwnd have not yet been accounted for
         // OR there is a partial ACK AND cwnd was probing ss_thresh
         if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
-            self.cwnd /= 2;
+            let num_flows = self.sub_flows.len() as u32;
+            self.cwnd -= self.cwnd / (2 * num_flows);
+            // self.cwnd /= 2;
             if self.cwnd <= self.init_cwnd {
                 self.cwnd = self.init_cwnd;
             }

@@ -6,7 +6,7 @@ extern crate slog_term;
 extern crate slog_async;
 use slog::Drain;
 
-extern crate ccp_reno;
+extern crate ccp_aggregation_example;
 extern crate portus;
 
 use clap::Arg;
@@ -20,7 +20,7 @@ fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
-fn make_args() -> Result<(ccp_aggregation_example::AggregationExample, String), std::num::ParseIntError> {
+fn make_args() -> Result<(ccp_aggregation_example::AggregationExampleConfig, String), std::num::ParseIntError> {
     let matches = clap::App::new("CCP Example Aggregator")
         .version("0.0.1")
         .author("Akshay Narayan <akshayn@mit.edu>")
