@@ -321,6 +321,10 @@ impl Scope {
             String::from("Pkt.now"),
             Reg::Const(14, Type::Num(None)),
         );
+        sc.named.insert(
+            String::from("Pkt.bytes_pending"),
+            Reg::Const(15, Type::Num(None)),
+        );
 
         // implicit return registers (can bind to these without Def)
 
