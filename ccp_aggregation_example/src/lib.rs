@@ -6,6 +6,7 @@ extern crate slog;
 extern crate portus;
 
 use std::vec::Vec;
+use std::collections::HashMap;
 use portus::{Aggregator, CongAlg, Config, Datapath, DatapathInfo, Measurement};
 use portus::pattern;
 use portus::ipc::Ipc;
@@ -15,11 +16,13 @@ pub struct AggregationExample<T: Ipc> {
     logger: Option<slog::Logger>,
     sc: Option<Scope>,
     cwnd: u32,
-    rtt: u32,
     curr_cwnd_reduction: u32,
     init_cwnd: u32,
     ss_thresh: u32,
     sub_flows: Vec<(u32, Datapath<T>)>,
+    flows_pending: HashMap<u32, u32>,
+    flows_rtt: HashMap<u32, u32>,
+    num_flows: u32,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
@@ -52,6 +55,9 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
     fn new_flow(&mut self, info: DatapathInfo, control: Datapath<T>) {
         self.install_fold(info.sock_id, &control);
         self.sub_flows.push((info.sock_id, control));
+        self.flows_rtt.insert(info.sock_id, 0);
+        self.flows_pending.insert(info.sock_id, 14480);
+        self.num_flows += 1;
         self.send_pattern();
     }
 }
@@ -67,12 +73,14 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
         let mut s = Self {
             logger: cfg.logger,
             cwnd: info.init_cwnd,
-            rtt: 0,
             init_cwnd: info.init_cwnd,
             curr_cwnd_reduction: 0,
             ss_thresh: DEFAULT_SS_THRESH,
             sc: None,
             sub_flows: vec![],
+            flows_pending: HashMap::new(),
+            flows_rtt: HashMap::new(),
+            num_flows: 0,
         };
 
         s.sc = s.install_fold(info.sock_id, &control);
@@ -86,9 +94,12 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
         s
     }
 
-    fn measurement(&mut self, _sock_id: u32, m: Measurement) {
+    fn measurement(&mut self, sock_id: u32, m: Measurement) {
         let (acked, was_timeout, sacked, loss, rtt, inflight, pending) = self.get_fields(m);
-        self.rtt = rtt;
+
+        self.flows_rtt.entry(sock_id).or_insert(rtt);
+        self.flows_pending.entry(sock_id).or_insert(pending);
+
         if was_timeout {
             self.handle_timeout();
             return;
@@ -115,7 +126,8 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
         self.send_pattern();
 
         self.logger.as_ref().map(|log| {
-            debug!(log, "got ack"; 
+            debug!(log, "got ack";
+                "flow sock_id" => sock_id,
                 "acked(pkts)" => acked / 1448u32, 
                 "curr_cwnd (pkts)" => self.cwnd / 1460, 
                 "inflight (pkts)" => inflight, 
@@ -135,24 +147,48 @@ impl<T: Ipc> AggregationExample<T> {
         self.cwnd / (self.sub_flows.len() as u32)
     }
 
+    fn get_average_rtt(&self) -> u32 {
+        let mut average = 0;
+        if self.num_flows == 0 {
+            return 0;
+        }
+        /* The code below is guaranteed to run when there is at least one flow */
+        /* in the aggregate. */
+        for (sock_id, rtt) in &self.flows_rtt {
+            average += rtt;
+        }
+        return average / self.num_flows;
+    }
+
     /* Choose the pattern that needs to be sent to control flow scheduler here. */
     fn send_pattern(&self) {
-        self.send_pattern_per_flow_rr();
+        self.send_pattern_alloc_srpt();
+    }
+
+    /* Set congestion windows based on remaining demand, as estimated by
+     * pending bytes. Simple version doesn't try to coordinate the reception of
+     * different measurement messages: just simply resets all control patterns
+     * on reception of a single measurement. */
+    fn send_pattern_alloc_srpt(&self) {
+        for (sock_id, pending) in &self.flows_pending {
+            println!("{}: {}", sock_id, pending);
+        }
+        self.send_pattern_alloc_rr();
     }
 
     /* Patterns are sent repeatedly to all connections that are part of an */
     /* aggregate. Loop over connections */
-    fn send_pattern_per_flow_rr(&self) {
+    fn send_pattern_sched_rr(&self) {
         let mut count = 0;
         let num_flows = self.sub_flows.len() as u32;
         let low_cwnd = 2; // number of packets in "off" phase of RR
         if num_flows == 0 {
             return;
         }
-        let rr_interval_ns = self.rtt * 1000 / num_flows;
+        let rr_interval_ns = self.get_average_rtt() * 1000;
         let flow_cwnd = self.get_window_rr();
         self.logger.as_ref().map(|log| {
-            info!(log, "send_pattern"; "curr_cwnd (pkts)" => self.cwnd / 1448, "rr_interval_ns" => rr_interval_ns, "flow_cwnd" => flow_cwnd, "num_flows" => num_flows, "rtt_us" => self.rtt);
+            info!(log, "send_pattern"; "curr_cwnd (pkts)" => self.cwnd / 1448, "rr_interval_ns" => rr_interval_ns, "flow_cwnd" => flow_cwnd, "num_flows" => num_flows);
         });
         self.sub_flows.iter().for_each(|flow| {
             count = count + 1;
@@ -187,7 +223,7 @@ impl<T: Ipc> AggregationExample<T> {
 
     /* Patterns are sent repeatedly to all connections that are part of an */
     /* aggregate. Loop over connections */
-    fn send_pattern_per_packet_rr(&self) {
+    fn send_pattern_alloc_rr(&self) {
         self.sub_flows.iter().for_each(|flow| {
             let &(sock_id, ref control_channel) = flow;
             let flow_cwnd = self.get_window_rr();
@@ -279,7 +315,7 @@ impl<T: Ipc> AggregationExample<T> {
         }
 
         // increase cwnd by 1 / cwnd per packet
-        self.cwnd += 1448u32 * (new_bytes_acked / self.cwnd);
+        self.cwnd += 1448u32 * self.num_flows * (new_bytes_acked / self.cwnd);
     }
 
     fn handle_timeout(&mut self) {
