@@ -15,6 +15,7 @@ pub struct AggregationExample<T: Ipc> {
     logger: Option<slog::Logger>,
     sc: Option<Scope>,
     cwnd: u32,
+    rtt: u32,
     curr_cwnd_reduction: u32,
     init_cwnd: u32,
     ss_thresh: u32,
@@ -66,6 +67,7 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
         let mut s = Self {
             logger: cfg.logger,
             cwnd: info.init_cwnd,
+            rtt: 0,
             init_cwnd: info.init_cwnd,
             curr_cwnd_reduction: 0,
             ss_thresh: DEFAULT_SS_THRESH,
@@ -85,7 +87,8 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
-        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(m);
+        let (acked, was_timeout, sacked, loss, rtt, inflight, pending) = self.get_fields(m);
+        self.rtt = rtt;
         if was_timeout {
             self.handle_timeout();
             return;
@@ -127,17 +130,57 @@ impl<T: Ipc> AggregationExample<T> {
     /* Function that determines congestion window per flow */
     /* For now, simplistically just divide the overall cwnd by the number of */
     /* flows. Can only be called when the connection vector is non-empty */
-    fn get_window(&self) -> u32 {
+    fn get_window_rr(&self) -> u32 {
         // Currently, window is independent of the socket (split evenly)
         self.cwnd / (self.sub_flows.len() as u32)
     }
 
+    /* Choose the pattern that needs to be sent to control flow scheduler here. */
+    fn send_pattern(&self) {
+        self.send_pattern_per_flow_rr();
+    }
+
     /* Patterns are sent repeatedly to all connections that are part of an */
     /* aggregate. Loop over connections */
-    fn send_pattern(&self) {
+    fn send_pattern_per_flow_rr(&self) {
+        let mut count = 0;
+        let num_flows = self.sub_flows.len() as u32;
+        let low_cwnd = 2; // number of packets in "off" phase of RR
+        self.sub_flows.iter().for_each(|flow| {
+            count = count + 1;
+            let &(sock_id, ref control_channel) = flow;
+            let flow_cwnd = self.get_window_rr();
+            let rr_interval = self.rtt / num_flows;
+            match control_channel.send_pattern(
+                sock_id,
+                make_pattern!(
+                    pattern::Event::SetCwndAbs(low_cwnd) =>
+                    pattern::Event::WaitNs(rr_interval * 1000 *
+                                           (count - 1) / num_flows) =>
+                    pattern::Event::SetCwndAbs(flow_cwnd) =>
+                    pattern::Event::WaitNs(rr_interval * 1000 / num_flows) =>
+                    pattern::Event::SetCwndAbs(low_cwnd) =>
+                    pattern::Event::WaitNs(rr_interval * 1000 *
+                                           (num_flows - count) / num_flows) =>
+                    pattern::Event::Report
+                ),
+            ) {
+                Ok(_) => (),
+                Err(e) => {
+                    self.logger.as_ref().map(|log| {
+                        warn!(log, "send_pattern"; "err" => ?e);
+                    });
+                }
+            }
+        });
+    }
+
+    /* Patterns are sent repeatedly to all connections that are part of an */
+    /* aggregate. Loop over connections */
+    fn send_pattern_per_packet_rr(&self) {
         self.sub_flows.iter().for_each(|flow| {
             let &(sock_id, ref control_channel) = flow;
-            let flow_cwnd = self.get_window();
+            let flow_cwnd = self.get_window_rr();
             match control_channel.send_pattern(
                 sock_id,
                 make_pattern!(
@@ -168,6 +211,7 @@ impl<T: Ipc> AggregationExample<T> {
                 (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
                 (bind Flow.loss Pkt.lost_pkts_sample)
                 (bind Flow.timeout Pkt.was_timeout)
+                (bind Flow.pending Pkt.bytes_pending)
                 (bind isUrgent Pkt.was_timeout)
                 (bind isUrgent (!if isUrgent (> Flow.loss 0)))
              "
@@ -178,7 +222,7 @@ impl<T: Ipc> AggregationExample<T> {
         }
     }
 
-    fn get_fields(&mut self, m: Measurement) -> (u32, bool, u32, u32, u32, u32) {
+    fn get_fields(&mut self, m: Measurement) -> (u32, bool, u32, u32, u32, u32, u32) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
             "expected acked field in returned measurement",
@@ -204,7 +248,11 @@ impl<T: Ipc> AggregationExample<T> {
             "expected rtt field in returned measurement",
         ) as u32;
 
-        (ack, was_timeout == 1, sack, loss, rtt, inflight)
+        let pending = m.get_field(&String::from("Flow.pending"), sc).expect(
+            "expected pending field in returned measurement",
+        ) as u32;
+
+        (ack, was_timeout == 1, sack, loss, rtt, inflight, pending)
     }
 
     fn additive_increase_with_slow_start(&mut self, acked: u32) {
