@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate time;
 
 #[macro_use]
 extern crate slog;
@@ -39,12 +40,36 @@ fn make_args() -> Result<(ccp_reno::RenoConfig, String), std::num::ParseIntError
              .long("init_cwnd")
              .help("Sets the initial congestion window, in bytes. Setting 0 will use datapath default.")
              .default_value("0"))
+        .arg(Arg::with_name("report_per_ack")
+             .long("per_ack")
+             .help("Specifies that the datapath should send a measurement upon every ACK"))
+        .arg(Arg::with_name("report_per_interval")
+             .long("report_interval_ms")
+             .short("i")
+             .takes_value(true))
+        .group(clap::ArgGroup::with_name("interval")
+               .args(&["report_per_ack", "report_per_interval"])
+               .required(false))
         .get_matches();
 
     Ok((
         ccp_reno::RenoConfig {
             ss_thresh: u32::from_str_radix(matches.value_of("ss_thresh").unwrap(), 10)?,
             init_cwnd: u32::from_str_radix(matches.value_of("init_cwnd").unwrap(), 10)?,
+            report: if matches.is_present("report_per_ack") {
+                ccp_reno::RenoConfigReport::Ack
+            } else if matches.is_present("report_per_interval") {
+                ccp_reno::RenoConfigReport::Interval(
+                    time::Duration::milliseconds(matches
+                        .value_of("report_per_interval")
+                        .unwrap()
+                        .parse()
+                        .unwrap()
+                    )
+                )
+            } else {
+                ccp_reno::RenoConfigReport::Rtt
+            }
         },
         String::from(matches.value_of("ipc").unwrap()),
     ))
@@ -84,7 +109,10 @@ fn main() {
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
         .unwrap_or(Default::default());
 
-    info!(log, "starting CCP Reno"; "ipc" => ipc.clone());
+    info!(log, "starting CCP Reno"; 
+          "ipc" => ipc.clone(),
+          "reports" => ?cfg.report,
+    );
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;

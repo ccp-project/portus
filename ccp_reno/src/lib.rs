@@ -14,6 +14,7 @@ use portus::lang::Scope;
 pub struct Reno<T: Ipc> {
     control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
+    report_option: RenoConfigReport,
     sc: Option<Scope>,
     sock_id: u32,
     ss_thresh: u32,
@@ -26,10 +27,18 @@ pub struct Reno<T: Ipc> {
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
 
+#[derive(Debug, Clone)]
+pub enum RenoConfigReport {
+    Ack,
+    Rtt,
+    Interval(time::Duration),
+}
+
 #[derive(Clone)]
 pub struct RenoConfig {
     pub ss_thresh: u32,
     pub init_cwnd: u32,
+    pub report: RenoConfigReport,
 }
 
 impl Default for RenoConfig {
@@ -37,6 +46,7 @@ impl Default for RenoConfig {
         RenoConfig {
             ss_thresh: DEFAULT_SS_THRESH,
             init_cwnd: 0,
+            report: RenoConfigReport::Rtt,
         }
     }
 }
@@ -45,11 +55,22 @@ impl<T: Ipc> Reno<T> {
     fn send_pattern(&self) {
         match self.control_channel.send_pattern(
             self.sock_id,
-            make_pattern!(
-                pattern::Event::SetCwndAbs(self.cwnd) => 
-                pattern::Event::WaitNs(10_000_000) => 
-                pattern::Event::Report
-            ),
+            match self.report_option {
+                RenoConfigReport::Ack => make_pattern!(
+                    pattern::Event::SetCwndAbs(self.cwnd) => 
+                    pattern::Event::WaitNs(100_000_000) 
+                ),
+                RenoConfigReport::Rtt => make_pattern!(
+                    pattern::Event::SetCwndAbs(self.cwnd) => 
+                    pattern::Event::WaitRtts(1.0) => 
+                    pattern::Event::Report
+                ),
+                RenoConfigReport::Interval(dur) => make_pattern!(
+                    pattern::Event::SetCwndAbs(self.cwnd) => 
+                    pattern::Event::WaitNs(dur.num_nanoseconds().unwrap() as u32) => 
+                    pattern::Event::Report
+                ),
+            }
         ) {
             Ok(_) => (),
             Err(e) => {
@@ -63,18 +84,30 @@ impl<T: Ipc> Reno<T> {
     fn install_fold(&self) -> Option<Scope> {
         match self.control_channel.install_measurement(
             self.sock_id,
-            "
-                (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
-                (bind Flow.inflight Pkt.packets_in_flight)
-                (bind Flow.rtt Pkt.rtt_sample_us)
-                (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
-                (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
-                (bind Flow.loss Pkt.lost_pkts_sample)
-                (bind Flow.timeout Pkt.was_timeout)
-                (bind isUrgent Pkt.was_timeout)
-                (bind isUrgent (!if isUrgent (> Flow.loss 0)))
-            "
-                .as_bytes(),
+            if let RenoConfigReport::Ack = self.report_option {
+                "
+                    (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
+                    (bind Flow.inflight Pkt.packets_in_flight)
+                    (bind Flow.rtt Pkt.rtt_sample_us)
+                    (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
+                    (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
+                    (bind Flow.loss Pkt.lost_pkts_sample)
+                    (bind Flow.timeout Pkt.was_timeout)
+                    (bind isUrgent true)
+                ".as_bytes()
+            } else {
+                "
+                    (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
+                    (bind Flow.inflight Pkt.packets_in_flight)
+                    (bind Flow.rtt Pkt.rtt_sample_us)
+                    (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
+                    (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
+                    (bind Flow.loss Pkt.lost_pkts_sample)
+                    (bind Flow.timeout Pkt.was_timeout)
+                        (bind isUrgent Pkt.was_timeout)
+                        (bind isUrgent (!if isUrgent (> Flow.loss 0)))
+                ".as_bytes()
+            }
         ) {
             Ok(s) => Some(s),
             Err(_) => None,
@@ -192,6 +225,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         let mut s = Self {
             control_channel: control,
             logger: cfg.logger,
+            report_option: cfg.config.report,
             cwnd: info.init_cwnd,
             init_cwnd: info.init_cwnd,
             curr_cwnd_reduction: 0,
