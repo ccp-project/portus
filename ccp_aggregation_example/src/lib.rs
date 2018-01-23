@@ -146,22 +146,32 @@ impl<T: Ipc> AggregationExample<T> {
         let mut count = 0;
         let num_flows = self.sub_flows.len() as u32;
         let low_cwnd = 2; // number of packets in "off" phase of RR
+        if num_flows == 0 {
+            return;
+        }
+        let rr_interval_ns = self.rtt * 1000 / num_flows;
+        let flow_cwnd = self.get_window_rr();
+        self.logger.as_ref().map(|log| {
+            info!(log, "send_pattern"; "curr_cwnd (pkts)" => self.cwnd / 1448, "rr_interval_ns" => rr_interval_ns, "flow_cwnd" => flow_cwnd, "num_flows" => num_flows, "rtt_us" => self.rtt);
+        });
         self.sub_flows.iter().for_each(|flow| {
             count = count + 1;
             let &(sock_id, ref control_channel) = flow;
-            let flow_cwnd = self.get_window_rr();
-            let rr_interval = self.rtt / num_flows;
+            let begin_off_time = rr_interval_ns * (count - 1);
+            let end_off_time = rr_interval_ns * (num_flows - count);
+            let xmit_time = rr_interval_ns;
+            self.logger.as_ref().map(|log| {
+                info!(log, "sending"; "begin_off" => begin_off_time, "xmit" => xmit_time, "end_off" => end_off_time);
+            });
             match control_channel.send_pattern(
                 sock_id,
                 make_pattern!(
                     pattern::Event::SetCwndAbs(low_cwnd) =>
-                    pattern::Event::WaitNs(rr_interval * 1000 *
-                                           (count - 1) / num_flows) =>
+                    pattern::Event::WaitNs(begin_off_time) =>
                     pattern::Event::SetCwndAbs(flow_cwnd) =>
-                    pattern::Event::WaitNs(rr_interval * 1000 / num_flows) =>
+                    pattern::Event::WaitNs(xmit_time) =>
                     pattern::Event::SetCwndAbs(low_cwnd) =>
-                    pattern::Event::WaitNs(rr_interval * 1000 *
-                                           (num_flows - count) / num_flows) =>
+                    pattern::Event::WaitNs(end_off_time) =>
                     pattern::Event::Report
                 ),
             ) {
@@ -204,7 +214,7 @@ impl<T: Ipc> AggregationExample<T> {
         match control_channel.install_measurement(
             sock_id,
             "
-                (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
+                (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0) (pending 0))
                 (bind Flow.inflight Pkt.packets_in_flight)
                 (bind Flow.rtt Pkt.rtt_sample_us)
                 (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
