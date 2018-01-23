@@ -26,6 +26,7 @@ pub struct AggregationExample<T: Ipc> {
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
+pub const DEFAULT_PENDING_BYTES: u32 = 14480;
 
 #[derive(Clone)]
 pub struct AggregationExampleConfig {}
@@ -56,7 +57,7 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
         self.install_fold(info.sock_id, &control);
         self.sub_flows.push((info.sock_id, control));
         self.flows_rtt.insert(info.sock_id, 0);
-        self.flows_pending.insert(info.sock_id, 14480);
+        self.flows_pending.insert(info.sock_id, DEFAULT_PENDING_BYTES);
         self.num_flows += 1;
         self.send_pattern();
     }
@@ -170,9 +171,40 @@ impl<T: Ipc> AggregationExample<T> {
      * different measurement messages: just simply resets all control patterns
      * on reception of a single measurement. */
     fn send_pattern_alloc_srpt(&self) {
+        let mut demand_sum = 0;
+        let mut allocated_demands = HashMap<u32, u32>::new();
         for (sock_id, pending) in &self.flows_pending {
             println!("{}: {}", sock_id, pending);
+            demand_sum += pending;
         }
+        let mut demand_vec : Vec<_> = self.flows_pending.iter().collect();
+        if demand_sum > flow.cwnd {
+            /* Sort flows by demand if overall window demands exceeds available
+             * aggregate window. */
+            demand_vec.sort_by(|a, b| a.1.cmp(b.1));
+        }
+        /* Must allocate in order that demand_vec allows */
+        let mut allocated_cwnd = 0;
+        self.sub_flows.iter().for_each(|flow| {
+            let &(sock_id, ref control_channel) = flow;
+            let flow_demand = self.flows_pending.entry(sock_id).or_insert(DEFAULT_PENDING_BYTES);
+            flow_cwnd = self.cwnd * flow_demand / demand_sum;
+            match control_channel.send_pattern(
+                sock_id,
+                make_pattern!(
+                    pattern::Event::SetCwndAbs(flow_cwnd) =>
+                    pattern::Event::WaitRtts(1.0) =>
+                    pattern::Event::Report
+                ),
+            ) {
+                Ok(_) => (),
+                Err(e) => {
+                    self.logger.as_ref().map(|log| {
+                        warn!(log, "send_pattern"; "err" => ?e);
+                    });
+                }
+            }
+        });
         self.send_pattern_alloc_rr();
     }
 
