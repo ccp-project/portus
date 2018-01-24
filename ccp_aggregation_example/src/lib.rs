@@ -19,7 +19,7 @@ pub struct AggregationExample<T: Ipc> {
     curr_cwnd_reduction: u32,
     init_cwnd: u32,
     ss_thresh: u32,
-    sub_flows: Vec<(u32, Datapath<T>)>,
+    sub_flows: HashMap<u32, Datapath<T> >,
     flows_pending: HashMap<u32, u32>,
     flows_rtt: HashMap<u32, u32>,
     num_flows: u32,
@@ -55,7 +55,7 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
     
     fn new_flow(&mut self, info: DatapathInfo, control: Datapath<T>) {
         self.install_fold(info.sock_id, &control);
-        self.sub_flows.push((info.sock_id, control));
+        self.sub_flows.insert(info.sock_id, control);
         self.flows_rtt.insert(info.sock_id, 0);
         self.flows_pending.insert(info.sock_id, DEFAULT_PENDING_BYTES);
         self.num_flows += 1;
@@ -78,14 +78,14 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
             curr_cwnd_reduction: 0,
             ss_thresh: DEFAULT_SS_THRESH,
             sc: None,
-            sub_flows: vec![],
+            sub_flows: HashMap::new(),
             flows_pending: HashMap::new(),
             flows_rtt: HashMap::new(),
             num_flows: 0,
         };
 
         s.sc = s.install_fold(info.sock_id, &control);
-        s.sub_flows.push((info.sock_id, control));
+        s.sub_flows.insert(info.sock_id, control);
 
         s.logger.as_ref().map(|log| {
             debug!(log, "starting new aggregate"; "flow_sock_id" => info.sock_id);
@@ -98,8 +98,8 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
     fn measurement(&mut self, sock_id: u32, m: Measurement) {
         let (acked, was_timeout, sacked, loss, rtt, inflight, pending) = self.get_fields(m);
 
-        self.flows_rtt.entry(sock_id).or_insert(rtt);
-        self.flows_pending.entry(sock_id).or_insert(pending);
+        self.flows_rtt.insert(sock_id, rtt);
+        self.flows_pending.insert(sock_id, pending);
 
         if was_timeout {
             self.handle_timeout();
@@ -155,7 +155,7 @@ impl<T: Ipc> AggregationExample<T> {
         }
         /* The code below is guaranteed to run when there is at least one flow */
         /* in the aggregate. */
-        for (sock_id, rtt) in &self.flows_rtt {
+        for (_sock_id, rtt) in &self.flows_rtt {
             average += rtt;
         }
         return average / self.num_flows;
@@ -163,7 +163,8 @@ impl<T: Ipc> AggregationExample<T> {
 
     /* Choose the pattern that needs to be sent to control flow scheduler here. */
     fn send_pattern(&self) {
-        self.send_pattern_alloc_srpt();
+        //self.send_pattern_alloc_srpt();
+        self.send_pattern_alloc_rr();
     }
 
     /* Set congestion windows based on remaining demand, as estimated by
@@ -172,40 +173,61 @@ impl<T: Ipc> AggregationExample<T> {
      * on reception of a single measurement. */
     fn send_pattern_alloc_srpt(&self) {
         let mut demand_sum = 0;
-        let mut allocated_demands = HashMap<u32, u32>::new();
         for (sock_id, pending) in &self.flows_pending {
             println!("{}: {}", sock_id, pending);
             demand_sum += pending;
         }
         let mut demand_vec : Vec<_> = self.flows_pending.iter().collect();
-        if demand_sum > flow.cwnd {
-            /* Sort flows by demand if overall window demands exceeds available
-             * aggregate window. */
+        /* Sort flows by demand if overall window demands exceeds available
+         * aggregate window. */
+        if demand_sum > self.cwnd {
             demand_vec.sort_by(|a, b| a.1.cmp(b.1));
         }
         /* Must allocate in order that demand_vec allows */
         let mut allocated_cwnd = 0;
-        self.sub_flows.iter().for_each(|flow| {
-            let &(sock_id, ref control_channel) = flow;
-            let flow_demand = self.flows_pending.entry(sock_id).or_insert(DEFAULT_PENDING_BYTES);
-            flow_cwnd = self.cwnd * flow_demand / demand_sum;
-            match control_channel.send_pattern(
-                sock_id,
-                make_pattern!(
-                    pattern::Event::SetCwndAbs(flow_cwnd) =>
-                    pattern::Event::WaitRtts(1.0) =>
-                    pattern::Event::Report
-                ),
-            ) {
-                Ok(_) => (),
-                Err(e) => {
-                    self.logger.as_ref().map(|log| {
-                        warn!(log, "send_pattern"; "err" => ?e);
-                    });
+        for (&sock_id, &flow_demand) in demand_vec {
+            let mut flow_cwnd;
+            /* Perform allocation in order of demands, keeping larger flows out
+             * if necessary */
+            if allocated_cwnd < self.cwnd {
+                if allocated_cwnd + flow_demand < self.cwnd {
+                    flow_cwnd = flow_demand;
+                    allocated_cwnd += flow_demand;
+                } else {
+                    flow_cwnd = self.cwnd - allocated_cwnd;
+                    allocated_cwnd = self.cwnd;
                 }
+            } else {
+                flow_cwnd = 1; // keep a small number of packets in flight anyway
             }
-        });
-        self.send_pattern_alloc_rr();
+            self.logger.as_ref().map(|log| {
+                info!(log, "send_pattern"; "flow sock_id" => sock_id, "flow cwnd" => flow_cwnd, "total allocated" => allocated_cwnd, "pending" => flow_demand);
+            });
+            self.sub_flows.
+                get(&sock_id).
+                and_then(|control_channel| {
+                    match control_channel.send_pattern(
+                        sock_id,
+                        make_pattern!(
+                            pattern::Event::SetCwndAbs(flow_cwnd) =>
+                            pattern::Event::WaitRtts(1.0) =>
+                            pattern::Event::Report
+                        ),
+                    ) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            self.logger.as_ref().map(|log| {
+                                warn!(log, "send_pattern"; "err" => ?e);
+                            });
+                            ()
+                        }
+                    };
+                    Some(())
+                })
+                .or_else(|| {
+                    Some(())
+                });
+        };
     }
 
     /* Patterns are sent repeatedly to all connections that are part of an */
@@ -222,9 +244,8 @@ impl<T: Ipc> AggregationExample<T> {
         self.logger.as_ref().map(|log| {
             info!(log, "send_pattern"; "curr_cwnd (pkts)" => self.cwnd / 1448, "rr_interval_ns" => rr_interval_ns, "flow_cwnd" => flow_cwnd, "num_flows" => num_flows);
         });
-        self.sub_flows.iter().for_each(|flow| {
+        for (&sock_id, ref control_channel) in &self.sub_flows {
             count = count + 1;
-            let &(sock_id, ref control_channel) = flow;
             let begin_off_time = rr_interval_ns * (count - 1);
             let end_off_time = rr_interval_ns * (num_flows - count);
             let xmit_time = rr_interval_ns;
@@ -250,14 +271,13 @@ impl<T: Ipc> AggregationExample<T> {
                     });
                 }
             }
-        });
+        };
     }
 
     /* Patterns are sent repeatedly to all connections that are part of an */
     /* aggregate. Loop over connections */
     fn send_pattern_alloc_rr(&self) {
-        self.sub_flows.iter().for_each(|flow| {
-            let &(sock_id, ref control_channel) = flow;
+        for (&sock_id, ref control_channel) in &self.sub_flows {
             let flow_cwnd = self.get_window_rr();
             match control_channel.send_pattern(
                 sock_id,
@@ -274,7 +294,7 @@ impl<T: Ipc> AggregationExample<T> {
                     });
                 }
             }
-        });
+        };
     }
 
     /* Install fold once for each connection */
