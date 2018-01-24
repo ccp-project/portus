@@ -167,7 +167,25 @@ impl<T: Ipc> AggregationExample<T> {
     /* Choose the pattern that needs to be sent to control flow scheduler here. */
     fn send_pattern(&mut self) {
         //self.send_pattern_alloc_srpt();
-        self.send_pattern_alloc_rr();
+        //self.send_pattern_alloc_rr();
+        self.send_pattern_alloc_maxmin();
+    }
+
+    fn send_pattern_alloc_maxmin(&mut self) {
+        let mut demand_vec : Vec<_> = self.flows_pending.iter().collect();
+        demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
+        let mut available_cwnd = self.cwnd;
+        let mut num_flows_to_allocate = self.num_flows;
+        for (&sock_id, &pending) in demand_vec { // sorted traversal
+            if pending < available_cwnd / num_flows_to_allocate {
+                self.subflow_cwnd.insert(sock_id, pending);
+                available_cwnd -= pending;
+                num_flows_to_allocate -= 1;
+            } else {
+                self.subflow_cwnd.insert(sock_id, available_cwnd / num_flows_to_allocate);
+            }
+        }
+        self.send_pattern_alloc_messages();
     }
 
     /* Patterns are sent repeatedly to all connections that are part of an */
@@ -192,7 +210,7 @@ impl<T: Ipc> AggregationExample<T> {
         /* Sort flows by demand if overall window demands exceeds available
          * aggregate window. */
         if demand_sum > self.cwnd {
-            demand_vec.sort_by(|a, b| a.1.cmp(b.1));
+            demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
         }
         /* Must allocate in order that demand_vec allows */
         let mut allocated_cwnd = 0;
