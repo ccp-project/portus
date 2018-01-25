@@ -8,7 +8,7 @@ extern crate ccp_reno;
 extern crate portus;
 
 use clap::Arg;
-use portus::ipc::Backend;
+use portus::ipc::{Backend, ListenMode};
 use ccp_reno::reno::Reno;
 use ccp_reno::GenericCongAvoid;
 
@@ -103,6 +103,7 @@ fn main() {
                     logger: Some(log),
                     config: cfg,
                 },
+                ListenMode::Blocking,
             );
         }
         #[cfg(all(target_os = "linux"))]
@@ -117,6 +118,7 @@ fn main() {
                     logger: Some(log),
                     config: cfg,
                 },
+                ListenMode::Blocking,
             );
         }
         _ => unreachable!(),

@@ -8,7 +8,7 @@ extern crate ccp_bbr;
 extern crate portus;
 
 use ccp_bbr::Bbr;
-use portus::ipc::Backend;
+use portus::ipc::{Backend, ListenMode};
 
 fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
     let probe_rtt_interval_default = format!("{}", ccp_bbr::PROBE_RTT_INTERVAL_SECONDS);
@@ -71,6 +71,7 @@ fn main() {
                     logger: Some(log),
                     config: cfg,
                 },
+                ListenMode::Blocking,
             );
         }
         #[cfg(all(target_os = "linux"))]
@@ -85,6 +86,7 @@ fn main() {
                     logger: Some(log),
                     config: cfg,
                 },
+                ListenMode::Blocking,
             );
         }
         _ => unreachable!(),

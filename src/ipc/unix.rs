@@ -59,6 +59,12 @@ impl super::Ipc for Socket {
         let sz = self.sk.recv(msg).map_err(Error::from)?;
         Ok(&msg[..sz])
     }
+    
+    fn recv_nonblocking<'a>(&self, msg: &'a mut [u8]) -> Option<&'a [u8]> {
+        self.sk.set_nonblocking(true).ok()?;
+        let sz = self.sk.recv(msg).ok()?;
+        Some(&msg[..sz])
+    }
 
     fn close(&self) -> Result<()> {
         use std::net::Shutdown;

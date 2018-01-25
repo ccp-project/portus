@@ -1,54 +1,64 @@
+extern crate libc;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::os::unix::fs::OpenOptionsExt;
+use std::io::Read;
+use std::io::Write;
+use std::sync::Mutex;
 
 use super::Error;
 use super::Result;
-
-use std::io::Read;
-use std::io::Write;
-
-use std::sync::Mutex;
-//use std::sync::arc::UnsafeArc;
+use super::ListenMode;
 
 pub struct Socket {
     r : Mutex<File>,
-    w : Mutex<File>
+    w : Mutex<File>,
+    mode: ListenMode
 }
 
-
 impl Socket {
-
-    pub fn new() -> Result<Self> {
+    pub fn new(mode: ListenMode) -> Result<Self> {
         let mut options = OpenOptions::new();
         options.write(true).read(true);
+        match mode {
+            ListenMode::Blocking => { /* do nothing */ }
+            ListenMode::Nonblocking => {
+                options.custom_flags(libc::O_NONBLOCK);
+            }
+        };
+
         let rfd = options.open("/dev/ccpkp")?;
         let wfd = rfd.try_clone()?;
-
-
-        //let fd = File::open("/dev/ccpkp")?;
         Ok(Socket {
             r : Mutex::new(rfd),
-            w : Mutex::new(wfd)
+            w : Mutex::new(wfd),
+            mode: mode
         })
     }
 }
 
 impl super::Ipc for Socket {
     fn send(&self, buf:&[u8]) -> Result<()> {
-        //let len = 
         self.w.lock().unwrap().write(buf).map_err(Error::from)?;
-        //if len <= 0 {
-        //    Err(super::Error(String::from("Write failed"),))
-        //}
         Ok(())
     }
 
     fn recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
+        if let ListenMode::Nonblocking = self.mode {
+            unreachable!();
+        }
+
         let len = self.r.lock().unwrap().read(msg).map_err(Error::from)?;
-        //if len <= 0 {
-        //    Err(super::Error(String::from("Read failed"),))
-        //}
         Ok(&msg[..len])
+    }
+
+    fn recv_nonblocking<'a>(&self, msg:&'a mut [u8]) -> Option<&'a [u8]> {
+        if let ListenMode::Blocking = self.mode {
+            unreachable!();
+        }
+
+        let len = self.r.lock().unwrap().read(msg).ok()?;
+        Some(&msg[..len])
     }
 
     fn close(&self) -> Result<()> {

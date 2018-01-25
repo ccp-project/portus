@@ -177,14 +177,14 @@ pub struct DatapathInfo {
 /// `start()` will never return (`-> !`). It will panic if:
 /// 1. It receives a `pattern` or `install_fold` control message (only a datapath should receive these)
 /// 2. The IPC channel fails.
-pub fn start<I, U>(b: Backend<I>, cfg: &Config<I, U>) -> !
+pub fn start<I, U>(b: Backend<I>, cfg: &Config<I, U>, blocking: ipc::ListenMode) -> !
 where
     I: Ipc,
     U: CongAlg<I>,
 {
     let mut flows = HashMap::<u32, U>::new();
     let backend = std::rc::Rc::new(b);
-    for m in backend.listen().iter() {
+    for m in backend.listen(blocking).iter() {
         if let Ok(msg) = Msg::from_buf(&m[..]) {
             match msg {
                 Msg::Cr(c) => {

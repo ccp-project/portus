@@ -57,7 +57,7 @@ fn test_ccp_present(log: &slog::Logger) -> bool {
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
 fn test(log: &slog::Logger) {
     use std::process::Command;
-    use portus::ipc::Backend;
+    use portus::ipc::{Backend, ListenMode};
     use portus::serialize::AsRawMsg;
 
     if !test_ccp_present(log) {
@@ -97,7 +97,7 @@ fn test(log: &slog::Logger) {
         let b = portus::ipc::netlink::Socket::new()
             .and_then(Backend::new)
             .expect("ipc initialization");
-        let rx = b.listen();
+        let rx = b.listen(ListenMode::Blocking);
         debug!(listen_log, "listen");
         tx.send(true).expect("sync");
         let msg = rx.recv().expect("receive message");

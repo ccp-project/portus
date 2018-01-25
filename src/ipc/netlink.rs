@@ -83,6 +83,16 @@ impl super::Ipc for Socket {
             .map_err(Error::from)?;
         Ok(&buf[NLMSG_HDRSIZE..res])
     }
+    
+    fn recv_nonblocking<'a>(&self, buf: &'a mut [u8]) -> Option<&'a [u8]> {
+        let res = socket::recvmsg::<()>(
+            self.0,
+            &[nix::sys::uio::IoVec::from_mut_slice(&mut buf[..])],
+            None,
+            nix::sys::socket::MSG_DONTWAIT,
+        ).map(|r| r.bytes).ok()?;
+        Some(&buf[NLMSG_HDRSIZE..res])
+    }
 
     // netlink header format (RFC 3549)
     // 0               1               2               3

@@ -11,7 +11,7 @@ fn test_ser_over_ipc() {
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
         let b1 = ipc::Backend::new(sk1).expect("init backend");
-        let r1 = b1.listen();
+        let r1 = b1.listen(ipc::ListenMode::Blocking);
         tx.send(true).expect("ready chan send");
         let mut msg = r1.recv().expect("receive message"); // Vec<u8>
 
@@ -66,7 +66,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let sk1 = sk.clone();
     thread::spawn(move || {
         let b1 = ipc::Backend::new(sk1).expect("init backend");
-        let r1 = b1.listen();
+        let r1 = b1.listen(ipc::ListenMode::Blocking);
         loop {
             tx.send(true).expect("ready chan send");
             let mut msg = r1.recv().expect("receive message"); // Vec<u8>

@@ -18,8 +18,15 @@ pub trait Ipc: 'static + Sync + Send {
     fn send(&self, msg: &[u8]) -> Result<()>;
     /// Blocking listen. Return value is a slice into the provided buffer. Should not allocate.
     fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]>;
+    /// Non-blocking listen. Return value is a slice into the provided buffer. Should not allocate.
+    fn recv_nonblocking<'a>(&self, msg: &'a mut [u8]) -> Option<&'a [u8]>;
     /// Close the underlying sockets
     fn close(&self) -> Result<()>;
+}
+
+pub enum ListenMode {
+    Blocking,
+    Nonblocking,
 }
 
 #[derive(Default)]
@@ -46,18 +53,26 @@ impl<T: Ipc> Backend<T> {
 
     /// Start listening on the IPC socket
     /// Return a channel on which incoming messages will be passed
-    pub fn listen(&self) -> mpsc::Receiver<Vec<u8>> {
+    pub fn listen(&self, blocking: ListenMode) -> mpsc::Receiver<Vec<u8>> {
         let (tx, rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) = mpsc::channel();
         let me = self.clone();
         thread::spawn(move || {
             let mut rcv_buf = vec![0u8; 1024];
             while !me.close.load(Ordering::SeqCst) {
-                let buf = match me.sock.recv(&mut rcv_buf) {
-                    Ok(l) => l,
-                    Err(e) => {
-                        println!("recv err {:?}", e);
-                        continue;
-                    }
+                let buf = match blocking {
+                ListenMode::Blocking => 
+                    match me.sock.recv(&mut rcv_buf) {
+                        Ok(l) => l,
+                        Err(e) => {
+                            println!("recv err {:?}", e);
+                            continue;
+                        }
+                    },
+                ListenMode::Nonblocking => 
+                    match me.sock.recv_nonblocking(&mut rcv_buf) {
+                        Some(l) => l,
+                        None => continue,
+                    },
                 };
 
                 if buf.is_empty() {

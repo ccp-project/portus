@@ -6,7 +6,7 @@ extern crate portus;
 extern crate time;
 
 use bytes::{ByteOrder, LittleEndian};
-use portus::ipc::{Backend, Ipc};
+use portus::ipc::{Backend, Ipc, ListenMode};
 use time::Duration;
 
 struct TimeMsg(time::Timespec);
@@ -98,7 +98,7 @@ fn netlink(iter: u32) -> Vec<Duration> {
             .and_then(Backend::new)
             .expect("ipc initialization");
         tx.send(vec![]).expect("ok to insmod");
-        let rx = b.listen();
+        let rx = b.listen(ListenMode::Blocking);
         let msg = rx.recv().expect("receive message");
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
         assert_eq!(got, "hello, netlink\0\0"); // word aligned
@@ -130,10 +130,10 @@ fn kp(iter: u32) -> Vec<Duration> {
     let (tx, rx) = mpsc::channel::<Vec<Duration>>();
 
     let c1 = thread::spawn(move || {
-        let b = portus::ipc::kp::Socket::new()
+        let b = portus::ipc::kp::Socket::new(ListenMode::Blocking)
             .and_then(Backend::new)
             .expect("ipc initialization");
-        let rx = b.listen();
+        let rx = b.listen(ListenMode::Blocking);
         tx.send(bench(&b, &rx, iter)).expect("report rtts");
     });
 
@@ -160,7 +160,7 @@ fn unix(iter: u32) -> Vec<Duration> {
         let b = portus::ipc::unix::Socket::new("in", "out")
             .and_then(Backend::new)
             .expect("ipc initialization");
-        let rx = b.listen();
+        let rx = b.listen(ListenMode::Blocking);
         ready_rx.recv().expect("sync");
         tx.send(bench(&b, &rx, iter)).expect(
             "report rtts",

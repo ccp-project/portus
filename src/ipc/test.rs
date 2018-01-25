@@ -27,6 +27,10 @@ impl Ipc for FakeIpc {
         Ok(dest_slice)
     }
 
+    fn recv_nonblocking<'a>(&self, msg: &'a mut [u8]) -> Option<&'a [u8]> {
+        Some(self.recv(msg).unwrap())
+    }
+
     fn close(&self) -> Result<(), super::Error> {
         Ok(())
     }
@@ -43,7 +47,7 @@ fn test_unix() {
     let c1 = thread::spawn(move || {
         let sk1 = super::unix::Socket::new("in", "out").expect("init socket");
         let b1 = super::Backend::new(sk1).expect("init backend");
-        let r1 = b1.listen();
+        let r1 = b1.listen(super::ListenMode::Blocking);
         tx.send(true).expect("chan send");
         let msg = r1.recv().expect("receive message"); // Vec<u8>
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
