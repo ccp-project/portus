@@ -23,7 +23,7 @@ fn make_logger() -> slog::Logger {
 // Function to check if the allocator in the cmdline args is sane
 fn allocator_valid(v: String) -> std::result::Result<(), String> {
         match v.as_str() {
-        "rr" | "maxmin" | "srpt | prop" => Ok(()),
+        "rr" | "maxmin" | "srpt" | "prop" => Ok(()),
         _ => Err(String::from(
             format!("allocator must be one of (rr|maxmin|srpt|prop): {:?}", v),
         )),
