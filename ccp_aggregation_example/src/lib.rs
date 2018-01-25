@@ -28,17 +28,25 @@ pub struct AggregationExample<T: Ipc> {
     subflow_inflight: HashMap<u32, u32>,
     subflow_last_msg: HashMap<u32, std::time::Instant>,
     num_flows: u32,
+    allocator: String,
+    forecast: bool,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
 pub const DEFAULT_PENDING_BYTES: u32 = 1448;
 
 #[derive(Clone)]
-pub struct AggregationExampleConfig {}
+pub struct AggregationExampleConfig {
+    pub allocator: String,
+    pub forecast: bool,
+}
 
 impl Default for AggregationExampleConfig {
     fn default() -> Self {
-        AggregationExampleConfig{}
+        AggregationExampleConfig{
+            allocator: "rr".to_string(),
+            forecast: true,
+        }
     }
 }
 
@@ -95,6 +103,8 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
             subflow_inflight: HashMap::new(),
             subflow_last_msg: HashMap::new(),
             num_flows: 0,
+            allocator: cfg.config.allocator,
+            forecast: cfg.config.forecast,
         };
 
         s.sc = s.install_fold(info.sock_id, &control);

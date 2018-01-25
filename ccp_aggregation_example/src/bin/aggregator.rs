@@ -20,6 +20,16 @@ fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
+// Function to check if the allocator in the cmdline args is sane
+fn allocator_valid(v: String) -> std::result::Result<(), String> {
+        match v.as_str() {
+        "rr" | "maxmin" | "srpt" => Ok(()),
+        _ => Err(String::from(
+            format!("allocator must be one of (rr|maxmin|srpt): {:?}", v),
+        )),
+    }
+}
+
 fn make_args() -> Result<(ccp_aggregation_example::AggregationExampleConfig, String), std::num::ParseIntError> {
     let matches = clap::App::new("CCP Example Aggregator")
         .version("0.0.1")
@@ -30,10 +40,23 @@ fn make_args() -> Result<(ccp_aggregation_example::AggregationExampleConfig, Str
              .help("Sets the type of ipc to use: (netlink|unix)")
              .default_value("unix")
              .validator(portus::ipc_valid))
+        .arg(Arg::with_name("alloc")
+             .long("allocator")
+             .short("a")
+             .help("Set the window allocator for the aggregate: (rr|maxmin|srpt)")
+             .default_value("rr")
+             .validator(allocator_valid))
+        .arg(Arg::with_name("forecast")
+             .long("forecast")
+             .short("f")
+             .help("Enable demand forecast (forecast is disabled by default)"))
         .get_matches();
 
     Ok((
-        ccp_aggregation_example::AggregationExampleConfig{},
+        ccp_aggregation_example::AggregationExampleConfig {
+            allocator: String::from(matches.value_of("alloc").unwrap()),
+            forecast: matches.is_present("forecast"),
+        },
         String::from(matches.value_of("ipc").unwrap()),
     ))
 }
