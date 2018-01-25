@@ -19,10 +19,12 @@ pub struct AggregationExample<T: Ipc> {
     curr_cwnd_reduction: u32,
     init_cwnd: u32,
     ss_thresh: u32,
-    sub_flows: HashMap<u32, Datapath<T> >,
-    flows_pending: HashMap<u32, u32>,
-    flows_rtt: HashMap<u32, u32>,
+    subflow: HashMap<u32, Datapath<T> >,
+    subflow_pending: HashMap<u32, u32>,
+    subflow_rtt: HashMap<u32, u32>,
     subflow_cwnd: HashMap<u32, u32>,
+    subflow_util: HashMap<u32, u32>,
+    subflow_inflight: HashMap<u32, u32>,
     num_flows: u32,
 }
 
@@ -56,10 +58,12 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
     
     fn new_flow(&mut self, info: DatapathInfo, control: Datapath<T>) {
         self.install_fold(info.sock_id, &control);
-        self.sub_flows.insert(info.sock_id, control);
-        self.flows_rtt.insert(info.sock_id, 0);
-        self.flows_pending.insert(info.sock_id, DEFAULT_PENDING_BYTES);
+        self.subflow.insert(info.sock_id, control);
+        self.subflow_rtt.insert(info.sock_id, 0);
+        self.subflow_pending.insert(info.sock_id, DEFAULT_PENDING_BYTES);
         self.subflow_cwnd.insert(info.sock_id, DEFAULT_PENDING_BYTES);
+        self.subflow_util.insert(info.sock_id, 0);
+        self.subflow_inflight.insert(info.sock_id, 0);
         self.num_flows += 1;
         self.send_pattern();
     }
@@ -80,15 +84,17 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
             curr_cwnd_reduction: 0,
             ss_thresh: DEFAULT_SS_THRESH,
             sc: None,
-            sub_flows: HashMap::new(),
-            flows_pending: HashMap::new(),
-            flows_rtt: HashMap::new(),
+            subflow: HashMap::new(),
+            subflow_pending: HashMap::new(),
+            subflow_rtt: HashMap::new(),
             subflow_cwnd: HashMap::new(),
+            subflow_util: HashMap::new(),
+            subflow_inflight: HashMap::new(),
             num_flows: 0,
         };
 
         s.sc = s.install_fold(info.sock_id, &control);
-        s.sub_flows.insert(info.sock_id, control);
+        s.subflow.insert(info.sock_id, control);
 
         s.logger.as_ref().map(|log| {
             debug!(log, "starting new aggregate"; "flow_sock_id" => info.sock_id);
@@ -101,8 +107,10 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
     fn measurement(&mut self, sock_id: u32, m: Measurement) {
         let (acked, was_timeout, sacked, loss, rtt, inflight, pending) = self.get_fields(m);
 
-        self.flows_rtt.insert(sock_id, rtt);
-        self.flows_pending.insert(sock_id, pending);
+        self.subflow_rtt.insert(sock_id, rtt);
+        self.subflow_pending.insert(sock_id, pending);
+        self.subflow_util.insert(sock_id, acked+sacked);
+        self.subflow_inflight.insert(sock_id, inflight);
 
         if was_timeout {
             self.handle_timeout();
@@ -137,6 +145,8 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
                 "inflight (pkts)" => inflight, 
                 "loss" => loss, 
                 "rtt" => rtt,
+                //"prior_cwnd" => prior_cwnd,
+                "acked+sacked" => acked+sacked,
             );
         });
     }
@@ -148,7 +158,7 @@ impl<T: Ipc> AggregationExample<T> {
     /* flows. Can only be called when the connection vector is non-empty */
     fn get_window_rr(&mut self) -> u32 {
         // Currently, window is independent of the socket (split evenly)
-        self.cwnd / (self.sub_flows.len() as u32)
+        self.cwnd / (self.subflow.len() as u32)
     }
 
     fn get_average_rtt(&self) -> u32 {
@@ -158,7 +168,7 @@ impl<T: Ipc> AggregationExample<T> {
         }
         /* The code below is guaranteed to run when there is at least one flow */
         /* in the aggregate. */
-        for (_sock_id, rtt) in &self.flows_rtt {
+        for (_sock_id, rtt) in &self.subflow_rtt {
             average += rtt;
         }
         return average / self.num_flows;
@@ -166,32 +176,84 @@ impl<T: Ipc> AggregationExample<T> {
 
     /* Choose the pattern that needs to be sent to control flow scheduler here. */
     fn send_pattern(&mut self) {
-        //self.send_pattern_alloc_srpt();
-        //self.send_pattern_alloc_rr();
+        // self.send_pattern_alloc_srpt();
+        // self.send_pattern_alloc_rr();
         self.send_pattern_alloc_maxmin();
+        // self.send_pattern_alloc_proportional();
+    }
+
+    /* Beginnings of credit-based window allocator */
+    // fn send_pattern_alloc_credit_maxmin(&mut self) {
+    //     let mut total_demand = self.subflow_util.
+    //         iter().fold(0, |sum, x| { sum + (*x.1) });
+        
+    // }
+
+    fn get_demand_vec(&self) -> Vec<(&u32, &u32)> {
+        let init_demand_vec : Vec<_> = self.
+            subflow_pending.iter().collect();
+        let mut demand_vec = init_demand_vec.clone();
+        /* Other smart stuff in projecting demands can happen here. But for
+         * now, just sort and return.  */
+        demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
+        demand_vec
     }
 
     fn send_pattern_alloc_maxmin(&mut self) {
-        let mut demand_vec : Vec<_> = self.flows_pending.iter().collect();
-        demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
+        let mut demand_vec : Vec<_> = self.get_demand_vec();
+        // let mut demand_vec : Vec<_> = self.subflow_pending.iter().collect();
+        // demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
         let mut available_cwnd = self.cwnd;
         let mut num_flows_to_allocate = self.num_flows;
-        for (&sock_id, &pending) in demand_vec { // sorted traversal
-            if pending < available_cwnd / num_flows_to_allocate {
-                self.subflow_cwnd.insert(sock_id, pending);
-                available_cwnd -= pending;
+        for (&sock_id, &demand) in demand_vec { // sorted traversal
+            if demand < available_cwnd / num_flows_to_allocate {
+                self.subflow_cwnd.insert(sock_id, demand);
+                self.logger.as_ref().map(|log| {
+                    info!(log, "maxmin_alloc";
+                          "sock" => sock_id,
+                          "demand" => demand,
+                          "allocated window" => demand);
+                });
+                available_cwnd -= demand;
                 num_flows_to_allocate -= 1;
             } else {
                 self.subflow_cwnd.insert(sock_id, available_cwnd / num_flows_to_allocate);
+                self.logger.as_ref().map(|log| {
+                    info!(log, "maxmin_alloc";
+                          "sock" => sock_id,
+                          "demand" => demand,
+                          "allocated window" => available_cwnd / num_flows_to_allocate);
+                });
             }
         }
         self.send_pattern_alloc_messages();
+    }
+    
+
+    fn send_pattern_alloc_proportional(&mut self) {
+        /* we allocate the entire cwnd, but proportional to flow demands. */
+        let mut total_demand = self.subflow_pending.
+            iter().fold(0, |sum, x| { sum + (*x.1) });
+        if total_demand > 0 {
+            for (&sock_id, &demand) in &self.subflow_pending {
+                self.logger.as_ref().map(|log| {
+                    info!(log, "pf_alloc"; "sock" => sock_id, "demand" => demand);
+                });
+                let mut temp: u64 = (self.cwnd as u64) * (demand as u64);
+                temp /= total_demand as u64;
+                temp = std::cmp::min(temp, 2896 as u64);
+                self.subflow_cwnd.insert(sock_id, temp as u32);
+            }
+            self.send_pattern_alloc_messages();
+        } else {
+           self.send_pattern_alloc_rr();
+        }
     }
 
     /* Patterns are sent repeatedly to all connections that are part of an */
     /* aggregate. Loop over connections */
     fn send_pattern_alloc_rr(&mut self) {
-        for (&sock_id, _) in &mut self.flows_pending {
+        for (&sock_id, _) in &mut self.subflow_pending {
             self.subflow_cwnd.insert(sock_id, self.cwnd / self.num_flows);
         }
         self.send_pattern_alloc_messages();
@@ -203,10 +265,10 @@ impl<T: Ipc> AggregationExample<T> {
      * on reception of a single measurement. */
     fn send_pattern_alloc_srpt(&mut self) {
         let mut demand_sum = 0;
-        for (_sock_id, pending) in &self.flows_pending {
+        for (_sock_id, pending) in &self.subflow_pending {
             demand_sum += pending;
         }
-        let mut demand_vec : Vec<_> = self.flows_pending.iter().collect();
+        let mut demand_vec : Vec<_> = self.subflow_pending.iter().collect();
         /* Sort flows by demand if overall window demands exceeds available
          * aggregate window. */
         if demand_sum > self.cwnd {
@@ -238,14 +300,14 @@ impl<T: Ipc> AggregationExample<T> {
     /* aggregate. Loop over connections */
     fn send_pattern_sched_rr(&mut self) {
         let mut count = 0;
-        let num_flows = self.sub_flows.len() as u32;
+        let num_flows = self.subflow.len() as u32;
         let low_cwnd = 2; // number of packets in "off" phase of RR
         if num_flows == 0 {
             return;
         }
         let rr_interval_ns = self.get_average_rtt() * 1000;
         let flow_cwnd = self.get_window_rr();
-        for (&sock_id, ref control_channel) in &self.sub_flows {
+        for (&sock_id, ref control_channel) in &self.subflow {
             count = count + 1;
             let begin_off_time = rr_interval_ns * (count - 1);
             let end_off_time = rr_interval_ns * (num_flows - count);
@@ -277,7 +339,7 @@ impl<T: Ipc> AggregationExample<T> {
 
     fn send_pattern_alloc_messages(&self) {
         for (&sock_id, &flow_cwnd) in &self.subflow_cwnd {
-            self.sub_flows.
+            self.subflow.
                 get(&sock_id).
                 and_then(|control_channel| {
                     match control_channel.send_pattern(
@@ -296,6 +358,9 @@ impl<T: Ipc> AggregationExample<T> {
                             ()
                         }
                     };
+                    self.logger.as_ref().map(|log| {
+                        info!(log, "send_pattern"; "sock" => sock_id, "cwnd" => flow_cwnd);
+                    });
                     Some(())
                 })
                 .or_else(|| {
@@ -383,7 +448,7 @@ impl<T: Ipc> AggregationExample<T> {
             self.ss_thresh = self.init_cwnd;
         }
 
-        let num_flows = self.sub_flows.len() as u32;
+        let num_flows = self.subflow.len() as u32;
         // Congestion window update to reflect timeout for one flow
         self.cwnd = ((self.cwnd * (num_flows-1)) / num_flows) + self.init_cwnd;
         self.curr_cwnd_reduction = 0;
@@ -406,7 +471,7 @@ impl<T: Ipc> AggregationExample<T> {
         // AND the losses in the lossy cwnd have not yet been accounted for
         // OR there is a partial ACK AND cwnd was probing ss_thresh
         if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
-            let num_flows = self.sub_flows.len() as u32;
+            let num_flows = self.subflow.len() as u32;
             self.cwnd -= self.cwnd / (2 * num_flows);
             // self.cwnd /= 2;
             if self.cwnd <= self.init_cwnd {
