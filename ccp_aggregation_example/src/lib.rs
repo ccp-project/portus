@@ -137,18 +137,18 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
 
         self.send_pattern();
 
-        self.logger.as_ref().map(|log| {
-            debug!(log, "got ack";
-                "flow sock_id" => sock_id,
-                "acked(pkts)" => acked / 1448u32, 
-                "curr_cwnd (pkts)" => self.cwnd / 1460, 
-                "inflight (pkts)" => inflight, 
-                "loss" => loss, 
-                "rtt" => rtt,
-                //"prior_cwnd" => prior_cwnd,
-                "acked+sacked" => acked+sacked,
-            );
-        });
+        // self.logger.as_ref().map(|log| {
+        //     debug!(log, "got ack";
+        //         "flow sock_id" => sock_id,
+        //         "acked(pkts)" => acked / 1448u32, 
+        //         "curr_cwnd (pkts)" => self.cwnd / 1460, 
+        //         "inflight (pkts)" => inflight, 
+        //         "loss" => loss, 
+        //         "rtt" => rtt,
+        //         //"prior_cwnd" => prior_cwnd,
+        //         "acked+sacked" => acked+sacked,
+        //     );
+        // });
     }
 }
 
@@ -207,22 +207,22 @@ impl<T: Ipc> AggregationExample<T> {
         for (sock_id, demand) in demand_vec { // sorted traversal
             if demand < available_cwnd / num_flows_to_allocate {
                 self.subflow_cwnd.insert(sock_id, demand);
-                self.logger.as_ref().map(|log| {
-                    info!(log, "maxmin_alloc";
-                          "sock" => sock_id,
-                          "demand" => demand,
-                          "allocated window" => demand);
-                });
+                // self.logger.as_ref().map(|log| {
+                //     info!(log, "maxmin_alloc";
+                //           "sock" => sock_id,
+                //           "demand" => demand,
+                //           "allocated window" => demand);
+                // });
                 available_cwnd -= demand;
                 num_flows_to_allocate -= 1;
             } else {
                 self.subflow_cwnd.insert(sock_id, available_cwnd / num_flows_to_allocate);
-                self.logger.as_ref().map(|log| {
-                    info!(log, "maxmin_alloc";
-                          "sock" => sock_id,
-                          "demand" => demand,
-                          "allocated window" => available_cwnd / num_flows_to_allocate);
-                });
+                // self.logger.as_ref().map(|log| {
+                //     info!(log, "maxmin_alloc";
+                //           "sock" => sock_id,
+                //           "demand" => demand,
+                //           "allocated window" => available_cwnd / num_flows_to_allocate);
+                // });
             }
         }
         self.send_pattern_alloc_messages();
@@ -357,9 +357,9 @@ impl<T: Ipc> AggregationExample<T> {
                             ()
                         }
                     };
-                    self.logger.as_ref().map(|log| {
-                        info!(log, "send_pattern"; "sock" => sock_id, "cwnd" => flow_cwnd);
-                    });
+                    // self.logger.as_ref().map(|log| {
+                    //     info!(log, "send_pattern"; "sock" => sock_id, "cwnd" => flow_cwnd);
+                    // });
                     Some(())
                 })
                 .or_else(|| {
