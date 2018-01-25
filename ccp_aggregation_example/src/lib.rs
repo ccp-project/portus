@@ -189,23 +189,22 @@ impl<T: Ipc> AggregationExample<T> {
         
     // }
 
-    fn get_demand_vec(&self) -> Vec<(&u32, &u32)> {
-        let init_demand_vec : Vec<_> = self.
-            subflow_pending.iter().collect();
-        let mut demand_vec = init_demand_vec.clone();
+    fn get_demand_vec(&self) -> Vec<(u32, u32)> {
+        let mut demand_vec : Vec<(u32, u32)> = self.
+            subflow_pending.clone().into_iter().collect();
         /* Other smart stuff in projecting demands can happen here. But for
          * now, just sort and return.  */
-        demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
+        demand_vec.sort_by(|a, b| { a.1.cmp(&b.1) });
         demand_vec
     }
 
     fn send_pattern_alloc_maxmin(&mut self) {
-        let mut demand_vec : Vec<_> = self.get_demand_vec();
+        let demand_vec : Vec<_> = self.get_demand_vec();
         // let mut demand_vec : Vec<_> = self.subflow_pending.iter().collect();
         // demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
         let mut available_cwnd = self.cwnd;
         let mut num_flows_to_allocate = self.num_flows;
-        for (&sock_id, &demand) in demand_vec { // sorted traversal
+        for (sock_id, demand) in demand_vec { // sorted traversal
             if demand < available_cwnd / num_flows_to_allocate {
                 self.subflow_cwnd.insert(sock_id, demand);
                 self.logger.as_ref().map(|log| {
