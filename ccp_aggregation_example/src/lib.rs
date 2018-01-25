@@ -239,8 +239,6 @@ impl<T: Ipc> AggregationExample<T> {
 
     fn send_pattern_alloc_maxmin(&mut self) {
         let demand_vec : Vec<_> = self.get_demand_vec();
-        // let mut demand_vec : Vec<_> = self.subflow_pending.iter().collect();
-        // demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
         let mut available_cwnd = self.cwnd;
         let mut num_flows_to_allocate = self.num_flows;
         for (sock_id, demand) in demand_vec { // sorted traversal
