@@ -168,14 +168,8 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
 }
 
 impl<T: Ipc> AggregationExample<T> {
-    /* Function that determines congestion window per flow */
-    /* For now, simplistically just divide the overall cwnd by the number of */
-    /* flows. Can only be called when the connection vector is non-empty */
-    fn get_window_rr(&mut self) -> u32 {
-        // Currently, window is independent of the socket (split evenly)
-        self.cwnd / (self.subflow.len() as u32)
-    }
 
+    /* Determine average RTT of all the managed connections */
     fn get_average_rtt(&self) -> u32 {
         let mut average = 0;
         if self.num_flows == 0 {
@@ -189,64 +183,60 @@ impl<T: Ipc> AggregationExample<T> {
         return average / self.num_flows;
     }
 
-    /* Choose the pattern that needs to be sent to control flow scheduler here. */
-    fn send_pattern(&mut self) {
-        // self.send_pattern_alloc_srpt();
-        // self.send_pattern_alloc_rr();
-        self.send_pattern_alloc_maxmin();
-        // self.send_pattern_alloc_proportional();
-    }
-
-    /* Beginnings of credit-based window allocator */
-    // fn send_pattern_alloc_credit_maxmin(&mut self) {
-    //     let mut total_demand = self.subflow_util.
-    //         iter().fold(0, |sum, x| { sum + (*x.1) });
-        
-    // }
-
     fn get_demand_vec(&self) -> Vec<(u32, u32)> {
         let mut demand_vec : Vec<(u32, u32)> = self.
             subflow_pending.clone().into_iter().collect();
-        /* Forecast demands based on allocated cwnd and time past since last ack
-         * for this flow */
-        for i in 0..demand_vec.len() {
-            let (sock, demand) = demand_vec[i];
-            let cwnd = self.subflow_cwnd.get(&sock).unwrap();
-            let rtt_us = self.subflow_rtt.get(&sock).unwrap();
-            let dur = self.subflow_last_msg.get(&sock).unwrap().elapsed();
-            let elapsed_us =  dur.as_secs() as u32 * 1000000 +
-                (dur.subsec_nanos() / 1000);
-            let mut new_demand = demand;
-            if *rtt_us > 0 {
-                if elapsed_us < *rtt_us {
-                    // something wrong. We don't expect the RTT to be greater
-                    // than the time elapsed between successive measurement
-                    // up-calls.
-                    self.logger.as_ref().map(|log| {
-                        warn!(log, "maxmin_alloc sees smaller elapsed time than rtt";);
-                    });
-                    new_demand = demand;
-                } else {
-                    let mut temp : u64 = *cwnd as u64 * (elapsed_us - *rtt_us) as u64;
-                    temp /= *rtt_us as u64;
-                    if temp as u32 > demand {
-                        new_demand = 0;
+        if self.forecast {
+            /* Forecast demands based on allocated cwnd and time past since last ack
+             * for this flow */
+            for i in 0..demand_vec.len() {
+                let (sock, demand) = demand_vec[i];
+                let cwnd = self.subflow_cwnd.get(&sock).unwrap();
+                let rtt_us = self.subflow_rtt.get(&sock).unwrap();
+                let dur = self.subflow_last_msg.get(&sock).unwrap().elapsed();
+                let elapsed_us =  dur.as_secs() as u32 * 1000000 +
+                    (dur.subsec_nanos() / 1000);
+                let mut new_demand = demand;
+                if *rtt_us > 0 {
+                    if elapsed_us < *rtt_us {
+                        // something wrong. We don't expect the RTT to be greater
+                        // than the time elapsed between successive measurement
+                        // up-calls.
+                        self.logger.as_ref().map(|log| {
+                            warn!(log, "maxmin_alloc sees smaller elapsed time than rtt";);
+                        });
+                        new_demand = demand;
                     } else {
-                        new_demand = demand - (temp as u32);
+                        let mut temp : u64 = *cwnd as u64 * (elapsed_us - *rtt_us) as u64;
+                        temp /= *rtt_us as u64;
+                        if temp as u32 > demand {
+                            new_demand = 0;
+                        } else {
+                            new_demand = demand - (temp as u32);
+                        }
                     }
-                    println!("Forecasting: new: {} old: {}; elapsed {} dur {:?} ",
-                             new_demand, demand, elapsed_us, dur);
                 }
+                demand_vec[i] = (sock, std::cmp::max(new_demand, DEFAULT_PENDING_BYTES));
             }
-            demand_vec[i] = (sock, std::cmp::max(new_demand, DEFAULT_PENDING_BYTES));
         }
-
-        /* Other smart stuff in projecting demands can happen here. But for
-         * now, just sort and return.  */
+        /* Always return a sorted demand vector */
         demand_vec.sort_by(|a, b| { a.1.cmp(&b.1) });
         demand_vec
     }
 
+    /* Choose the allocator that needs to be used to send control patterns here. */
+    fn send_pattern(&mut self) {
+        match self.allocator.as_str() {
+            "rr" => self.send_pattern_alloc_rr(),
+            "maxmin" => self.send_pattern_alloc_maxmin(),
+            "srpt" => self.send_pattern_alloc_srpt(),
+            "prop" => self.send_pattern_alloc_proportional(),
+            _ => unreachable!(),
+        };
+        self.send_pattern_alloc_messages();
+    }
+
+    /* max-min fair allocation based on demands */
     fn send_pattern_alloc_maxmin(&mut self) {
         let demand_vec : Vec<_> = self.get_demand_vec();
         let mut available_cwnd = self.cwnd;
@@ -254,50 +244,35 @@ impl<T: Ipc> AggregationExample<T> {
         for (sock_id, demand) in demand_vec { // sorted traversal
             if demand < available_cwnd / num_flows_to_allocate {
                 self.subflow_cwnd.insert(sock_id, demand);
-                // self.logger.as_ref().map(|log| {
-                //     info!(log, "maxmin_alloc";
-                //           "sock" => sock_id,
-                //           "demand" => demand,
-                //           "allocated window" => demand);
-                // });
                 available_cwnd -= demand;
                 num_flows_to_allocate -= 1;
             } else {
                 self.subflow_cwnd.insert(sock_id, available_cwnd / num_flows_to_allocate);
-                // self.logger.as_ref().map(|log| {
-                //     info!(log, "maxmin_alloc";
-                //           "sock" => sock_id,
-                //           "demand" => demand,
-                //           "allocated window" => available_cwnd / num_flows_to_allocate);
-                // });
             }
         }
-        self.send_pattern_alloc_messages();
     }
-    
 
+    /* we allocate the entire cwnd, but proportional to flow demands. */
     fn send_pattern_alloc_proportional(&mut self) {
-        /* we allocate the entire cwnd, but proportional to flow demands. */
-        let total_demand = self.subflow_pending.
-            iter().fold(0, |sum, x| { sum + (*x.1) });
+        let demand_vec : Vec<_> = self.get_demand_vec();
+        let total_demand = demand_vec
+            .iter().fold(0, |sum, x| { sum + (x.1) });
         if total_demand > 0 {
-            for (&sock_id, &demand) in &self.subflow_pending {
-                self.logger.as_ref().map(|log| {
-                    info!(log, "pf_alloc"; "sock" => sock_id, "demand" => demand);
-                });
+            for (sock_id, demand) in demand_vec {
                 let mut temp: u64 = (self.cwnd as u64) * (demand as u64);
                 temp /= total_demand as u64;
                 temp = std::cmp::min(temp, 2896 as u64);
                 self.subflow_cwnd.insert(sock_id, temp as u32);
             }
-            self.send_pattern_alloc_messages();
-        } else {
-           self.send_pattern_alloc_rr();
+        } else { // IF total demand is 0 (almost surely a bug), fall back to RR.
+            self.logger.as_ref().map(|log| {
+                warn!(log, "alloc_pf found total demand to be zero";);
+            });
+            self.send_pattern_alloc_rr();
         }
     }
 
-    /* Patterns are sent repeatedly to all connections that are part of an */
-    /* aggregate. Loop over connections */
+    /* demand-blind round robin allocation */
     fn send_pattern_alloc_rr(&mut self) {
         for (&sock_id, _) in &mut self.subflow_pending {
             self.subflow_cwnd.insert(sock_id, self.cwnd / self.num_flows);
@@ -305,24 +280,15 @@ impl<T: Ipc> AggregationExample<T> {
         self.send_pattern_alloc_messages();
     }
 
-    /* Set congestion windows based on remaining demand, as estimated by
-     * pending bytes. Simple version doesn't try to coordinate the reception of
-     * different measurement messages: just simply resets all control patterns
-     * on reception of a single measurement. */
+    /* Set congestion windows based on remaining demand. Smallest demands get
+     * allocated first in full, while larger demands that exceed total
+     * available window may not even be allocated. */
     fn send_pattern_alloc_srpt(&mut self) {
-        let mut demand_sum = 0;
-        for (_sock_id, pending) in &self.subflow_pending {
-            demand_sum += pending;
-        }
-        let mut demand_vec : Vec<_> = self.subflow_pending.iter().collect();
-        /* Sort flows by demand if overall window demands exceeds available
-         * aggregate window. */
-        if demand_sum > self.cwnd {
-            demand_vec.sort_by(|a, b| { a.1.cmp(b.1) });
-        }
-        /* Must allocate in order that demand_vec allows */
+        let demand_vec : Vec<_> = self.get_demand_vec();
+        /* Must allocate in order of increasing demands, which get_demand_vec()
+           return order guarantees */
         let mut allocated_cwnd = 0;
-        for (&sock_id, &flow_demand) in demand_vec {
+        for (sock_id, flow_demand) in demand_vec {
             let mut flow_cwnd;
             /* Perform allocation in order of demands, keeping larger flows out
              * if necessary */
@@ -339,11 +305,10 @@ impl<T: Ipc> AggregationExample<T> {
             }
             self.subflow_cwnd.insert(sock_id, flow_cwnd);
         }
-        self.send_pattern_alloc_messages();
     }
 
-    /* Patterns are sent repeatedly to all connections that are part of an */
-    /* aggregate. Loop over connections */
+    /* This is a qualitatively different allocation mechanism which tries to
+     * schedule in addition to allocating window. Not currently used. */
     fn send_pattern_sched_rr(&mut self) {
         let mut count = 0;
         let num_flows = self.subflow.len() as u32;
@@ -352,7 +317,7 @@ impl<T: Ipc> AggregationExample<T> {
             return;
         }
         let rr_interval_ns = self.get_average_rtt() * 1000;
-        let flow_cwnd = self.get_window_rr();
+        let flow_cwnd = self.cwnd / self.num_flows;
         for (&sock_id, ref control_channel) in &self.subflow {
             count = count + 1;
             let begin_off_time = rr_interval_ns * (count - 1);
@@ -404,9 +369,6 @@ impl<T: Ipc> AggregationExample<T> {
                             ()
                         }
                     };
-                    // self.logger.as_ref().map(|log| {
-                    //     info!(log, "send_pattern"; "sock" => sock_id, "cwnd" => flow_cwnd);
-                    // });
                     Some(())
                 })
                 .or_else(|| {

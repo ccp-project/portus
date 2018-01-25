@@ -23,9 +23,9 @@ fn make_logger() -> slog::Logger {
 // Function to check if the allocator in the cmdline args is sane
 fn allocator_valid(v: String) -> std::result::Result<(), String> {
         match v.as_str() {
-        "rr" | "maxmin" | "srpt" => Ok(()),
+        "rr" | "maxmin" | "srpt | prop" => Ok(()),
         _ => Err(String::from(
-            format!("allocator must be one of (rr|maxmin|srpt): {:?}", v),
+            format!("allocator must be one of (rr|maxmin|srpt|prop): {:?}", v),
         )),
     }
 }
@@ -43,7 +43,7 @@ fn make_args() -> Result<(ccp_aggregation_example::AggregationExampleConfig, Str
         .arg(Arg::with_name("alloc")
              .long("allocator")
              .short("a")
-             .help("Set the window allocator for the aggregate: (rr|maxmin|srpt)")
+             .help("Set the window allocator for the aggregate: (rr|maxmin|srpt|prop)")
              .default_value("rr")
              .validator(allocator_valid))
         .arg(Arg::with_name("forecast")
