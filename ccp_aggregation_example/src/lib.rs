@@ -5,6 +5,7 @@ extern crate slog;
 #[macro_use]
 extern crate portus;
 
+use std::time::Instant;
 use std::vec::Vec;
 use std::collections::HashMap;
 use portus::{Aggregator, CongAlg, Config, Datapath, DatapathInfo, Measurement};
@@ -25,11 +26,12 @@ pub struct AggregationExample<T: Ipc> {
     subflow_cwnd: HashMap<u32, u32>,
     subflow_util: HashMap<u32, u32>,
     subflow_inflight: HashMap<u32, u32>,
+    subflow_last_msg: HashMap<u32, std::time::Instant>,
     num_flows: u32,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
-pub const DEFAULT_PENDING_BYTES: u32 = 14480;
+pub const DEFAULT_PENDING_BYTES: u32 = 1448;
 
 #[derive(Clone)]
 pub struct AggregationExampleConfig {}
@@ -64,6 +66,7 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
         self.subflow_cwnd.insert(info.sock_id, DEFAULT_PENDING_BYTES);
         self.subflow_util.insert(info.sock_id, 0);
         self.subflow_inflight.insert(info.sock_id, 0);
+        self.subflow_last_msg.insert(info.sock_id, Instant::now());
         self.num_flows += 1;
         self.send_pattern();
     }
@@ -90,6 +93,7 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
             subflow_cwnd: HashMap::new(),
             subflow_util: HashMap::new(),
             subflow_inflight: HashMap::new(),
+            subflow_last_msg: HashMap::new(),
             num_flows: 0,
         };
 
@@ -111,6 +115,7 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
         self.subflow_pending.insert(sock_id, pending);
         self.subflow_util.insert(sock_id, acked+sacked);
         self.subflow_inflight.insert(sock_id, inflight);
+        self.subflow_last_msg.insert(sock_id, Instant::now());
 
         if was_timeout {
             self.handle_timeout();
@@ -192,6 +197,40 @@ impl<T: Ipc> AggregationExample<T> {
     fn get_demand_vec(&self) -> Vec<(u32, u32)> {
         let mut demand_vec : Vec<(u32, u32)> = self.
             subflow_pending.clone().into_iter().collect();
+        /* Forecast demands based on allocated cwnd and time past since last ack
+         * for this flow */
+        for i in 0..demand_vec.len() {
+            let (sock, demand) = demand_vec[i];
+            let cwnd = self.subflow_cwnd.get(&sock).unwrap();
+            let rtt_us = self.subflow_rtt.get(&sock).unwrap();
+            let dur = self.subflow_last_msg.get(&sock).unwrap().elapsed();
+            let elapsed_us =  dur.as_secs() as u32 * 1000000 +
+                (dur.subsec_nanos() / 1000);
+            let mut new_demand = demand;
+            if *rtt_us > 0 {
+                if elapsed_us < *rtt_us {
+                    // something wrong. We don't expect the RTT to be greater
+                    // than the time elapsed between successive measurement
+                    // up-calls.
+                    self.logger.as_ref().map(|log| {
+                        warn!(log, "maxmin_alloc sees smaller elapsed time than rtt";);
+                    });
+                    new_demand = demand;
+                } else {
+                    let mut temp : u64 = *cwnd as u64 * (elapsed_us - *rtt_us) as u64;
+                    temp /= *rtt_us as u64;
+                    if temp as u32 > demand {
+                        new_demand = 0;
+                    } else {
+                        new_demand = demand - (temp as u32);
+                    }
+                    println!("Forecasting: new: {} old: {}; elapsed {} dur {:?} ",
+                             new_demand, demand, elapsed_us, dur);
+                }
+            }
+            demand_vec[i] = (sock, std::cmp::max(new_demand, DEFAULT_PENDING_BYTES));
+        }
+
         /* Other smart stuff in projecting demands can happen here. But for
          * now, just sort and return.  */
         demand_vec.sort_by(|a, b| { a.1.cmp(&b.1) });
@@ -231,7 +270,7 @@ impl<T: Ipc> AggregationExample<T> {
 
     fn send_pattern_alloc_proportional(&mut self) {
         /* we allocate the entire cwnd, but proportional to flow demands. */
-        let mut total_demand = self.subflow_pending.
+        let total_demand = self.subflow_pending.
             iter().fold(0, |sum, x| { sum + (*x.1) });
         if total_demand > 0 {
             for (&sock_id, &demand) in &self.subflow_pending {
