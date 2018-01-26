@@ -33,7 +33,7 @@ pub struct AggregationExample<T: Ipc> {
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
-pub const DEFAULT_PENDING_BYTES: u32 = 1448;
+pub const DEFAULT_PENDING_BYTES: u32 = 2896;
 
 #[derive(Clone)]
 pub struct AggregationExampleConfig {
@@ -109,9 +109,12 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
 
         s.sc = s.install_fold(info.sock_id, &control);
         s.subflow.insert(info.sock_id, control);
+        let allocator = s.allocator.clone();
+        let forecast  = s.forecast.clone();
 
         s.logger.as_ref().map(|log| {
             debug!(log, "starting new aggregate"; "flow_sock_id" => info.sock_id);
+            debug!(log, "parameters"; "allocator" => allocator, "forecast" => forecast);
         });
 
         s.send_pattern();
@@ -152,18 +155,18 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
 
         self.send_pattern();
 
-        // self.logger.as_ref().map(|log| {
-        //     debug!(log, "got ack";
-        //         "flow sock_id" => sock_id,
-        //         "acked(pkts)" => acked / 1448u32, 
-        //         "curr_cwnd (pkts)" => self.cwnd / 1460, 
-        //         "inflight (pkts)" => inflight, 
-        //         "loss" => loss, 
-        //         "rtt" => rtt,
-        //         //"prior_cwnd" => prior_cwnd,
-        //         "acked+sacked" => acked+sacked,
-        //     );
-        // });
+        self.logger.as_ref().map(|log| {
+            debug!(log, "got ack";
+                "flow sock_id" => sock_id,
+                "acked(pkts)" => acked / 1448u32, 
+                "curr_cwnd (pkts)" => self.cwnd / 1460, 
+                "inflight (pkts)" => inflight, 
+                "loss" => loss, 
+                "rtt" => rtt,
+                //"prior_cwnd" => prior_cwnd,
+                "acked+sacked" => acked+sacked,
+            );
+        });
     }
 }
 
@@ -203,7 +206,7 @@ impl<T: Ipc> AggregationExample<T> {
                         // than the time elapsed between successive measurement
                         // up-calls.
                         self.logger.as_ref().map(|log| {
-                            warn!(log, "maxmin_alloc sees smaller elapsed time than rtt";);
+                            warn!(log, "demand estimation sees smaller elapsed time than rtt";);
                         });
                         new_demand = demand;
                     } else {
@@ -221,6 +224,7 @@ impl<T: Ipc> AggregationExample<T> {
         }
         /* Always return a sorted demand vector */
         demand_vec.sort_by(|a, b| { a.1.cmp(&b.1) });
+        println!("Adjusted demands {:?} (forecast={:?})", demand_vec, self.forecast);
         demand_vec
     }
 
@@ -243,11 +247,12 @@ impl<T: Ipc> AggregationExample<T> {
         let mut num_flows_to_allocate = self.num_flows;
         for (sock_id, demand) in demand_vec { // sorted traversal
             if demand < available_cwnd / num_flows_to_allocate {
-                self.subflow_cwnd.insert(sock_id, demand);
+                self.subflow_cwnd.insert(sock_id, std::cmp::max(demand, DEFAULT_PENDING_BYTES));
                 available_cwnd -= demand;
                 num_flows_to_allocate -= 1;
             } else {
-                self.subflow_cwnd.insert(sock_id, available_cwnd / num_flows_to_allocate);
+                self.subflow_cwnd.insert(sock_id, std::cmp::max(
+                    available_cwnd / num_flows_to_allocate, DEFAULT_PENDING_BYTES));
             }
         }
     }
@@ -261,8 +266,7 @@ impl<T: Ipc> AggregationExample<T> {
             for (sock_id, demand) in demand_vec {
                 let mut temp: u64 = (self.cwnd as u64) * (demand as u64);
                 temp /= total_demand as u64;
-                temp = std::cmp::min(temp, 2896 as u64);
-                self.subflow_cwnd.insert(sock_id, temp as u32);
+                self.subflow_cwnd.insert(sock_id, std::cmp::max(temp as u32, DEFAULT_PENDING_BYTES));
             }
         } else { // IF total demand is 0 (almost surely a bug), fall back to RR.
             self.logger.as_ref().map(|log| {
@@ -277,7 +281,6 @@ impl<T: Ipc> AggregationExample<T> {
         for (&sock_id, _) in &mut self.subflow_pending {
             self.subflow_cwnd.insert(sock_id, self.cwnd / self.num_flows);
         }
-        self.send_pattern_alloc_messages();
     }
 
     /* Set congestion windows based on remaining demand. Smallest demands get
@@ -301,9 +304,9 @@ impl<T: Ipc> AggregationExample<T> {
                     allocated_cwnd = self.cwnd;
                 }
             } else {
-                flow_cwnd = 1; // keep a small number of packets in flight anyway
+                flow_cwnd = DEFAULT_PENDING_BYTES; // keep a small number of packets in flight anyway
             }
-            self.subflow_cwnd.insert(sock_id, flow_cwnd);
+            self.subflow_cwnd.insert(sock_id, std::cmp::max(flow_cwnd, DEFAULT_PENDING_BYTES));
         }
     }
 
@@ -349,6 +352,7 @@ impl<T: Ipc> AggregationExample<T> {
     }
 
     fn send_pattern_alloc_messages(&self) {
+        println!("Allocated windows {:?}, overall {}", self.subflow_cwnd, self.cwnd);
         for (&sock_id, &flow_cwnd) in &self.subflow_cwnd {
             self.subflow.
                 get(&sock_id).
