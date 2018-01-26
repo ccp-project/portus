@@ -68,19 +68,11 @@ impl From<DatapathInfo> for AggregationExampleKey {
 
 impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
     type Key = AggregationExampleKey;
-    
+
     fn new_flow(&mut self, info: DatapathInfo, control: Datapath<T>) {
         self.install_fold(info.sock_id, &control);
         self.subflow.insert(info.sock_id, control);
-        self.subflow_rtt.insert(info.sock_id, 0);
-        self.subflow_pending.insert(info.sock_id, DEFAULT_PENDING_BYTES);
-        self.subflow_cwnd.insert(info.sock_id, DEFAULT_PENDING_BYTES);
-        self.subflow_util.insert(info.sock_id, 0);
-        self.subflow_inflight.insert(info.sock_id, 0);
-        self.subflow_last_msg.insert(info.sock_id, Instant::now());
-        self.subflow_init_cwnd.insert(info.sock_id, info.init_cwnd);
-        self.subflow_curr_cwnd_reduction.insert(info.sock_id, 0);
-        self.subflow_ss_thresh.insert(info.sock_id, DEFAULT_SS_THRESH);
+        self.init_cc_defaults(info.sock_id, info.init_cwnd);
         self.num_flows += 1;
         self.send_pattern(info.sock_id);
     }
@@ -113,13 +105,14 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
             subflow_util: HashMap::new(),
             subflow_inflight: HashMap::new(),
             subflow_last_msg: HashMap::new(),
-            num_flows: 0,
+            num_flows: 1,
             allocator: cfg.config.allocator,
             forecast: cfg.config.forecast,
         };
 
         s.sc = s.install_fold(info.sock_id, &control);
         s.subflow.insert(info.sock_id, control);
+        s.init_cc_defaults(info.sock_id, info.init_cwnd);
         let allocator = s.allocator.clone();
         let forecast  = s.forecast.clone();
 
@@ -420,6 +413,19 @@ impl<T: Ipc> AggregationExample<T> {
         }
     }
 
+    // Initialize default congestion control variables for each flow
+    fn init_cc_defaults(&mut self, sock: u32, init_cwnd: u32) {
+        self.subflow_rtt.insert(sock, 0);
+        self.subflow_pending.insert(sock, DEFAULT_PENDING_BYTES);
+        self.subflow_cwnd.insert(sock, DEFAULT_PENDING_BYTES);
+        self.subflow_util.insert(sock, 0);
+        self.subflow_inflight.insert(sock, 0);
+        self.subflow_last_msg.insert(sock, Instant::now());
+        self.subflow_init_cwnd.insert(sock, init_cwnd);
+        self.subflow_curr_cwnd_reduction.insert(sock, 0);
+        self.subflow_ss_thresh.insert(sock, DEFAULT_SS_THRESH);
+    }
+
     /* Install fold once for each connection */
     fn install_fold(&self, sock_id: u32, control_channel: &Datapath<T>) -> Option<Scope> {
         match control_channel.install_measurement(
@@ -512,13 +518,11 @@ impl<T: Ipc> AggregationExample<T> {
     fn handle_timeout(&mut self, sock: u32, perflow: bool) {
         let mut ss_thresh = self.ss_thresh;
         let mut init_cwnd = self.init_cwnd;
-        let mut curr_cwnd_reduction = self.curr_cwnd_reduction;
         let mut cwnd = self.cwnd;
         let mut num_flows = self.subflow.len() as u32;
         if perflow {
             ss_thresh = *self.subflow_ss_thresh.get(&sock).unwrap();
             init_cwnd = *self.subflow_init_cwnd.get(&sock).unwrap();
-            curr_cwnd_reduction = *self.subflow_curr_cwnd_reduction.get(&sock).unwrap();
             cwnd = *self.subflow_cwnd.get(&sock).unwrap();
             num_flows = 1;
         }
@@ -530,7 +534,7 @@ impl<T: Ipc> AggregationExample<T> {
 
         // Congestion window update to reflect timeout for one flow
         cwnd = ((cwnd * (num_flows-1)) / num_flows) + init_cwnd;
-        curr_cwnd_reduction = 0;
+        let curr_cwnd_reduction = 0;
 
         if perflow {
             self.subflow_ss_thresh.insert(sock, ss_thresh);
