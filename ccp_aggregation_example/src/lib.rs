@@ -201,22 +201,12 @@ impl<T: Ipc> AggregationExample<T> {
                     (dur.subsec_nanos() / 1000);
                 let mut new_demand = demand;
                 if *rtt_us > 0 {
-                    if elapsed_us < *rtt_us {
-                        // something wrong. We don't expect the RTT to be greater
-                        // than the time elapsed between successive measurement
-                        // up-calls.
-                        self.logger.as_ref().map(|log| {
-                            warn!(log, "demand estimation sees smaller elapsed time than rtt";);
-                        });
-                        new_demand = demand;
+                    let mut temp : u64 = *cwnd as u64 * (elapsed_us) as u64;
+                    temp /= *rtt_us as u64;
+                    if temp as u32 > demand {
+                        new_demand = 0;
                     } else {
-                        let mut temp : u64 = *cwnd as u64 * (elapsed_us - *rtt_us) as u64;
-                        temp /= *rtt_us as u64;
-                        if temp as u32 > demand {
-                            new_demand = 0;
-                        } else {
-                            new_demand = demand - (temp as u32);
-                        }
+                        new_demand = demand - (temp as u32);
                     }
                 }
                 demand_vec[i] = (sock, std::cmp::max(new_demand, DEFAULT_PENDING_BYTES));
