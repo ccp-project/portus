@@ -23,6 +23,7 @@ pub struct Reno<T: Ipc> {
     last_cwnd_reduction: time::Timespec,
     init_cwnd: u32,
     rtt: u32,
+    in_startup: bool,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
@@ -39,6 +40,7 @@ pub struct RenoConfig {
     pub ss_thresh: u32,
     pub init_cwnd: u32,
     pub report: RenoConfigReport,
+    pub ss_in_fold: bool,
 }
 
 impl Default for RenoConfig {
@@ -47,6 +49,7 @@ impl Default for RenoConfig {
             ss_thresh: DEFAULT_SS_THRESH,
             init_cwnd: 0,
             report: RenoConfigReport::Rtt,
+            ss_in_fold: false,
         }
     }
 }
@@ -78,6 +81,38 @@ impl<T: Ipc> Reno<T> {
                     warn!(log, "send_pattern"; "err" => ?e);
                 });
             }
+        }
+    }
+
+    fn send_pattern_ss(&self) {
+        self.control_channel.send_pattern(
+            self.sock_id,
+            make_pattern!(
+                pattern::Event::WaitNs(500_000_000) => // 500ms
+                pattern::Event::Report
+            ),
+        ).unwrap();
+    }
+
+    /// Don't update acked, since those acks are already accounted for in slow start
+    fn install_fold_ss(&self) -> Option<Scope> {
+        match self.control_channel.install_measurement(
+            self.sock_id,
+            "
+                (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
+                (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
+                (bind Flow.loss Pkt.lost_pkts_sample)
+                (bind Flow.timeout Pkt.was_timeout)
+                (bind Flow.inflight Pkt.packets_in_flight)
+                (bind Flow.rtt Pkt.rtt_sample_us)
+                (bind Cwnd (+ Cwnd Pkt.bytes_acked))
+                (bind isUrgent Pkt.was_timeout)
+                (bind isUrgent (!if isUrgent (> Flow.loss 0)))
+            "
+                .as_bytes(),
+        ) {
+            Ok(s) => Some(s),
+            Err(_) => None,
         }
     }
 
@@ -234,6 +269,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
             sock_id: info.sock_id,
             ss_thresh: cfg.config.ss_thresh,
             rtt: 0,
+            in_startup: false,
         };
 
         if cfg.config.init_cwnd != 0 {
@@ -245,12 +281,25 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
             debug!(log, "starting reno flow"; "sock_id" => info.sock_id);
         });
 
-        s.sc = s.install_fold();
-        s.send_pattern();
+        if cfg.config.ss_in_fold {
+            s.sc = s.install_fold_ss();
+            s.send_pattern_ss();
+            s.in_startup = true;
+        } else {
+            s.sc = s.install_fold();
+            s.send_pattern();
+        }
+
         s
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
+        if self.in_startup {
+            // install new fold
+            self.sc = self.install_fold();
+            self.in_startup = false;
+        }
+
         let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(m);
         self.rtt = rtt;
         if was_timeout {
@@ -264,14 +313,14 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         if loss > 0 || sacked > 0 {
             self.cwnd_reduction(loss, sacked, acked);
         } else if acked < self.curr_cwnd_reduction {
-            self.curr_cwnd_reduction -= acked / 1448u32;
+            self.curr_cwnd_reduction -= (acked as f32 / 1448.) as u32;
         } else {
             self.curr_cwnd_reduction = 0;
         }
 
         if self.curr_cwnd_reduction > 0 {
             self.logger.as_ref().map(|log| {
-                debug!(log, "in cwnd reduction"; "acked" => acked / 1448u32, "deficit" => self.curr_cwnd_reduction);
+                debug!(log, "in cwnd reduction"; "acked" => acked / 1448, "deficit" => self.curr_cwnd_reduction);
             });
             return;
         }
@@ -280,8 +329,8 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
 
         self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; 
-                "acked(pkts)" => acked / 1448u32, 
-                "curr_cwnd (pkts)" => self.cwnd / 1448u32, 
+                "acked(pkts)" => acked / 1448, 
+                "curr_cwnd (pkts)" => self.cwnd / 1448, 
                 "inflight (pkts)" => inflight, 
                 "loss" => loss, 
                 "ssthresh" => self.ss_thresh,

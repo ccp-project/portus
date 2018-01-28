@@ -40,6 +40,9 @@ fn make_args() -> Result<(ccp_reno::RenoConfig, String), std::num::ParseIntError
              .long("init_cwnd")
              .help("Sets the initial congestion window, in bytes. Setting 0 will use datapath default.")
              .default_value("0"))
+        .arg(Arg::with_name("ss_in_fold")
+             .long("ss_in_fold")
+             .help("Implement slow start in a fold function"))
         .arg(Arg::with_name("report_per_ack")
              .long("per_ack")
              .help("Specifies that the datapath should send a measurement upon every ACK"))
@@ -69,7 +72,8 @@ fn make_args() -> Result<(ccp_reno::RenoConfig, String), std::num::ParseIntError
                 )
             } else {
                 ccp_reno::RenoConfigReport::Rtt
-            }
+            },
+            ss_in_fold: matches.is_present("ss_in_fold"),
         },
         String::from(matches.value_of("ipc").unwrap()),
     ))
