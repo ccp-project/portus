@@ -128,11 +128,28 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
     fn measurement(&mut self, sock_id: u32, m: Measurement) {
         let (acked, was_timeout, sacked, loss, rtt, inflight, pending) = self.get_fields(m);
 
+        /* Record a few stats from the last RTT to help profile the allocators. */
+        let old_pending = *self.subflow_pending.get(&sock_id).unwrap() as i32;
+        let cwnd = *self.subflow_cwnd.get(&sock_id).unwrap() as i32;
+        let util = (acked + sacked) as i32;
+        
         self.subflow_rtt.insert(sock_id, rtt);
         self.subflow_pending.insert(sock_id, pending);
         self.subflow_util.insert(sock_id, acked+sacked);
         self.subflow_inflight.insert(sock_id, inflight);
         self.subflow_last_msg.insert(sock_id, Instant::now());
+
+        self.logger.as_ref().map(|log| {
+            debug!(log, "Alloc measures";
+                   "flow" => sock_id,
+                   "allocated window" => cwnd,
+                   "utilized (acks+sacks)" => util,
+                   "pending last RTT" => old_pending,
+                   "diff cwnd-util (+ is overalloc)" => cwnd - util,
+                   "diff cwnd-old_pending" => cwnd - old_pending,
+                   "new_pending" => pending,
+            );
+        });
 
         let perflow: bool = self.allocator.as_str() == "perflow";
 
@@ -251,17 +268,27 @@ impl<T: Ipc> AggregationExample<T> {
     fn send_pattern_alloc_maxmin(&mut self) {
         let demand_vec : Vec<_> = self.get_demand_vec();
         let mut available_cwnd = self.cwnd;
+        let mut allocated_cwnd = 0;
         let mut num_flows_to_allocate = self.num_flows;
         for (sock_id, demand) in demand_vec { // sorted traversal
             if demand < available_cwnd / num_flows_to_allocate {
                 self.subflow_cwnd.insert(sock_id, std::cmp::max(demand, DEFAULT_PENDING_BYTES));
                 available_cwnd -= demand;
                 num_flows_to_allocate -= 1;
+                allocated_cwnd += demand;
             } else {
                 self.subflow_cwnd.insert(sock_id, std::cmp::max(
                     available_cwnd / num_flows_to_allocate, DEFAULT_PENDING_BYTES));
+                allocated_cwnd += available_cwnd / num_flows_to_allocate;
             }
         }
+        self.logger.as_ref().map(|log| {
+            info!(log, "maxmin alloc";
+                  "allocated" => allocated_cwnd,
+                  "total available" => self.cwnd,
+                  "diff (underalloc if +)" => self.cwnd as i32 - allocated_cwnd as i32
+            );
+        });
         self.send_pattern_alloc_messages();
     }
 
@@ -318,6 +345,13 @@ impl<T: Ipc> AggregationExample<T> {
             }
             self.subflow_cwnd.insert(sock_id, std::cmp::max(flow_cwnd, DEFAULT_PENDING_BYTES));
         }
+        self.logger.as_ref().map(|log| {
+            info!(log, "SRPT alloc";
+                  "allocated" => allocated_cwnd,
+                  "total available" => self.cwnd,
+                  "diff (underalloc if +)" => self.cwnd as i32 - allocated_cwnd as i32
+            );
+        });
         self.send_pattern_alloc_messages();
     }
 

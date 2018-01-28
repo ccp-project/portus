@@ -47,7 +47,7 @@ impl<T: Ipc> Reno<T> {
             self.sock_id,
             make_pattern!(
                 pattern::Event::SetCwndAbs(self.cwnd) => 
-                pattern::Event::WaitNs(10_000_000) => 
+                pattern::Event::WaitNs(1_000_000) => 
                 pattern::Event::Report
             ),
         ) {
