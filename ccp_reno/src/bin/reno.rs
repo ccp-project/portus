@@ -43,6 +43,9 @@ fn make_args() -> Result<(ccp_reno::RenoConfig, String), std::num::ParseIntError
         .arg(Arg::with_name("ss_in_fold")
              .long("ss_in_fold")
              .help("Implement slow start in a fold function"))
+        .arg(Arg::with_name("compensate_update")
+             .long("compensate_update")
+             .help("Scale the congestion window update to compensate for reporting delay"))
         .arg(Arg::with_name("report_per_ack")
              .long("per_ack")
              .help("Specifies that the datapath should send a measurement upon every ACK"))
@@ -74,6 +77,7 @@ fn make_args() -> Result<(ccp_reno::RenoConfig, String), std::num::ParseIntError
                 ccp_reno::RenoConfigReport::Rtt
             },
             ss_in_fold: matches.is_present("ss_in_fold"),
+            use_compensation: matches.is_present("compensate_update"),
         },
         String::from(matches.value_of("ipc").unwrap()),
     ))

@@ -24,6 +24,7 @@ pub struct Reno<T: Ipc> {
     init_cwnd: u32,
     rtt: u32,
     in_startup: bool,
+	use_compensation: bool,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
@@ -41,6 +42,7 @@ pub struct RenoConfig {
     pub init_cwnd: u32,
     pub report: RenoConfigReport,
     pub ss_in_fold: bool,
+    pub use_compensation: bool,
 }
 
 impl Default for RenoConfig {
@@ -50,6 +52,7 @@ impl Default for RenoConfig {
             init_cwnd: 0,
             report: RenoConfigReport::Rtt,
             ss_in_fold: false,
+            use_compensation: false,
         }
     }
 }
@@ -88,8 +91,8 @@ impl<T: Ipc> Reno<T> {
         self.control_channel.send_pattern(
             self.sock_id,
             make_pattern!(
-                pattern::Event::WaitNs(500_000_000) => // 500ms
-                pattern::Event::Report
+                pattern::Event::WaitNs(500_000_000) //=> // 500ms
+                //pattern::Event::Report
             ),
         ).unwrap();
     }
@@ -178,7 +181,7 @@ impl<T: Ipc> Reno<T> {
         (ack, was_timeout == 1, sack, loss, rtt, inflight)
     }
 
-    fn additive_increase_with_slow_start(&mut self, acked: u32) {
+    fn additive_increase_with_slow_start(&mut self, acked: u32, _rtt_us: u32) {
         let mut new_bytes_acked = acked;
         if self.cwnd < self.ss_thresh {
             // increase cwnd by 1 per packet, until ssthresh
@@ -186,7 +189,16 @@ impl<T: Ipc> Reno<T> {
                 new_bytes_acked -= self.ss_thresh - self.cwnd;
                 self.cwnd = self.ss_thresh;
             } else {
-                self.cwnd += new_bytes_acked;
+		// use a compensating increase function
+		if self.use_compensation {
+                    let delta = new_bytes_acked as f64 / (2.0_f64).ln();
+                    self.cwnd += delta as u32;
+		    // let ccp_rtt = (rtt_us + 10_000) as f64;
+		    // let delta = ccp_rtt * ccp_rtt / (rtt_us as f64 * rtt_us as f64);
+		    // self.cwnd += (new_bytes_acked as f64 * delta) as u32;
+		} else {               
+		    self.cwnd += new_bytes_acked;
+		}
                 new_bytes_acked = 0;
             }
         }
@@ -270,6 +282,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
             ss_thresh: cfg.config.ss_thresh,
             rtt: 0,
             in_startup: false,
+		    use_compensation: cfg.config.use_compensation,
         };
 
         if cfg.config.init_cwnd != 0 {
@@ -308,7 +321,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         }
 
         // increase the cwnd corresponding to new in-order cumulative ACKs
-        self.additive_increase_with_slow_start(acked);
+        self.additive_increase_with_slow_start(acked, rtt);
 
         if loss > 0 || sacked > 0 {
             self.cwnd_reduction(loss, sacked, acked);

@@ -6,7 +6,7 @@ authors = ["Akshay Narayan <akshayn@mit.edu>"]
 [dependencies]
 clap="2.29"
 portus = { path = ".." }
-slog = {version = "2", features = ["max_level_info"] }
+slog = {version = "2"}
 slog-async = "2"
 slog-term = "2"
 time="0.1"
