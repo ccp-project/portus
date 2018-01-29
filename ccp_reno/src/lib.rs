@@ -36,12 +36,19 @@ pub enum RenoConfigReport {
     Interval(time::Duration),
 }
 
+#[derive(Debug, Clone)]
+pub enum RenoConfigSS {
+    Fold,
+    Pattern,
+    Ccp,
+}
+
 #[derive(Clone)]
 pub struct RenoConfig {
     pub ss_thresh: u32,
     pub init_cwnd: u32,
     pub report: RenoConfigReport,
-    pub ss_in_fold: bool,
+    pub ss: RenoConfigSS,
     pub use_compensation: bool,
 }
 
@@ -51,7 +58,7 @@ impl Default for RenoConfig {
             ss_thresh: DEFAULT_SS_THRESH,
             init_cwnd: 0,
             report: RenoConfigReport::Rtt,
-            ss_in_fold: false,
+            ss: RenoConfigSS::Ccp,
             use_compensation: false,
         }
     }
@@ -88,6 +95,17 @@ impl<T: Ipc> Reno<T> {
     }
 
     fn send_pattern_ss(&self) {
+        self.control_channel.send_pattern(
+            self.sock_id,
+            make_pattern!(
+                pattern::Event::SetCwndAbs(self.ss_thresh) =>
+                pattern::Event::WaitRtts(1.0) =>
+                pattern::Event::SetRateRel(2.0)
+            ),
+        ).unwrap();
+    }
+
+    fn send_pattern_wait(&self) {
         self.control_channel.send_pattern(
             self.sock_id,
             make_pattern!(
@@ -294,26 +312,35 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
             debug!(log, "starting reno flow"; "sock_id" => info.sock_id);
         });
 
-        if cfg.config.ss_in_fold {
-            s.sc = s.install_fold_ss();
-            s.send_pattern_ss();
-            s.in_startup = true;
-        } else {
-            s.sc = s.install_fold();
-            s.send_pattern();
+        match cfg.config.ss {
+            RenoConfigSS::Fold => {
+                s.sc = s.install_fold_ss();
+                s.send_pattern_wait();
+                s.in_startup = true;
+            }
+            RenoConfigSS::Pattern => {
+                s.sc = s.install_fold();
+                s.send_pattern_ss();
+            }
+            RenoConfigSS::Ccp => {
+                s.sc = s.install_fold();
+                s.send_pattern();
+            }
         }
 
         s
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
+        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(m);
+
         if self.in_startup {
             // install new fold
             self.sc = self.install_fold();
+            self.cwnd = inflight * 1448;
             self.in_startup = false;
         }
 
-        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(m);
         self.rtt = rtt;
         if was_timeout {
             self.handle_timeout();
