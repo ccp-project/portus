@@ -124,12 +124,16 @@ impl Measurement {
         sc.get(field).and_then(|r| match r {
             &Reg::Perm(idx, _) => {
                 if idx as usize >= self.fields.len() {
+                    println!("Didn't find fields in the message! {:?}", self.fields);
                     return None;
                 }
 
                 Some(self.fields[idx as usize])
             },
-            _ => None,
+            _ => {
+                println!("Didn't find fields in the message! {:?}", self.fields);
+                None
+            },
         })
     }
 }

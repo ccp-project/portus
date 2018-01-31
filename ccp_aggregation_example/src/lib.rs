@@ -126,7 +126,11 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
     }
 
     fn measurement(&mut self, sock_id: u32, m: Measurement) {
-        let (acked, was_timeout, sacked, loss, rtt, inflight, pending) = self.get_fields(m);
+        let mmt = self.get_fields(m);
+        if mmt.is_none() {
+            return;
+        }
+        let (acked, was_timeout, sacked, loss, rtt, inflight, pending) = mmt.unwrap();
 
         /* Record a few stats from the last RTT to help profile the allocators. */
         let old_pending = *self.subflow_pending.get(&sock_id).unwrap() as i32;
@@ -483,37 +487,23 @@ impl<T: Ipc> AggregationExample<T> {
         }
     }
 
-    fn get_fields(&mut self, m: Measurement) -> (u32, bool, u32, u32, u32, u32, u32) {
+    fn get_fields(&mut self, m: Measurement) -> Option<(u32, bool, u32, u32, u32, u32, u32)> {
         let sc = self.sc.as_ref().expect("scope should be initialized");
-        let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
-            "expected acked field in returned measurement",
-        ) as u32;
+        let ack = m.get_field(&String::from("Flow.acked"), sc)? as u32;
 
-        let sack = m.get_field(&String::from("Flow.sacked"), sc).expect(
-            "expected sacked field in returned measurement",
-        ) as u32;
+        let sack = m.get_field(&String::from("Flow.sacked"), sc)? as u32;
 
-        let was_timeout = m.get_field(&String::from("Flow.timeout"), sc).expect(
-            "expected timeout field in returned measurement",
-        ) as u32;
+        let was_timeout = m.get_field(&String::from("Flow.timeout"), sc)? as u32;
 
-        let inflight = m.get_field(&String::from("Flow.inflight"), sc).expect(
-            "expected inflight field in returned measurement",
-        ) as u32;
+        let inflight = m.get_field(&String::from("Flow.inflight"), sc)? as u32;
 
-        let loss = m.get_field(&String::from("Flow.loss"), sc).expect(
-            "expected loss field in returned measurement",
-        ) as u32;
+        let loss = m.get_field(&String::from("Flow.loss"), sc)? as u32;
 
-        let rtt = m.get_field(&String::from("Flow.rtt"), sc).expect(
-            "expected rtt field in returned measurement",
-        ) as u32;
+        let rtt = m.get_field(&String::from("Flow.rtt"), sc)? as u32;
 
-        let pending = m.get_field(&String::from("Flow.pending"), sc).expect(
-            "expected pending field in returned measurement",
-        ) as u32;
+        let pending = m.get_field(&String::from("Flow.pending"), sc)? as u32;
 
-        (ack, was_timeout == 1, sack, loss, rtt, inflight, pending)
+        Some((ack, was_timeout == 1, sack, loss, rtt, inflight, pending))
     }
 
     fn additive_increase_with_slow_start(&mut self, acked: u32,
