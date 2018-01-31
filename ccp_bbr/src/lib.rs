@@ -274,6 +274,7 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
                     self.min_rtt_us = 0x3fff_ffff;
                     self.sc = self.install_probe_rtt_fold();
                     self.send_probe_rtt_pattern();
+                    return;
                 }
 
                 if self.bottle_rate < rate {
