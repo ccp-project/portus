@@ -43,7 +43,7 @@ fn test_ser_over_ipc() {
             fields: vec![0],
         };
 
-        let buf = serialize::serialize(m.clone()).expect("serialize");
+        let buf = serialize::serialize(&m.clone()).expect("serialize");
         b2.send_msg(&buf[..]).expect("send message");
     });
 
@@ -110,7 +110,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
             rx.recv().expect("ready chan rcv");
 
             // send a message
-            let buf = serialize::serialize(m.clone()).expect("serialize");
+            let buf = serialize::serialize(&m.clone()).expect("serialize");
             b2.send_msg(&buf[..]).expect("send message");
         }
     });

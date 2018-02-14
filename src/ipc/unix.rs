@@ -10,7 +10,7 @@ macro_rules! unix_addr {
 }
 
 macro_rules! translate_result {
-    ($x:expr) => ($x.map(|_| ()).map_err(|e| super::Error::from(e)));
+    ($x:expr) => ($x.map(|_| ()).map_err(super::Error::from));
 }
 
 pub struct Socket {
@@ -56,7 +56,7 @@ impl super::Ipc for Socket {
 
     // return the number of bytes read if successful.
     fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]> {
-        let sz = self.sk.recv(msg).map_err(|e| Error::from(e))?;
+        let sz = self.sk.recv(msg).map_err(Error::from)?;
         Ok(&msg[..sz])
     }
 

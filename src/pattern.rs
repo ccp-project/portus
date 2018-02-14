@@ -41,26 +41,26 @@ impl Event {
     ///
     pub fn serialize<W: Write>(&self, w: &mut W) -> super::Result<()> {
         let mut buf = [0u8; 4];
-        match self {
-            &Event::SetCwndAbs(x) => {
+        match *self {
+            Event::SetCwndAbs(x) => {
                 write_event!(SETCWND, buf, w, x);
             }
-            &Event::WaitNs(x) => {
+            Event::WaitNs(x) => {
                 write_event!(WAIT, buf, w, x);
             }
-            &Event::SetRateAbs(x) => {
+            Event::SetRateAbs(x) => {
                 write_event!(SETRATE, buf, w, x);
             }
-            &Event::SetRateAbsWithCwnd(x) => {
+            Event::SetRateAbsWithCwnd(x) => {
                 write_event!(SETRATEWITHCWND, buf, w, x);
             }
-            &Event::SetRateRel(f) => {
+            Event::SetRateRel(f) => {
                 write_event!(SETRATEREL, buf, w, (f * 1e3) as u32);
             }
-            &Event::WaitRtts(f) => {
+            Event::WaitRtts(f) => {
                 write_event!(WAITREL, buf, w, (f * 1e3) as u32);
             }
-            &Event::Report => {
+            Event::Report => {
                 w.write_all(&[REPORT, 2])?;
             }
         };
@@ -98,8 +98,8 @@ impl Event {
 pub struct Pattern(Vec<Event>);
 
 /// Convenience macro for creating patterns.
-/// Takes event initializations (e.g. pattern::Event::Report())
-/// separated by `=>` and creates a Pattern object.
+/// Takes event initializations (e.g. `pattern::Event::Report()`)
+/// separated by `=>` and creates a `Pattern` object.
 #[macro_export]
 macro_rules! make_pattern {
     ($($x: expr)=>*) => ({
@@ -120,8 +120,8 @@ impl Pattern {
     pub fn len_bytes(&self) -> usize {
         self.0
             .iter()
-            .map(|e| match e {
-                &Event::Report => 2,
+            .map(|e| match *e {
+                Event::Report => 2,
                 _ => 6,
             })
             .sum()
@@ -130,6 +130,10 @@ impl Pattern {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
 
     pub fn serialize<W: Write>(&self, w: &mut W) -> super::Result<()> {
         let mut buf = vec![];
@@ -154,6 +158,6 @@ impl Pattern {
 
 impl Default for Pattern {
     fn default() -> Self {
-        return Pattern(vec![]);
+        Pattern(vec![])
     }
 }

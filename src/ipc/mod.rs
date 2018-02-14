@@ -41,7 +41,7 @@ impl<T: Ipc> Backend<T> {
 
     /// Blocking send.
     pub fn send_msg(&self, msg: &[u8]) -> Result<()> {
-        self.sock.send(msg).map_err(|e| Error::from(e))
+        self.sock.send(msg).map_err(Error::from)
     }
 
     /// Start listening on the IPC socket
@@ -60,7 +60,7 @@ impl<T: Ipc> Backend<T> {
                     }
                 };
 
-                if buf.len() == 0 {
+                if buf.is_empty() {
                     continue;
                 }
 

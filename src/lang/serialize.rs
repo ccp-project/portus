@@ -65,70 +65,70 @@ impl Iterator for InstrBytes {
 }
 
 fn serialize_op(o: &Op) -> u8 {
-    match o {
-        &Op::Add => 0,
-        &Op::Bind => 1,
-        &Op::Def => 14, // TODO fix the numbers
-        &Op::Div => 2,
-        &Op::Equiv => 3,
-        &Op::Ewma => 4,
-        &Op::Gt => 5,
-        &Op::If => 6,
-        &Op::Lt => 8,
-        &Op::Max => 9,
-        &Op::MaxWrap => 15,
-        &Op::Min => 10,
-        &Op::Mul => 11,
-        &Op::NotIf => 12,
-        &Op::Sub => 13,
-        &Op::Let => unreachable!(),
+    match *o {
+        Op::Add => 0,
+        Op::Bind => 1,
+        Op::Def => 14, // TODO fix the numbers
+        Op::Div => 2,
+        Op::Equiv => 3,
+        Op::Ewma => 4,
+        Op::Gt => 5,
+        Op::If => 6,
+        Op::Lt => 8,
+        Op::Max => 9,
+        Op::MaxWrap => 15,
+        Op::Min => 10,
+        Op::Mul => 11,
+        Op::NotIf => 12,
+        Op::Sub => 13,
+        Op::Let => unreachable!(),
     }
 }
 
 fn serialize_reg_u8(r: &Reg) -> Result<u8> {
-    match r {
-        &Reg::ImmNum(_) | &Reg::ImmBool(_) => Err(Error::from(format!("Cannot fit immediate in 8 bit register"))),
-        &Reg::Const(i, _) => {
+    match *r {
+        Reg::ImmNum(_) | Reg::ImmBool(_) => Err(Error::from("Cannot fit immediate in 8 bit register")),
+        Reg::Const(i, _) => {
             let reg = if i > (1 << 6) {
                 return Err(Error::from(format!(
                     "Const Register index too big (max 6 bits): {:?}",
                     i
                 )));
             } else {
-                i | 0b11000000
+                i | 0b1100_0000
             };
 
-            Ok((reg & 0b01111111) as u8)
+            Ok((reg & 0b0111_1111) as u8)
         }
-        &Reg::Tmp(i, _) => {
+        Reg::Tmp(i, _) => {
             let reg = if i > (1 << 6) {
                 return Err(Error::from(
                     format!("Tmp Register index too big (max 6 bits): {:?}", i),
                 ));
             } else {
-                i | 0b11000000
+                i | 0b1100_0000
             };
 
-            Ok((reg & 0b10111111) as u8)
+            Ok((reg & 0b1011_1111) as u8)
         }
-        &Reg::Perm(i, _) => {
+        Reg::Perm(i, _) => {
             let reg = if i > (1 << 6) {
                 return Err(Error::from(
                     format!("Perm Register index too big (max 6 bits): {:?}", i),
                 ));
             } else {
-                i | 0b11000000
+                i | 0b1100_0000
             };
 
-            Ok((reg & 0b11111111) as u8)
+            Ok(reg as u8)
         }
-        &Reg::None => unreachable!(),
+        Reg::None => unreachable!(),
     }
 }
 
 fn serialize_reg_u32(r: &Reg) -> Result<u32> {
-    match r {
-        &Reg::ImmNum(num) => {
+    match *r {
+        Reg::ImmNum(num) => {
             if num == u64::max_value() || num < (1 << 31) {
                 Ok(num as u32 & 0x3fff_ffff)
             } else {
@@ -137,42 +137,42 @@ fn serialize_reg_u32(r: &Reg) -> Result<u32> {
                 ))
             }
         }
-        &Reg::ImmBool(bl) => Ok(bl as u32),
-        &Reg::Const(i, _) => {
+        Reg::ImmBool(bl) => Ok(bl as u32),
+        Reg::Const(i, _) => {
             let reg = if i > 15 {
                 return Err(Error::from(format!(
                     "Const Register index too big (max 15): {:?}",
                     i
                 )));
             } else {
-                i as u32 | 0xc000_0000
+                u32::from(i) | 0xc000_0000
             };
 
             Ok((reg & 0x7fff_ffff) as u32)
         }
-        &Reg::Tmp(i, _) => {
+        Reg::Tmp(i, _) => {
             let reg = if i > 15 {
                 return Err(Error::from(
                     format!("Tmp Register index too big (max 15): {:?}", i),
                 ));
             } else {
-                i as u32 | 0xc000_0000
+                u32::from(i) | 0xc000_0000
             };
 
             Ok((reg & 0xbfff_ffff) as u32)
         }
-        &Reg::Perm(i, _) => {
+        Reg::Perm(i, _) => {
             let reg = if i > 15 {
                 return Err(Error::from(
                     format!("Perm Register index too big (max 15): {:?}", i),
                 ));
             } else {
-                i as u32 | 0xc000_0000
+                u32::from(i) | 0xc000_0000
             };
 
-            Ok((reg & 0xffff_ffff) as u32)
+            Ok(reg as u32)
         }
-        &Reg::None => unreachable!(),
+        Reg::None => unreachable!(),
     }
 }
 

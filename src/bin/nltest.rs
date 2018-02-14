@@ -42,7 +42,7 @@ impl portus::serialize::AsRawMsg for TestMsg {
 }
 
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
-fn test(log: slog::Logger) {
+fn test(log: &slog::Logger) {
     use std::process::Command;
     use portus::ipc::Backend;
     use portus::serialize::AsRawMsg;
@@ -77,7 +77,7 @@ fn test(log: slog::Logger) {
     let listen_log = log.clone();
     let c1 = thread::spawn(move || {
         let b = portus::ipc::netlink::Socket::new()
-            .and_then(|sk| Backend::new(sk))
+            .and_then(Backend::new)
             .expect("ipc initialization");
         let rx = b.listen();
         debug!(listen_log, "listen");
@@ -93,7 +93,7 @@ fn test(log: slog::Logger) {
         debug!(listen_log, "send");
         let msg = TestMsg(String::from("hello, kernel"));
         let test = msg.clone();
-        let buf = portus::serialize::serialize(msg).expect("serialize");
+        let buf = portus::serialize::serialize(&msg).expect("serialize");
         b.send_msg(&buf[..]).expect("send response");
 
         let echo = rx.recv().expect("receive echo");
@@ -128,7 +128,7 @@ fn test(log: slog::Logger) {
 }
 
 #[cfg(not(target_os = "linux"))] // netlink is linux-only
-fn test(log: slog::Logger) {
+fn test(log: &slog::Logger) {
     warn!(log, "netlink only works on linux.");
     return;
 }
@@ -142,5 +142,5 @@ fn make_logger() -> slog::Logger {
 
 fn main() {
     let log = make_logger();
-    test(log);
+    test(&log);
 }

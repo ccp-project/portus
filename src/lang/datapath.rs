@@ -13,12 +13,12 @@ pub enum Type {
 }
 
 pub(crate) fn check_atom_type(e: &Expr) -> Result<Type> {
-    match e {
-        &Expr::Atom(ref t) => {
-            match t {
-                &Prim::Bool(t) => Ok(Type::Bool(Some(t))),
-                &Prim::Name(ref name) => Ok(Type::Name(name.clone())),
-                &Prim::Num(n) => Ok(Type::Num(Some(n))),
+    match *e {
+        Expr::Atom(ref t) => {
+            match *t {
+                Prim::Bool(t) => Ok(Type::Bool(Some(t))),
+                Prim::Name(ref name) => Ok(Type::Name(name.clone())),
+                Prim::Num(n) => Ok(Type::Num(Some(n))),
             }
         }
         _ => Err(Error::from(format!("not an atom: {:?}", e))),
@@ -37,13 +37,11 @@ pub enum Reg {
 
 impl Reg {
     fn get_type(&self) -> Result<Type> {
-        match self {
-            &Reg::ImmNum(n) => Ok(Type::Num(Some(n))),
-            &Reg::ImmBool(b) => Ok(Type::Bool(Some(b))),
-            &Reg::Const(_, ref t) => Ok(t.clone()),
-            &Reg::Tmp(_, ref t) => Ok(t.clone()),
-            &Reg::Perm(_, ref t) => Ok(t.clone()),
-            &Reg::None => Ok(Type::None),
+        match *self {
+            Reg::ImmNum(n) => Ok(Type::Num(Some(n))),
+            Reg::ImmBool(b) => Ok(Type::Bool(Some(b))),
+            Reg::Const(_, ref t) | Reg::Tmp(_, ref t) | Reg::Perm(_, ref t) => Ok(t.clone()),
+            Reg::None => Ok(Type::None),
         }
     }
 }
@@ -70,7 +68,7 @@ impl Bin {
             .iter()
             .map(|e| {
                 scope.clear_tmps();
-                compile_expr(&e, &mut scope).map(|t| match t {
+                compile_expr(e, &mut scope).map(|t| match t {
                     (instrs, _) => instrs,
                 })
             })
@@ -87,7 +85,7 @@ impl Bin {
                     e => e,
                 },
             )
-            .map(|e| Bin(e))
+            .map(Bin)
     }
 }
 
@@ -99,13 +97,13 @@ impl Bin {
 /// Performs a recursive depth-first search of the Expr tree.
 /// The left argument is evaluated first.
 fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
-    match e {
-        &Expr::Atom(ref t) => {
-            match t {
-                &Prim::Bool(b) => Ok((vec![], Reg::ImmBool(b))),
-                &Prim::Name(ref name) => {
-                    if scope.has(&name) {
-                        let reg = scope.get(&name).unwrap();
+    match *e {
+        Expr::Atom(ref t) => {
+            match *t {
+                Prim::Bool(b) => Ok((vec![], Reg::ImmBool(b))),
+                Prim::Name(ref name) => {
+                    if scope.has(name) {
+                        let reg = scope.get(name).unwrap();
                         Ok((vec![], reg.clone()))
                     } else {
                         Ok((
@@ -114,15 +112,15 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                         ))
                     }
                 }
-                &Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
+                Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
             }
         }
-        &Expr::Sexp(ref o, box ref left_expr, box ref right_expr) => {
-            let (mut instrs, mut left) = compile_expr(&left_expr, &mut scope)?;
-            let (mut right_instrs, right) = compile_expr(&right_expr, &mut scope)?;
+        Expr::Sexp(ref o, box ref left_expr, box ref right_expr) => {
+            let (mut instrs, mut left) = compile_expr(left_expr, &mut scope)?;
+            let (mut right_instrs, right) = compile_expr(right_expr, &mut scope)?;
             instrs.append(&mut right_instrs);
-            match o {
-                &Op::Add | &Op::Div | &Op::Max | &Op::MaxWrap | &Op::Min | &Op::Mul | &Op::Sub => {
+            match *o {
+                Op::Add | Op::Div | Op::Max | Op::MaxWrap | Op::Min | Op::Mul | Op::Sub => {
                     // left and right should have type num
                     match left.get_type() {
                         Ok(Type::Num(_)) => (),
@@ -140,14 +138,14 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     let res = scope.new_tmp(Type::Num(None));
                     instrs.push(Instr {
                         res: res.clone(),
-                        op: o.clone(),
+                        op: *o,
                         left: left,
                         right: right,
                     });
 
                     Ok((instrs, res))
                 }
-                &Op::Equiv | &Op::Gt | &Op::Lt => {
+                Op::Equiv | Op::Gt | Op::Lt => {
                     // left and right should have type num
                     match left.get_type() {
                         Ok(Type::Num(_)) => (),
@@ -161,34 +159,35 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     let res = scope.new_tmp(Type::Bool(None));
                     instrs.push(Instr {
                         res: res.clone(),
-                        op: o.clone(),
+                        op: *o,
                         left: left,
                         right: right,
                     });
 
                     Ok((instrs, res))
                 }
-                &Op::Bind => {
+                Op::Bind => {
                     // (bind a b) assign variable a to value b
 
                     // if type(left) is None, give it type of right
                     if let Ok(Type::Name(s)) = left.get_type() {
                         let right_type = right.get_type().unwrap();
-                        left = scope.update_type(&s, right_type)?;
+                        left = scope.update_type(&s, &right_type)?;
                     }
 
                     // left must be a mutable register
                     // and if right is a Reg::None, we have to replace it
                     match (&left, &right) {
                         (&Reg::Perm(_, _), &Reg::None) => {
-                            if let Some(_) = instrs.last_mut().map(|last| {
+                            let last_instr = instrs.last_mut().map(|last| {
                                 // Double-check that the instruction being replaced
                                 // actually is a Reg::None before we go replace it
                                 assert_eq!(last.res, Reg::None);
                                 last.res = left.clone();
                                 Some(())
-                            })
-                            {
+                            });
+
+                            if last_instr.is_some() {
                                 Ok((instrs, left))
                             } else {
                                 // It's impossible to have both a Reg::None to match against
@@ -204,7 +203,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                         (&Reg::Tmp(_, _), _) => {
                             instrs.push(Instr {
                                 res: left.clone(),
-                                op: o.clone(),
+                                op: *o,
                                 left: left.clone(),
                                 right: right,
                             });
@@ -217,8 +216,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                         ))),
                     }
                 }
-                &Op::Let => Ok((instrs, right)),
-                &Op::Ewma | &Op::If | &Op::NotIf => {
+                Op::Let => Ok((instrs, right)),
+                Op::Ewma | Op::If | Op::NotIf => {
                     // ewma: SPECIAL: reads return register
                     // (ewma a b) ret * a/10 + b * (10-a)/10.
                     // If|NotIf: SPECIAL: cannot be bound to temp register
@@ -229,14 +228,14 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // i.e., binding into a Tmp register is not allowed
                     instrs.push(Instr {
                         res: Reg::None,
-                        op: o.clone(),
+                        op: *o,
                         left: left,
                         right: right,
                     });
 
                     Ok((instrs, Reg::None))
                 }
-                &Op::Def => unreachable!(),
+                Op::Def => unreachable!(),
             }
         }
     }
@@ -348,11 +347,11 @@ impl Scope {
         sc
     }
 
-    pub fn has(&self, name: &String) -> bool {
+    pub fn has(&self, name: &str) -> bool {
         self.named.contains_key(name)
     }
 
-    pub fn get(&self, name: &String) -> Option<&Reg> {
+    pub fn get(&self, name: &str) -> Option<&Reg> {
         self.named.get(name)
     }
 
@@ -372,12 +371,12 @@ impl Scope {
     }
 
     /// if the Type was initially None, update it now that we know what it is.
-    pub(crate) fn update_type(&mut self, name: &String, t: Type) -> Result<Reg> {
+    pub(crate) fn update_type(&mut self, name: &str, t: &Type) -> Result<Reg> {
         self.named
             .get_mut(name)
-            .ok_or(Error::from(format!("Unknown {:?}", name)))
-            .and_then(|old_reg| match old_reg {
-                &mut Reg::Perm(idx, Type::Name(_)) => {
+            .ok_or_else(|| Error::from(format!("Unknown {:?}", name)))
+            .and_then(|old_reg| match *old_reg {
+                Reg::Perm(idx, Type::Name(_)) => {
                     *old_reg = Reg::Perm(idx, t.clone());
                     Ok(old_reg.clone())
                 }

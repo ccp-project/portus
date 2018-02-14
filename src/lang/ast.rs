@@ -133,7 +133,7 @@ named!(
 use nom::is_alphanumeric;
 named!(
     name<&[u8]>,
-    take_while1!(|u: u8| is_alphanumeric(u) || u == '.' as u8 || u == '_' as u8)
+    take_while1!(|u: u8| is_alphanumeric(u) || u == b'.' || u == b'_')
 );
 
 use nom::rest;
@@ -195,7 +195,7 @@ impl Expr {
 use super::datapath::{Scope, Type, check_atom_type};
 /// a Prog is multiple Expr in sequence.
 /// Scope cascades through the Expr:
-/// Expr with Type::Name will in scope for successive Expr
+/// Expr with `Type::Name` will in scope for successive Expr
 /// Other Expr will not be evaluated.
 #[derive(Debug)]
 pub struct Prog(pub Vec<Expr>);

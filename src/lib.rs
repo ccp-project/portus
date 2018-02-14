@@ -78,7 +78,7 @@ impl<T: Ipc> Datapath<T> {
             pattern: prog,
         };
 
-        let buf = serialize::serialize(msg)?;
+        let buf = serialize::serialize(&msg)?;
         self.0.send_msg(&buf[..])?;
         Ok(())
     }
@@ -91,7 +91,7 @@ impl<T: Ipc> Datapath<T> {
             instrs: bin,
         };
 
-        let buf = serialize::serialize(msg)?;
+        let buf = serialize::serialize(&msg)?;
         self.0.send_msg(&buf[..])?;
         Ok(sc)
     }
@@ -108,10 +108,10 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
-    match v.as_str() {
+pub fn ipc_valid(v: &str) -> std::result::Result<(), String> {
+    match v {
         "unix" => Ok(()),
-        _ => Err(String::from(format!("ipc must be one of (unix): {:?}", v))),
+        _ => Err(format!("ipc must be one of (unix): {:?}", v)),
     }
 }
 
@@ -120,9 +120,9 @@ pub struct Measurement {
 }
 
 impl Measurement {
-    pub fn get_field(&self, field: &String, sc: &Scope) -> Option<u64> {
-        sc.get(field).and_then(|r| match r {
-            &Reg::Perm(idx, _) => {
+    pub fn get_field(&self, field: &str, sc: &Scope) -> Option<u64> {
+        sc.get(field).and_then(|r| match *r {
+            Reg::Perm(idx, _) => {
                 if idx as usize >= self.fields.len() {
                     return None;
                 }
@@ -181,17 +181,17 @@ pub struct DatapathInfo {
 /// Blocks "forever".
 /// In this use case, an algorithm implementation is a binary which
 /// 1. Initializes an ipc backend (depending on datapath)
-/// 2. Calls start(), passing the backend b and a Config with optional
+/// 2. Calls `start()`, passing the `Backend b` and a `Config` with optional
 /// logger and command line argument structure.
 ///
-/// start():
+/// `start()`:
 /// 1. listens for messages from the datapath
-/// 2. call the appropriate message in U: impl CongAlg
+/// 2. call the appropriate message in `U: impl CongAlg`
 ///
-/// start() will never return (-> !). It will panic if:
-/// 1. It receives a pattern or install_fold control message (only a datapath should receive these)
+/// `start()` will never return (`-> !`). It will panic if:
+/// 1. It receives a `pattern` or `install_fold` control message (only a datapath should receive these)
 /// 2. The IPC channel fails.
-pub fn start<I, U>(b: Backend<I>, cfg: Config<I, U>) -> !
+pub fn start<I, U>(b: Backend<I>, cfg: &Config<I, U>) -> !
 where
     I: Ipc,
     U: CongAlg<I>,
@@ -202,7 +202,7 @@ where
         if let Ok(msg) = Msg::from_buf(&m[..]) {
             match msg {
                 Msg::Cr(c) => {
-                    if let Some(_) = flows.remove(&c.sid) {
+                    if flows.remove(&c.sid).is_some() {
                         cfg.logger.as_ref().map(|log| {
                             debug!(log, "re-creating already created flow"; "sid" => c.sid);
                         });

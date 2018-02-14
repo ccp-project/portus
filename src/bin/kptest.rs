@@ -7,7 +7,7 @@ extern crate portus;
 use slog::Drain;
 
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
-fn test(log: slog::Logger) {
+fn test(log: &slog::Logger) {
     use std::process::Command;
 
     debug!(log, "unload module");
@@ -63,7 +63,7 @@ fn test(log: slog::Logger) {
 }
 
 #[cfg(not(target_os = "linux"))] // netlink is linux-only
-fn test(log: slog::Logger) {
+fn test(log: &slog::Logger) {
     warn!(log, "netlink only works on linux.");
     return;
 }
@@ -77,5 +77,5 @@ fn make_logger() -> slog::Logger {
 
 fn main() {
     let log = make_logger();
-    test(log);
+    test(&log);
 }

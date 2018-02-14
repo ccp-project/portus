@@ -13,6 +13,6 @@ fn main() {
         instrs: bin,
     };
 
-    let buf = serialize::serialize(msg).unwrap();
+    let buf = serialize::serialize(&msg).unwrap();
     println!("{:?}", buf);
 }

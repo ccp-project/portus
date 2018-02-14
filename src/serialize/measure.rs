@@ -27,14 +27,14 @@ impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u32, u32) {
         (
             MEASURE,
-            HDR_LENGTH + 4 + self.num_fields as u32 * 8,
+            HDR_LENGTH + 4 + u32::from(self.num_fields) * 8,
             self.sid,
         )
     }
 
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
         let mut buf = [0u8; 4];
-        u32_to_u8s(&mut buf, self.num_fields as u32);
+        u32_to_u8s(&mut buf, u32::from(self.num_fields));
         w.write_all(&buf[..])?;
         Ok(())
     }
@@ -45,7 +45,7 @@ impl AsRawMsg for Msg {
 
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
         let mut buf = [0u8; 8];
-        for f in self.fields.iter() {
+        for f in &self.fields {
             u64_to_u8s(&mut buf, *f);
             w.write_all(&buf[..])?;
         }
@@ -59,7 +59,7 @@ impl AsRawMsg for Msg {
         Ok(Msg {
             sid: msg.sid,
             num_fields: u32s[0] as u8,
-            fields: deserialize_fields(&b)?,
+            fields: deserialize_fields(b)?,
         })
     }
 }

@@ -23,7 +23,7 @@ pub(crate) fn u64_from_u8s(buf: &[u8]) -> u64 {
     LittleEndian::read_u64(buf)
 }
 
-/// (type, len >> 2, socket_id) header
+/// (`type`, `len >> 2`, `socket_id`) header
 /// -----------------------------------
 /// | Msg Type | Len (B)  | Uint32    |
 /// | (1 B)    | (1 B)    | (32 bits) |
@@ -34,7 +34,7 @@ pub const HDR_LENGTH: u32 = 6;
 fn serialize_header(typ: u8, len: u32, sid: u32) -> Vec<u8> {
     let mut hdr = [0u8; 6];
     hdr[0] = typ;
-    if len % 1 == 1 {
+    if len % 2 == 1 {
         hdr[1] = (len >> 1) as u8 + 1;
     } else {
         hdr[1] = (len >> 1) as u8;
@@ -47,7 +47,7 @@ fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u32, u32)> {
     let mut hdr = [0u8; 6];
     buf.read_exact(&mut hdr)?;
     let typ = hdr[0];
-    let len = (hdr[1] as u32) << 1;
+    let len = (u32::from(hdr[1])) << 1;
     let sid = u32_from_u8s(&hdr[2..]);
 
     Ok((typ, len, sid))
@@ -104,8 +104,8 @@ impl<'a> RawMsg<'a> {
 /// For convenience, the predefined message types define a number of u32s and u64s.
 /// External message types can implement `get_bytes()` to pass custom types in the message payload.
 /// In these cases, there is no overhead from the u32 and u64 parts of the message.
-/// Message types wanting to become "predefined" (and as such take advantage of get_u32s and
-/// get_u64s below) should edit this file accordingly (see `impl RawMsg`)
+/// Message types wanting to become "predefined" (and as such take advantage of `get_u32s()` and
+/// `get_u64s()` below) should edit this file accordingly (see `impl RawMsg`)
 pub trait AsRawMsg {
     fn get_hdr(&self) -> (u8, u32, u32);
     fn get_u32s<W: Write>(&self, _: &mut W) -> Result<()> {
@@ -128,7 +128,7 @@ pub mod pattern;
 pub mod install_fold;
 mod testmsg;
 
-pub fn serialize<T: AsRawMsg>(m: T) -> Result<Vec<u8>> {
+pub fn serialize<T: AsRawMsg>(m: &T) -> Result<Vec<u8>> {
     let (a, b, c) = m.get_hdr();
     let mut msg = serialize_header(a, b, c);
     m.get_u32s(&mut msg)?;

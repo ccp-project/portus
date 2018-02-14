@@ -1,4 +1,4 @@
-all: build test 
+all: build test lint
 
 build:
 	cargo +nightly build --all
@@ -11,6 +11,9 @@ ifeq ($(OS), Linux)
 	sudo ./target/debug/kptest
 else
 endif
+
+lint:
+	cargo +nightly clippy
 
 cargo_bench: build test
 	cargo +nightly bench --features bench --all

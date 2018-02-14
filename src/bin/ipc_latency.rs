@@ -44,14 +44,14 @@ impl portus::serialize::AsRawMsg for TimeMsg {
 use std::sync::mpsc;
 use portus::serialize::AsRawMsg;
 fn bench<T: Ipc>(
-    b: Backend<T>,
-    rx: mpsc::Receiver<Vec<u8>>,
+    b: &Backend<T>,
+    rx: &mpsc::Receiver<Vec<u8>>,
     iter: u32,
 ) -> Vec<Duration> {
     (0..iter)
         .map(|_| {
             let then = time::get_time();
-            let msg = portus::serialize::serialize(TimeMsg(then)).expect("serialize");
+            let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
 
             let echo = rx.recv().expect("receive echo");
@@ -95,7 +95,7 @@ fn netlink(iter: u32) -> Vec<Duration> {
     // listen
     let c1 = thread::spawn(move || {
         let b = portus::ipc::netlink::Socket::new()
-            .and_then(|sk| Backend::new(sk))
+            .and_then(Backend::new)
             .expect("ipc initialization");
         tx.send(vec![]).expect("ok to insmod");
         let rx = b.listen();
@@ -103,7 +103,7 @@ fn netlink(iter: u32) -> Vec<Duration> {
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
         assert_eq!(got, "hello, netlink\0\0"); // word aligned
 
-        tx.send(bench(b, rx, iter)).expect("report rtts");
+        tx.send(bench(&b, &rx, iter)).expect("report rtts");
     });
 
     rx.recv().expect("wait to insmod");
@@ -131,10 +131,10 @@ fn kp(iter: u32) -> Vec<Duration> {
 
     let c1 = thread::spawn(move || {
         let b = portus::ipc::kp::Socket::new()
-            .and_then(|sk| Backend::new(sk))
+            .and_then(Backend::new)
             .expect("ipc initialization");
         let rx = b.listen();
-        tx.send(bench(b, rx, iter)).expect("report rtts");
+        tx.send(bench(&b, &rx, iter)).expect("report rtts");
     });
 
     c1.join().expect("join kp thread");
@@ -146,6 +146,11 @@ fn netlink(_: u32) -> Vec<Duration> {
     vec![]
 }
 
+#[cfg(not(target_os = "linux"))] // kp is linux-only
+fn kp(_: u32) -> Vec<Duration> {
+    vec![]
+}
+
 fn unix(iter: u32) -> Vec<Duration> {
     let (tx, rx) = mpsc::channel::<Vec<Duration>>();
     let (ready_tx, ready_rx) = mpsc::channel::<bool>();
@@ -153,11 +158,11 @@ fn unix(iter: u32) -> Vec<Duration> {
     // listen
     let c1 = thread::spawn(move || {
         let b = portus::ipc::unix::Socket::new("in", "out")
-            .and_then(|sk| Backend::new(sk))
+            .and_then(Backend::new)
             .expect("ipc initialization");
         let rx = b.listen();
         ready_rx.recv().expect("sync");
-        tx.send(bench(b, rx, iter)).expect(
+        tx.send(bench(&b, &rx, iter)).expect(
             "report rtts",
         );
     });
@@ -180,7 +185,7 @@ fn unix(iter: u32) -> Vec<Duration> {
 }
 
 fn main() {
-    let trials = 100000;
+    let trials = 100_000;
     if cfg!(target_os = "linux") {
         let nl_rtts: Vec<i64> = netlink(trials)
             .iter()

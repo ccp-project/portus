@@ -50,7 +50,7 @@ macro_rules! check_msg {
         #[test]
         fn $id() {
             let m = $m;
-            let buf: Vec<u8> = super::serialize::<$typ>(m.clone()).expect("serialize");
+            let buf: Vec<u8> = super::serialize::<$typ>(&m.clone()).expect("serialize");
             let msg = Msg::from_buf(&buf[..]).expect("deserialize");
             match msg {
                 $got => assert_eq!($x, m),
@@ -158,7 +158,7 @@ fn test_other_msg() {
     use super::testmsg;
     use super::AsRawMsg;
     let m = testmsg::Msg(String::from("testing"));
-    let buf: Vec<u8> = super::serialize::<testmsg::Msg>(m.clone()).expect("serialize");
+    let buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m.clone()).expect("serialize");
     let msg = Msg::from_buf(&buf[..]).expect("deserialize");
     match msg {
         Msg::Other(raw) => {
