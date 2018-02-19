@@ -1,0 +1,110 @@
+// Helper methods for making algorithm binaries.
+extern crate slog;
+extern crate slog_async;
+extern crate slog_term;
+use slog::Drain;
+
+use std::result::Result;
+
+pub fn make_logger() -> slog::Logger {
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    slog::Logger::root(drain, o!())
+}
+
+// Must take a String so that clap::Args::validator will be happy
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+#[cfg(all(target_os = "linux"))]
+pub fn ipc_valid(v: String) -> Result<(), String> {
+    match v.as_str() {
+        "netlink" | "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
+    }
+}
+
+// Must take a String so that clap::Args::validator will be happy
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+#[cfg(not(target_os = "linux"))]
+pub fn ipc_valid(v: String) -> Result<(), String> {
+    match v.as_str() {
+        "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (unix): {:?}", v)),
+    }
+}
+
+#[macro_export]
+macro_rules! make_alg_main {
+    ($args_fn:ident, $name:expr, $alg:ident) => (
+        #[cfg(not(target_os = "linux"))]
+        fn main() {
+            let log = portus::algs::make_logger();
+            let (cfg, ipc) = $args_fn()
+                .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
+                .unwrap_or_default();
+
+            info!(log, "starting CCP"; "ipc" => ipc.clone());
+            match ipc.as_str() {
+                "unix" => {
+                    use portus::ipc::unix::Socket;
+                    let b = Socket::new("in", "out").and_then(Backend::new).expect(
+                        "ipc initialization",
+                    );
+
+                    portus::start::<_, $alg<Socket>>(
+                        b,
+                        &portus::Config {
+                            logger: Some(log),
+                            config: cfg,
+                        },
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[cfg(all(target_os = "linux"))]
+        fn main() {
+            let log = make_logger();
+            let (cfg, ipc) = make_args()
+                .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
+                .unwrap_or_default();
+
+            info!(log, "starting CCP"; 
+                "ipc" => ipc.clone(),
+                "reports" => ?cfg.report,
+            );
+            match ipc.as_str() {
+                "unix" => {
+                    use portus::ipc::unix::Socket;
+                    let b = Socket::new("in", "out").and_then(Backend::new).expect(
+                        "ipc initialization",
+                    );
+
+                    portus::start::<_, $alg<Socket>>(
+                        b,
+                        &portus::Config {
+                            logger: Some(log),
+                            config: cfg,
+                        },
+                    );
+                }
+                "netlink" => {
+                    use portus::ipc::netlink::Socket;
+                    let b = Socket::new().and_then(Backend::new).expect(
+                        "ipc initialization",
+                    );
+
+                    portus::start::<_, $alg<Socket>>(
+                        b,
+                        &portus::Config {
+                            logger: Some(log),
+                            config: cfg,
+                        },
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+    )
+}

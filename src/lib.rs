@@ -7,6 +7,7 @@ extern crate libc;
 extern crate nix;
 #[macro_use]
 extern crate nom;
+
 #[macro_use]
 extern crate slog;
 extern crate slog_async;
@@ -17,6 +18,8 @@ pub mod lang;
 #[macro_use]
 pub mod pattern;
 pub mod serialize;
+#[macro_use]
+pub mod algs;
 
 use std::collections::HashMap;
 

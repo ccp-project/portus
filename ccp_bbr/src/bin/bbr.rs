@@ -1,42 +1,15 @@
 extern crate clap;
 use clap::Arg;
 extern crate time;
-
 #[macro_use]
 extern crate slog;
-extern crate slog_term;
-extern crate slog_async;
-use slog::Drain;
 
 extern crate ccp_bbr;
+#[macro_use]
 extern crate portus;
+
 use ccp_bbr::Bbr;
 use portus::ipc::Backend;
-
-fn make_logger() -> slog::Logger {
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    slog::Logger::root(drain, o!())
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-#[cfg(all(target_os = "linux"))]
-fn ipc_valid(v: String) -> std::result::Result<(), String> {
-    match v.as_str() {
-        "netlink" | "unix" => Ok(()),
-        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
-    }
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-#[cfg(not(target_os = "linux"))]
-fn ipc_valid(v: String) -> std::result::Result<(), String> {
-    match v.as_str() {
-        "unix" => Ok(()),
-        _ => Err(format!("ipc must be one of (unix): {:?}", v)),
-    }
-}
 
 fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
     let probe_rtt_interval_default = format!("{}", ccp_bbr::PROBE_RTT_INTERVAL_SECONDS);
@@ -48,7 +21,7 @@ fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
              .long("ipc")
              .help("Sets the type of ipc to use: (netlink|unix)")
              .default_value("unix")
-             .validator(ipc_valid))
+             .validator(portus::algs::ipc_valid))
         .arg(Arg::with_name("probe_rtt_interval")
              .long("probe_rtt_interval")
              .help("Sets the BBR probe RTT interval in seconds, after which BBR drops its congestion window to potentially observe a new minimum RTT.")
@@ -77,70 +50,4 @@ fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
     ))
 }
 
-#[cfg(not(target_os = "linux"))]
-fn main() {
-    let log = make_logger();
-    let (cfg, ipc) = make_args()
-        .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
-        .unwrap_or_default();
-
-    info!(log, "starting CCP BBR"; "ipc" => ipc.clone());
-    match ipc.as_str() {
-        "unix" => {
-            use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out").and_then(Backend::new).expect(
-                "ipc initialization",
-            );
-
-            portus::start::<_, Bbr<Socket>>(
-                b,
-                &portus::Config {
-                    logger: Some(log),
-                    config: cfg,
-                },
-            );
-        }
-        _ => unreachable!(),
-    }
-}
-
-#[cfg(all(target_os = "linux"))]
-fn main() {
-    let log = make_logger();
-    let (cfg, ipc) = make_args()
-        .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
-        .unwrap_or_default();
-
-    info!(log, "starting CCP BBR"; "ipc" => ipc.clone());
-    match ipc.as_str() {
-        "unix" => {
-            use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out").and_then(Backend::new).expect(
-                "ipc initialization",
-            );
-
-            portus::start::<_, Bbr<Socket>>(
-                b,
-                &portus::Config {
-                    logger: Some(log),
-                    config: cfg,
-                },
-            );
-        }
-        "netlink" => {
-            use portus::ipc::netlink::Socket;
-            let b = Socket::new().and_then(Backend::new).expect(
-                "ipc initialization",
-            );
-
-            portus::start::<_, Bbr<Socket>>(
-                b,
-                &portus::Config {
-                    logger: Some(log),
-                    config: cfg,
-                },
-            );
-        }
-        _ => unreachable!(),
-    }
-}
+make_alg_main!(make_args, "BBR", Bbr);
