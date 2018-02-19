@@ -15,7 +15,7 @@ impl From<nix::Error> for Error {
 #[derive(Debug)]
 pub struct Socket(c_int);
 
-const NL_CFG_F_NONROOT_RECV: c_int = (1 << 0);
+const NL_CFG_F_NONROOT_RECV: c_int = 1;
 const NL_CFG_F_NONROOT_SEND: c_int = (1 << 1);
 
 impl Socket {
@@ -58,7 +58,7 @@ impl Socket {
                 self.0,
                 level,
                 option as c_int,
-                mem::transmute(&val),
+                &val as *const i32 as *const libc::c_void,
                 mem::size_of::<c_int>() as u32,
             )
         };
@@ -80,8 +80,8 @@ impl super::Ipc for Socket {
             None,
             nix::sys::socket::MsgFlags::empty(),
         ).map(|r| r.bytes)
-            .map_err(|e| Error::from(e))?;
-        Ok(&mut buf[NLMSG_HDRSIZE..res])
+            .map_err(Error::from)?;
+        Ok(&buf[NLMSG_HDRSIZE..res])
     }
 
     // netlink header format (RFC 3549)
@@ -115,11 +115,11 @@ impl super::Ipc for Socket {
             nix::sys::socket::MsgFlags::empty(),
             None,
         ).map(|_| ())
-            .map_err(|e| Error::from(e))
+            .map_err(Error::from)
     }
 
     fn close(&self) -> Result<()> {
-        return socket::shutdown(self.0, nix::sys::socket::Shutdown::Both)
-            .map_err(|e| Error::from(e));
+        socket::shutdown(self.0, nix::sys::socket::Shutdown::Both)
+            .map_err(Error::from)
     }
 }

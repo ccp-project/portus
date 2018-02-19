@@ -36,7 +36,7 @@ impl Socket {
 impl super::Ipc for Socket {
     fn send(&self, buf:&[u8]) -> Result<()> {
         //let len = 
-        self.w.lock().unwrap().write(buf).map_err(|e| Error::from(e))?;
+        self.w.lock().unwrap().write(buf).map_err(Error::from)?;
         //if len <= 0 {
         //    Err(super::Error(String::from("Write failed"),))
         //}
@@ -44,7 +44,7 @@ impl super::Ipc for Socket {
     }
 
     fn recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
-        let len = self.r.lock().unwrap().read(msg).map_err(|e| Error::from(e))?;
+        let len = self.r.lock().unwrap().read(msg).map_err(Error::from)?;
         //if len <= 0 {
         //    Err(super::Error(String::from("Read failed"),))
         //}

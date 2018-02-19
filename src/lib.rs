@@ -98,12 +98,10 @@ impl<T: Ipc> Datapath<T> {
 }
 
 #[cfg(all(target_os = "linux"))]
-pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
-    match v.as_str() {
+pub fn ipc_valid(v: &str) -> std::result::Result<(), String> {
+    match v {
         "netlink" | "unix" => Ok(()),
-        _ => Err(String::from(
-            format!("ipc must be one of (netlink|unix): {:?}", v),
-        )),
+        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
     }
 }
 
