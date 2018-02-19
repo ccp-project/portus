@@ -382,14 +382,14 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
         if loss > 0 || sacked > 0 {
             self.cwnd_reduction(loss, sacked, acked);
         } else if acked < self.curr_cwnd_reduction {
-            self.curr_cwnd_reduction -= acked / 1448u32;
+            self.curr_cwnd_reduction -= acked / self.pkt_size;
         } else {
             self.curr_cwnd_reduction = 0;
         }
 
         if self.curr_cwnd_reduction > 0 {
             self.logger.as_ref().map(|log| {
-                debug!(log, "in cwnd reduction"; "acked" => acked / 1448u32, "deficit" => self.curr_cwnd_reduction);
+                debug!(log, "in cwnd reduction"; "acked" => acked / self.pkt_size, "deficit" => self.curr_cwnd_reduction);
             });
             return;
         }
@@ -398,7 +398,7 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
 
         self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; 
-                "acked(pkts)" => acked / 1448u32, 
+                "acked(pkts)" => acked / self.pkt_size, 
                 "curr_cwnd (pkts)" => self.cwnd, 
                 "inflight (pkts)" => inflight, 
                 "loss" => loss, 

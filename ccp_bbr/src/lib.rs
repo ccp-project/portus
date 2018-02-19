@@ -58,6 +58,7 @@ pub struct Bbr<T: Ipc> {
     min_rtt_us: u32,
     min_rtt_timeout: time::Timespec,
     curr_mode: BbrMode,
+    mss: u32,
 }
 
 enum BbrMode {
@@ -83,7 +84,7 @@ impl<T: Ipc> Bbr<T> {
     fn send_probe_bw_pattern(&self) {
         self.logger.as_ref().map(|log| {
             debug!(log, "setting pattern"; 
-                "cwnd, pkts" => (self.bottle_rate * 2.0 * self.min_rtt_us as f64 / 1e6 / 1460.0) as u32,
+                "cwnd, pkts" => (self.bottle_rate * 2.0 * self.min_rtt_us as f64 / 1e6 / self.mss as f64) as u32,
                 "set rate, Mbps" => self.bottle_rate / 125000.0,
                 "up pulse rate, Mbps" => self.bottle_rate * 1.25 / 125000.0,
                 "down pulse rate, Mbps" => self.bottle_rate * 0.75 / 125000.0,
@@ -148,7 +149,7 @@ impl<T: Ipc> Bbr<T> {
         match self.control_channel.send_pattern(
             self.sock_id,
             make_pattern!(
-                pattern::Event::SetCwndAbs(4 * 1448u32) => 
+                pattern::Event::SetCwndAbs(4 * self.mss) => 
                 pattern::Event::WaitNs(200_000_000) => 
                 pattern::Event::Report
             ),
@@ -211,6 +212,7 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
             min_rtt_us: 1000000,
             min_rtt_timeout: time::now().to_timespec() + cfg.config.probe_rtt_interval,
             curr_mode: BbrMode::ProbeBw,
+            mss: info.mss,
         };
 
         s.logger.as_ref().map(|log| {

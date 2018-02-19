@@ -25,6 +25,7 @@ pub struct Reno<T: Ipc> {
     rtt: u32,
     in_startup: bool,
 	use_compensation: bool,
+    mss: u32,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
@@ -222,7 +223,7 @@ impl<T: Ipc> Reno<T> {
         }
 
         // increase cwnd by 1 / cwnd per packet
-        self.cwnd += (1448. * (new_bytes_acked as f64 / self.cwnd as f64)) as u32;
+        self.cwnd += (self.mss as f64 * (new_bytes_acked as f64 / self.cwnd as f64)) as u32;
     }
 
     fn handle_timeout(&mut self) {
@@ -236,7 +237,7 @@ impl<T: Ipc> Reno<T> {
 
         self.logger.as_ref().map(|log| {
             warn!(log, "timeout"; 
-                "curr_cwnd (pkts)" => self.cwnd / 1448, 
+                "curr_cwnd (pkts)" => self.cwnd / self.mss, 
                 "ssthresh" => self.ss_thresh,
             );
         });
@@ -269,7 +270,7 @@ impl<T: Ipc> Reno<T> {
         self.curr_cwnd_reduction += sacked + loss;
         self.logger.as_ref().map(|log| {
             info!(log, "loss"; 
-                "curr_cwnd (pkts)" => self.cwnd / 1448, 
+                "curr_cwnd (pkts)" => self.cwnd / self.mss, 
                 "loss" => loss, 
                 "sacked" => sacked, 
                 "curr_cwnd_deficit" => self.curr_cwnd_reduction,
@@ -301,6 +302,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
             rtt: 0,
             in_startup: false,
 		    use_compensation: cfg.config.use_compensation,
+            mss: info.mss,
         };
 
         if cfg.config.init_cwnd != 0 {
@@ -337,7 +339,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         if self.in_startup {
             // install new fold
             self.sc = self.install_fold();
-            self.cwnd = inflight * 1448;
+            self.cwnd = inflight * self.mss;
             self.in_startup = false;
         }
 
@@ -353,14 +355,14 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
         if loss > 0 || sacked > 0 {
             self.cwnd_reduction(loss, sacked, acked);
         } else if acked < self.curr_cwnd_reduction {
-            self.curr_cwnd_reduction -= (acked as f32 / 1448.) as u32;
+            self.curr_cwnd_reduction -= (acked as f32 / self.mss as f32) as u32;
         } else {
             self.curr_cwnd_reduction = 0;
         }
 
         if self.curr_cwnd_reduction > 0 {
             self.logger.as_ref().map(|log| {
-                debug!(log, "in cwnd reduction"; "acked" => acked / 1448, "deficit" => self.curr_cwnd_reduction);
+                debug!(log, "in cwnd reduction"; "acked" => acked / self.mss, "deficit" => self.curr_cwnd_reduction);
             });
             return;
         }
@@ -369,8 +371,8 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
 
         self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; 
-                "acked(pkts)" => acked / 1448, 
-                "curr_cwnd (pkts)" => self.cwnd / 1448, 
+                "acked(pkts)" => acked / self.mss, 
+                "curr_cwnd (pkts)" => self.cwnd / self.mss, 
                 "inflight (pkts)" => inflight, 
                 "loss" => loss, 
                 "ssthresh" => self.ss_thresh,
