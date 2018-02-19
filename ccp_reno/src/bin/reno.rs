@@ -21,6 +21,22 @@ fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
+#[cfg(all(target_os = "linux"))]
+fn ipc_valid(v: String) -> std::result::Result<(), String> {
+    match v.as_str() {
+        "netlink" | "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ipc_valid(v: String) -> std::result::Result<(), String> {
+    match v.as_str() {
+        "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (unix): {:?}", v)),
+    }
+}
+
 fn make_args() -> Result<(ccp_reno::RenoConfig, String), std::num::ParseIntError> {
     let ss_thresh_default = format!("{}", ccp_reno::DEFAULT_SS_THRESH);
     let matches = clap::App::new("CCP Reno")
@@ -31,7 +47,7 @@ fn make_args() -> Result<(ccp_reno::RenoConfig, String), std::num::ParseIntError
              .long("ipc")
              .help("Sets the type of ipc to use: (netlink|unix)")
              .default_value("unix")
-             .validator(portus::ipc_valid))
+             .validator(ipc_valid))
         .arg(Arg::with_name("compensate_update")
              .long("compensate_update")
              .help("Scale the congestion window update to compensate for reporting delay"))
@@ -106,7 +122,7 @@ fn main() {
 
             portus::start::<_, Reno<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },
@@ -136,7 +152,7 @@ fn main() {
 
             portus::start::<_, Reno<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },
@@ -150,7 +166,7 @@ fn main() {
 
             portus::start::<_, Reno<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },

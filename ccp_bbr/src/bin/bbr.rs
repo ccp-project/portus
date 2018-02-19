@@ -20,6 +20,22 @@ fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
+#[cfg(all(target_os = "linux"))]
+fn ipc_valid(v: String) -> std::result::Result<(), String> {
+    match v.as_str() {
+        "netlink" | "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ipc_valid(v: String) -> std::result::Result<(), String> {
+    match v.as_str() {
+        "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (unix): {:?}", v)),
+    }
+}
+
 fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
     let probe_rtt_interval_default = format!("{}", ccp_bbr::PROBE_RTT_INTERVAL_SECONDS);
     let matches = clap::App::new("CCP BBR")
@@ -30,7 +46,7 @@ fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
              .long("ipc")
              .help("Sets the type of ipc to use: (netlink|unix)")
              .default_value("unix")
-             .validator(portus::ipc_valid))
+             .validator(ipc_valid))
         .arg(Arg::with_name("probe_rtt_interval")
              .long("probe_rtt_interval")
              .help("Sets the BBR probe RTT interval in seconds, after which BBR drops its congestion window to potentially observe a new minimum RTT.")
@@ -76,7 +92,7 @@ fn main() {
 
             portus::start::<_, Bbr<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },
@@ -103,7 +119,7 @@ fn main() {
 
             portus::start::<_, Bbr<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },
@@ -117,7 +133,7 @@ fn main() {
 
             portus::start::<_, Bbr<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },

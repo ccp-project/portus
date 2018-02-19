@@ -97,22 +97,6 @@ impl<T: Ipc> Datapath<T> {
     }
 }
 
-#[cfg(all(target_os = "linux"))]
-pub fn ipc_valid(v: &str) -> std::result::Result<(), String> {
-    match v {
-        "netlink" | "unix" => Ok(()),
-        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-pub fn ipc_valid(v: &str) -> std::result::Result<(), String> {
-    match v {
-        "unix" => Ok(()),
-        _ => Err(format!("ipc must be one of (unix): {:?}", v)),
-    }
-}
-
 pub struct Measurement {
     fields: Vec<u64>,
 }

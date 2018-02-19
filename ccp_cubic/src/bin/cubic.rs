@@ -20,6 +20,22 @@ fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
+#[cfg(all(target_os = "linux"))]
+fn ipc_valid(v: String) -> std::result::Result<(), String> {
+    match v.as_str() {
+        "netlink" | "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ipc_valid(v: String) -> std::result::Result<(), String> {
+    match v.as_str() {
+        "unix" => Ok(()),
+        _ => Err(format!("ipc must be one of (unix): {:?}", v)),
+    }
+}
+
 fn make_args() -> Result<(ccp_cubic::CubicConfig, String), std::num::ParseFloatError> {
     let ss_thresh_default = format!("{}", ccp_cubic::DEFAULT_SS_THRESH);
     let matches = clap::App::new("CCP Cubic")
@@ -30,7 +46,7 @@ fn make_args() -> Result<(ccp_cubic::CubicConfig, String), std::num::ParseFloatE
              .long("ipc")
              .help("Sets the type of ipc to use: (netlink|unix)")
              .default_value("unix")
-             .validator(portus::ipc_valid))
+             .validator(ipc_valid))
         .arg(Arg::with_name("ss_thresh")
              .long("ss_thresh")
              .help("Sets the slow start threshold, in bytes")
@@ -67,7 +83,7 @@ fn main() {
 
             portus::start::<_, Cubic<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },
@@ -94,7 +110,7 @@ fn main() {
 
             portus::start::<_, Cubic<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },
@@ -108,7 +124,7 @@ fn main() {
 
             portus::start::<_, Cubic<Socket>>(
                 b,
-                portus::Config {
+                &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 },
