@@ -41,11 +41,29 @@ impl portus::serialize::AsRawMsg for TestMsg {
     }
 }
 
+/// If ccp.ko is loaded, return false.
+#[cfg(all(target_os = "linux"))] // netlink is linux-only
+fn test_ccp_present(log: &slog::Logger) -> bool {
+    use std::process::Command;
+
+    let lsmod = Command::new("lsmod")
+        .output()
+        .expect("lsmod failed");
+    debug!(log, "lsmod");
+    let loaded_modules = String::from_utf8_lossy(&lsmod.stdout);
+    loaded_modules.split('\n').filter(|s| s.contains("ccp")).collect::<Vec<_>>().is_empty()
+}
+
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
 fn test(log: &slog::Logger) {
     use std::process::Command;
     use portus::ipc::Backend;
     use portus::serialize::AsRawMsg;
+
+    if !test_ccp_present(log) {
+        warn!(log, "ccp.ko loaded, aborting test");
+        return;
+    }
 
     Command::new("sudo")
         .arg("rmmod")
