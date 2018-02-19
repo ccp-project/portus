@@ -64,7 +64,7 @@ impl<T: Ipc> Cubic<T> {
             match self.control_channel.send_pattern(
                 self.sock_id,
                 make_pattern!(
-                    pattern::Event::SetCwndAbs((self.cwnd * (self.pkt_size as f64)) as u32) => 
+                    pattern::Event::SetCwndAbs((self.cwnd * (f64::from(self.pkt_size))) as u32) => 
                     pattern::Event::WaitRtts(1.0) => 
                     pattern::Event::Report
                 ),
@@ -80,7 +80,7 @@ impl<T: Ipc> Cubic<T> {
             match self.control_channel.send_pattern(
                 self.sock_id,
                 make_pattern!(
-                    pattern::Event::SetCwndAbs((self.cwnd * (self.pkt_size as f64)) as u32) => 
+                    pattern::Event::SetCwndAbs((self.cwnd * (f64::from(self.pkt_size))) as u32) => 
                     pattern::Event::WaitNs(100_000_000) => 
                     pattern::Event::Report
                 ),
@@ -98,7 +98,7 @@ impl<T: Ipc> Cubic<T> {
     fn install_fold(&self) -> Option<Scope> {
         match self.control_channel.install_measurement(
             self.sock_id,
-            "
+            b"
                 (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
                 (bind Flow.inflight Pkt.packets_in_flight)
                 (bind Flow.rtt Pkt.rtt_sample_us)
@@ -109,14 +109,13 @@ impl<T: Ipc> Cubic<T> {
                 (bind isUrgent Pkt.was_timeout)
                 (bind isUrgent (!if isUrgent (> Flow.loss 0)))
             "
-                .as_bytes(),
         ) {
             Ok(s) => Some(s),
             Err(_) => None,
         }
     }
 
-    fn get_fields(&mut self, m: Measurement) -> (u32, bool, u32, u32, u32, u32) {
+    fn get_fields(&mut self, m: &Measurement) -> (u32, bool, u32, u32, u32, u32) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
             "expected acked field in returned measurement",
@@ -147,11 +146,11 @@ impl<T: Ipc> Cubic<T> {
 
     fn cubic_increase_with_slow_start(&mut self, acked: u32, rtt: u32) {
         let new_bytes_acked = acked;
-        let f_rtt = (rtt as f64)*0.000001;
-        let mut no_of_acks = ((new_bytes_acked as f64)/(self.pkt_size as f64)) as u32;
+        let f_rtt = (f64::from(rtt))*0.000001;
+        let mut no_of_acks = ((f64::from(new_bytes_acked))/(f64::from(self.pkt_size))) as u32;
         if self.cwnd <= self.ss_thresh {
-            if self.cwnd+(no_of_acks as f64)< self.ss_thresh {
-                self.cwnd += no_of_acks as f64;
+            if self.cwnd + (f64::from(no_of_acks))< self.ss_thresh {
+                self.cwnd += f64::from(no_of_acks);
                 no_of_acks = 0;
             } else {
                 no_of_acks -= (self.ss_thresh - self.cwnd) as u32;
@@ -165,19 +164,19 @@ impl<T: Ipc> Cubic<T> {
 
             self.cubic_update();
             if self.cwnd_cnt > self.cnt {
-                self.cwnd = self.cwnd + 1.0;
+                self.cwnd += 1.0;
                 self.cwnd_cnt = 0.0;
             } else {
-                self.cwnd_cnt = self.cwnd_cnt + 1.0;
+                self.cwnd_cnt += 1.0;
             }
         }
         
     }
 
     fn cubic_update(&mut self){
-        self.ack_cnt = self.ack_cnt + 1.0;
+        self.ack_cnt += 1.0;
         if self.epoch_start <= 0.0 {
-            self.epoch_start = (time::get_time().sec as f64) + (time::get_time().nsec as f64)/1000000000.0;
+            self.epoch_start = (time::get_time().sec as f64) + f64::from(time::get_time().nsec)/1_000_000_000.0;
             if self.cwnd < self.wlast_max {
                 let temp = (self.wlast_max-self.cwnd)/self.c;
                 self.k = (temp.max(0.0)).powf(1.0/3.0);
@@ -191,7 +190,7 @@ impl<T: Ipc> Cubic<T> {
             self.wtcp = self.cwnd
         }
 
-        let t = (time::get_time().sec as f64) + (time::get_time().nsec as f64)/1000000000.0 + self.d_min - self.epoch_start;
+        let t = (time::get_time().sec as f64) + f64::from(time::get_time().nsec)/1_000_000_000.0 + self.d_min - self.epoch_start;
         let target = self.origin_point + self.c*((t-self.k)*(t-self.k)*(t-self.k));
         if target > self.cwnd {
             self.cnt = self.cwnd / (target - self.cwnd);
@@ -205,7 +204,7 @@ impl<T: Ipc> Cubic<T> {
     }
 
     fn cubic_tcp_friendliness(&mut self) {
-        self.wtcp = self.wtcp + (((3.0 * self.beta) / (2.0 - self.beta)) * (self.ack_cnt / self.cwnd));
+        self.wtcp += ((3.0 * self.beta) / (2.0 - self.beta)) * (self.ack_cnt / self.cwnd);
         self.ack_cnt = 0.0;
         if self.wtcp > self.cwnd {
             let max_cnt = self.cwnd / (self.wtcp - self.cwnd);
@@ -258,7 +257,7 @@ impl<T: Ipc> Cubic<T> {
         // if loss indicator is nonzero
         // AND the losses in the lossy cwnd have not yet been accounted for
         // OR there is a partial ACK AND cwnd was probing ss_thresh
-        if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
+        if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && (self.cwnd - self.ss_thresh).abs() < std::f64::EPSILON) {
             self.epoch_start = -0.1;
             if self.cwnd < self.wlast_max && self.fast_convergence {
                 self.wlast_max = self.cwnd * ((2.0 - self.beta) / 2.0);
@@ -266,7 +265,7 @@ impl<T: Ipc> Cubic<T> {
                 self.wlast_max = self.cwnd;
             }
 
-            self.cwnd = self.cwnd * (1.0 - self.beta);
+            self.cwnd *= 1.0 - self.beta;
             self.last_cwnd_reduction = time::now().to_timespec();
             if self.cwnd <= self.init_cwnd {
                 self.cwnd = self.init_cwnd;
@@ -363,13 +362,13 @@ impl<T: Ipc> CongAlg<T> for Cubic<T> {
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
-        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(m);
+        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(&m);
         if was_timeout {
             self.handle_timeout();
             return;
         }
 
-        self.cubic_rtt = (rtt as f64)*0.000001;
+        self.cubic_rtt = (f64::from(rtt))*0.000001;
 
         //if loss > 0 {
         //    self.cwnd_reduction_timed(loss, sacked, acked);

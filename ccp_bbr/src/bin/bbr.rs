@@ -20,6 +20,7 @@ fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 #[cfg(all(target_os = "linux"))]
 fn ipc_valid(v: String) -> std::result::Result<(), String> {
     match v.as_str() {
@@ -28,6 +29,7 @@ fn ipc_valid(v: String) -> std::result::Result<(), String> {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 #[cfg(not(target_os = "linux"))]
 fn ipc_valid(v: String) -> std::result::Result<(), String> {
     match v.as_str() {
@@ -57,12 +59,12 @@ fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
     let probe_rtt_interval_arg = time::Duration::seconds(i64::from_str_radix(
         matches.value_of("probe_rtt_interval").unwrap(),
         10,
-    ).map_err(|e| String::from(format!("{:?}", e)))
+    ).map_err(|e| format!("{:?}", e))
         .and_then(|probe_rtt_interval_arg| if probe_rtt_interval_arg <= 0 {
-            Err(String::from(format!(
+            Err(format!(
                 "probe_rtt_interval must be positive: {}",
                 probe_rtt_interval_arg
-            )))
+            ))
         } else {
             Ok(probe_rtt_interval_arg)
         })?);
@@ -80,13 +82,13 @@ fn main() {
     let log = make_logger();
     let (cfg, ipc) = make_args()
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
-        .unwrap_or(Default::default());
+        .unwrap_or_default();
 
     info!(log, "starting CCP BBR"; "ipc" => ipc.clone());
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out").and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new("in", "out").and_then(Backend::new).expect(
                 "ipc initialization",
             );
 
@@ -107,13 +109,13 @@ fn main() {
     let log = make_logger();
     let (cfg, ipc) = make_args()
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
-        .unwrap_or(Default::default());
+        .unwrap_or_default();
 
     info!(log, "starting CCP BBR"; "ipc" => ipc.clone());
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out").and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new("in", "out").and_then(Backend::new).expect(
                 "ipc initialization",
             );
 
@@ -127,7 +129,7 @@ fn main() {
         }
         "netlink" => {
             use portus::ipc::netlink::Socket;
-            let b = Socket::new().and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new().and_then(Backend::new).expect(
                 "ipc initialization",
             );
 

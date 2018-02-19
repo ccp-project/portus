@@ -20,6 +20,7 @@ fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 #[cfg(all(target_os = "linux"))]
 fn ipc_valid(v: String) -> std::result::Result<(), String> {
     match v.as_str() {
@@ -28,6 +29,7 @@ fn ipc_valid(v: String) -> std::result::Result<(), String> {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 #[cfg(not(target_os = "linux"))]
 fn ipc_valid(v: String) -> std::result::Result<(), String> {
     match v.as_str() {
@@ -71,13 +73,13 @@ fn main() {
     let log = make_logger();
     let (cfg, ipc) = make_args()
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
-        .unwrap_or(Default::default());
+        .unwrap_or_default();
 
     info!(log, "starting CCP Cubic");
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out").and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new("in", "out").and_then(Backend::new).expect(
                 "ipc initialization",
             );
 
@@ -98,13 +100,13 @@ fn main() {
     let log = make_logger();
     let (cfg, ipc) = make_args()
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
-        .unwrap_or(Default::default());
+        .unwrap_or_default();
 
     info!(log, "starting CCP Cubic");
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out").and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new("in", "out").and_then(Backend::new).expect(
                 "ipc initialization",
             );
 
@@ -118,7 +120,7 @@ fn main() {
         }
         "netlink" => {
             use portus::ipc::netlink::Socket;
-            let b = Socket::new().and_then(|sk| Backend::new(sk)).expect(
+            let b = Socket::new().and_then(Backend::new).expect(
                 "ipc initialization",
             );
 

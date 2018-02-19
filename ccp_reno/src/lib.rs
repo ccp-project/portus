@@ -28,7 +28,7 @@ pub struct Reno<T: Ipc> {
     mss: u32,
 }
 
-pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
+pub const DEFAULT_SS_THRESH: u32 = 0x7fff_ffff;
 
 #[derive(Debug, Clone)]
 pub enum RenoConfigReport {
@@ -120,7 +120,7 @@ impl<T: Ipc> Reno<T> {
     fn install_fold_ss(&self) -> Option<Scope> {
         match self.control_channel.install_measurement(
             self.sock_id,
-            "
+            b"
                 (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
                 (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
                 (bind Flow.loss Pkt.lost_pkts_sample)
@@ -131,7 +131,6 @@ impl<T: Ipc> Reno<T> {
                 (bind isUrgent Pkt.was_timeout)
                 (bind isUrgent (!if isUrgent (> Flow.loss 0)))
             "
-                .as_bytes(),
         ) {
             Ok(s) => Some(s),
             Err(_) => None,
@@ -142,7 +141,7 @@ impl<T: Ipc> Reno<T> {
         match self.control_channel.install_measurement(
             self.sock_id,
             if let RenoConfigReport::Ack = self.report_option {
-                "
+                b"
                     (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
                     (bind Flow.inflight Pkt.packets_in_flight)
                     (bind Flow.rtt Pkt.rtt_sample_us)
@@ -151,9 +150,9 @@ impl<T: Ipc> Reno<T> {
                     (bind Flow.loss Pkt.lost_pkts_sample)
                     (bind Flow.timeout Pkt.was_timeout)
                     (bind isUrgent true)
-                ".as_bytes()
-            } else {
                 "
+            } else {
+                b"
                     (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
                     (bind Flow.inflight Pkt.packets_in_flight)
                     (bind Flow.rtt Pkt.rtt_sample_us)
@@ -161,9 +160,9 @@ impl<T: Ipc> Reno<T> {
                     (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
                     (bind Flow.loss Pkt.lost_pkts_sample)
                     (bind Flow.timeout Pkt.was_timeout)
-                        (bind isUrgent Pkt.was_timeout)
-                        (bind isUrgent (!if isUrgent (> Flow.loss 0)))
-                ".as_bytes()
+                    (bind isUrgent Pkt.was_timeout)
+                    (bind isUrgent (!if isUrgent (> Flow.loss 0)))
+                "
             }
         ) {
             Ok(s) => Some(s),
@@ -171,7 +170,7 @@ impl<T: Ipc> Reno<T> {
         }
     }
 
-    fn get_fields(&mut self, m: Measurement) -> (u32, bool, u32, u32, u32, u32) {
+    fn get_fields(&mut self, m: &Measurement) -> (u32, bool, u32, u32, u32, u32) {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
             "expected acked field in returned measurement",
@@ -210,7 +209,7 @@ impl<T: Ipc> Reno<T> {
             } else {
 		// use a compensating increase function
 		if self.use_compensation {
-                    let delta = new_bytes_acked as f64 / (2.0_f64).ln();
+                    let delta = f64::from(new_bytes_acked) / (2.0_f64).ln();
                     self.cwnd += delta as u32;
 		    // let ccp_rtt = (rtt_us + 10_000) as f64;
 		    // let delta = ccp_rtt * ccp_rtt / (rtt_us as f64 * rtt_us as f64);
@@ -223,7 +222,7 @@ impl<T: Ipc> Reno<T> {
         }
 
         // increase cwnd by 1 / cwnd per packet
-        self.cwnd += (self.mss as f64 * (new_bytes_acked as f64 / self.cwnd as f64)) as u32;
+        self.cwnd += (f64::from(self.mss) * (f64::from(new_bytes_acked) / f64::from(self.cwnd))) as u32;
     }
 
     fn handle_timeout(&mut self) {
@@ -249,7 +248,7 @@ impl<T: Ipc> Reno<T> {
     /// Handle sacked or lost packets
     /// Only call with loss > 0 || sacked > 0
     fn cwnd_reduction(&mut self, loss: u32, sacked: u32, acked: u32) {
-        if time::now().to_timespec() - self.last_cwnd_reduction > time::Duration::microseconds((self.rtt as f64 * 2.0) as i64) {
+        if time::now().to_timespec() - self.last_cwnd_reduction > time::Duration::microseconds((f64::from(self.rtt) * 2.0) as i64) {
             self.curr_cwnd_reduction = 0;
         }
 
@@ -334,7 +333,7 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
-        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(m);
+        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(&m);
 
         if self.in_startup {
             // install new fold
