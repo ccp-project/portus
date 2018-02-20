@@ -5,7 +5,6 @@ extern crate time;
 extern crate slog;
 
 extern crate ccp_bbr;
-#[macro_use]
 extern crate portus;
 
 use ccp_bbr::Bbr;
@@ -50,4 +49,45 @@ fn make_args() -> Result<(ccp_bbr::BbrConfig, String), String> {
     ))
 }
 
-make_alg_main!(make_args, "BBR", Bbr);
+fn main() {
+    let log = portus::algs::make_logger();
+    let (cfg, ipc) = make_args()
+        .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
+        .unwrap_or_default();
+
+    info!(log, "starting CCP"; 
+        "algorithm" => "BBR",
+        "ipc" => ipc.clone(),
+    );
+    match ipc.as_str() {
+        "unix" => {
+            use portus::ipc::unix::Socket;
+            let b = Socket::new("in", "out").and_then(Backend::new).expect(
+                "ipc initialization",
+            );
+            portus::start::<_, Bbr<_>>(
+                b,
+                &portus::Config {
+                    logger: Some(log),
+                    config: cfg,
+                },
+            );
+        }
+        #[cfg(all(target_os = "linux"))]
+        "netlink" => {
+            use portus::ipc::netlink::Socket;
+            let b = Socket::new().and_then(Backend::new).expect(
+                "ipc initialization",
+            );
+            portus::start::<_, Bbr<_>>(
+                b,
+                &portus::Config {
+                    logger: Some(log),
+                    config: cfg,
+                },
+            );
+        }
+        _ => unreachable!(),
+    }
+            
+}

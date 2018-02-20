@@ -1,6 +1,5 @@
 extern crate clap;
 extern crate time;
-
 #[macro_use]
 extern crate slog;
 #[macro_use]
@@ -11,76 +10,97 @@ use portus::pattern;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 
-pub struct Reno<T: Ipc> {
+pub mod reno;
+pub mod cubic;
+
+pub trait GenericCongAvoidAlg {
+    fn new(init_cwnd: u32, mss: u32) -> Self;
+    fn curr_cwnd(&self) -> u32;
+    fn set_cwnd(&mut self, cwnd: u32);
+    fn increase(&mut self, m: &GenericCongAvoidMeasurements);
+    fn reduction(&mut self, m: &GenericCongAvoidMeasurements);
+    fn reset(&mut self) {}
+}
+
+pub struct GenericCongAvoid<T: Ipc, A: GenericCongAvoidAlg> {
+    report_option: GenericCongAvoidConfigReport,
+	use_compensation: bool,
     control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
-    report_option: RenoConfigReport,
     sc: Option<Scope>,
     sock_id: u32,
     ss_thresh: u32,
-    cwnd: u32,
+    in_startup: bool,
+    mss: u32,
+    rtt: u32,
+    init_cwnd: u32,
     curr_cwnd_reduction: u32,
     last_cwnd_reduction: time::Timespec,
-    init_cwnd: u32,
-    rtt: u32,
-    in_startup: bool,
-	use_compensation: bool,
-    mss: u32,
+    alg: A,
 }
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fff_ffff;
 
 #[derive(Debug, Clone)]
-pub enum RenoConfigReport {
+pub enum GenericCongAvoidConfigReport {
     Ack,
     Rtt,
     Interval(time::Duration),
 }
 
 #[derive(Debug, Clone)]
-pub enum RenoConfigSS {
+pub enum GenericCongAvoidConfigSS {
     Fold,
     Pattern,
     Ccp,
 }
 
 #[derive(Clone)]
-pub struct RenoConfig {
+pub struct GenericCongAvoidConfig {
     pub ss_thresh: u32,
     pub init_cwnd: u32,
-    pub report: RenoConfigReport,
-    pub ss: RenoConfigSS,
+    pub report: GenericCongAvoidConfigReport,
+    pub ss: GenericCongAvoidConfigSS,
     pub use_compensation: bool,
 }
 
-impl Default for RenoConfig {
+impl Default for GenericCongAvoidConfig {
     fn default() -> Self {
-        RenoConfig {
+        GenericCongAvoidConfig {
             ss_thresh: DEFAULT_SS_THRESH,
             init_cwnd: 0,
-            report: RenoConfigReport::Rtt,
-            ss: RenoConfigSS::Ccp,
+            report: GenericCongAvoidConfigReport::Rtt,
+            ss: GenericCongAvoidConfigSS::Ccp,
             use_compensation: false,
         }
     }
 }
 
-impl<T: Ipc> Reno<T> {
+pub struct GenericCongAvoidMeasurements {
+    pub acked:       u32,
+    pub was_timeout: bool,
+    pub sacked:      u32,
+    pub loss:        u32,
+    pub rtt:         u32,
+    pub inflight:    u32,
+}
+
+impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     fn send_pattern(&self) {
         match self.control_channel.send_pattern(
             self.sock_id,
             match self.report_option {
-                RenoConfigReport::Ack => make_pattern!(
-                    pattern::Event::SetCwndAbs(self.cwnd) => 
+                GenericCongAvoidConfigReport::Ack => make_pattern!(
+                    pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
                     pattern::Event::WaitNs(100_000_000) 
                 ),
-                RenoConfigReport::Rtt => make_pattern!(
-                    pattern::Event::SetCwndAbs(self.cwnd) => 
+                GenericCongAvoidConfigReport::Rtt => make_pattern!(
+                    pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
                     pattern::Event::WaitRtts(1.0) => 
                     pattern::Event::Report
                 ),
-                RenoConfigReport::Interval(dur) => make_pattern!(
-                    pattern::Event::SetCwndAbs(self.cwnd) => 
+                GenericCongAvoidConfigReport::Interval(dur) => make_pattern!(
+                    pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
                     pattern::Event::WaitNs(dur.num_nanoseconds().unwrap() as u32) => 
                     pattern::Event::Report
                 ),
@@ -140,7 +160,7 @@ impl<T: Ipc> Reno<T> {
     fn install_fold(&self) -> Option<Scope> {
         match self.control_channel.install_measurement(
             self.sock_id,
-            if let RenoConfigReport::Ack = self.report_option {
+            if let GenericCongAvoidConfigReport::Ack = self.report_option {
                 b"
                     (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
                     (bind Flow.inflight Pkt.packets_in_flight)
@@ -170,7 +190,7 @@ impl<T: Ipc> Reno<T> {
         }
     }
 
-    fn get_fields(&mut self, m: &Measurement) -> (u32, bool, u32, u32, u32, u32) {
+    fn get_fields(&mut self, m: &Measurement) -> GenericCongAvoidMeasurements {
         let sc = self.sc.as_ref().expect("scope should be initialized");
         let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
             "expected acked field in returned measurement",
@@ -196,33 +216,14 @@ impl<T: Ipc> Reno<T> {
             "expected rtt field in returned measurement",
         ) as u32;
 
-        (ack, was_timeout == 1, sack, loss, rtt, inflight)
-    }
-
-    fn additive_increase_with_slow_start(&mut self, acked: u32, _rtt_us: u32) {
-        let mut new_bytes_acked = acked;
-        if self.cwnd < self.ss_thresh {
-            // increase cwnd by 1 per packet, until ssthresh
-            if self.cwnd + new_bytes_acked > self.ss_thresh {
-                new_bytes_acked -= self.ss_thresh - self.cwnd;
-                self.cwnd = self.ss_thresh;
-            } else {
-		// use a compensating increase function
-		if self.use_compensation {
-                    let delta = f64::from(new_bytes_acked) / (2.0_f64).ln();
-                    self.cwnd += delta as u32;
-		    // let ccp_rtt = (rtt_us + 10_000) as f64;
-		    // let delta = ccp_rtt * ccp_rtt / (rtt_us as f64 * rtt_us as f64);
-		    // self.cwnd += (new_bytes_acked as f64 * delta) as u32;
-		} else {               
-		    self.cwnd += new_bytes_acked;
-		}
-                new_bytes_acked = 0;
-            }
+        GenericCongAvoidMeasurements{
+            acked: ack,
+            was_timeout: was_timeout == 1,
+            sacked: sack,
+            loss: loss,
+            rtt: rtt,
+            inflight: inflight,
         }
-
-        // increase cwnd by 1 / cwnd per packet
-        self.cwnd += (f64::from(self.mss) * (f64::from(new_bytes_acked) / f64::from(self.cwnd))) as u32;
     }
 
     fn handle_timeout(&mut self) {
@@ -231,12 +232,13 @@ impl<T: Ipc> Reno<T> {
             self.ss_thresh = self.init_cwnd;
         }
 
-        self.cwnd = self.init_cwnd;
+        self.alg.reset();
+        self.alg.set_cwnd(self.init_cwnd);
         self.curr_cwnd_reduction = 0;
 
         self.logger.as_ref().map(|log| {
             warn!(log, "timeout"; 
-                "curr_cwnd (pkts)" => self.cwnd / self.mss, 
+                "curr_cwnd (pkts)" => self.init_cwnd / self.mss, 
                 "ssthresh" => self.ss_thresh,
             );
         });
@@ -245,85 +247,103 @@ impl<T: Ipc> Reno<T> {
         return;
     }
 
-    /// Handle sacked or lost packets
-    /// Only call with loss > 0 || sacked > 0
-    fn cwnd_reduction(&mut self, loss: u32, sacked: u32, acked: u32) {
-        if time::now().to_timespec() - self.last_cwnd_reduction > time::Duration::microseconds((f64::from(self.rtt) * 2.0) as i64) {
-            self.curr_cwnd_reduction = 0;
-        }
-
-        // if loss indicator is nonzero
-        // AND the losses in the lossy cwnd have not yet been accounted for
-        // OR there is a partial ACK AND cwnd was probing ss_thresh
-        if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
-            self.cwnd /= 2;
-            self.last_cwnd_reduction = time::now().to_timespec();
-            if self.cwnd <= self.init_cwnd {
-                self.cwnd = self.init_cwnd;
+    fn maybe_reduce_cwnd(&mut self, m: &GenericCongAvoidMeasurements) {
+        if m.loss > 0 || m.sacked > 0 {
+            if time::now().to_timespec() - self.last_cwnd_reduction > time::Duration::microseconds((f64::from(self.rtt) * 2.0) as i64) {
+                self.curr_cwnd_reduction = 0;
             }
 
-            self.ss_thresh = self.cwnd;
-            self.send_pattern();
+            // if loss indicator is nonzero
+            // AND the losses in the lossy cwnd have not yet been accounted for
+            // OR there is a partial ACK AND cwnd was probing ss_thresh
+            if m.loss > 0 && self.curr_cwnd_reduction == 0 || (m.acked > 0 && self.alg.curr_cwnd() == self.ss_thresh) {
+                self.alg.reduction(m);
+                self.last_cwnd_reduction = time::now().to_timespec();
+                self.ss_thresh = self.alg.curr_cwnd();
+                self.send_pattern();
+            }
+
+            self.curr_cwnd_reduction += m.sacked + m.loss;
+        } else if m.acked < self.curr_cwnd_reduction {
+            self.curr_cwnd_reduction -= (m.acked as f32 / self.mss as f32) as u32;
+        } else {
+            self.curr_cwnd_reduction = 0;
+        }
+    }
+
+    fn slow_start_increase(&mut self, acked: u32) -> u32 {
+        let mut new_bytes_acked = acked;
+        if self.alg.curr_cwnd() < self.ss_thresh {
+            // increase cwnd by 1 per packet, until ssthresh
+            if self.alg.curr_cwnd() + new_bytes_acked > self.ss_thresh {
+                new_bytes_acked -= self.ss_thresh - self.alg.curr_cwnd();
+                self.alg.set_cwnd(self.ss_thresh);
+            } else {
+                let curr_cwnd = self.alg.curr_cwnd();
+                if self.use_compensation {
+                    // use a compensating increase function: deliberately overshoot
+                    // the "correct" update to keep account for lost throughput due to
+                    // infrequent updates. Usually this doesn't matter, but it can when 
+                    // the window is increasing exponentially (slow start).
+                    let delta = f64::from(new_bytes_acked) / (2.0_f64).ln();
+                    self.alg.set_cwnd(curr_cwnd + delta as u32);
+                    // let ccp_rtt = (rtt_us + 10_000) as f64;
+                    // let delta = ccp_rtt * ccp_rtt / (rtt_us as f64 * rtt_us as f64);
+                    // self.cwnd += (new_bytes_acked as f64 * delta) as u32;
+                } else {        
+                    self.alg.set_cwnd(curr_cwnd + new_bytes_acked);
+                }
+
+                new_bytes_acked = 0
+            }
         }
 
-        self.curr_cwnd_reduction += sacked + loss;
-        self.logger.as_ref().map(|log| {
-            info!(log, "loss"; 
-                "curr_cwnd (pkts)" => self.cwnd / self.mss, 
-                "loss" => loss, 
-                "sacked" => sacked, 
-                "curr_cwnd_deficit" => self.curr_cwnd_reduction,
-                "since_last_drop" => ?(time::now().to_timespec() - self.last_cwnd_reduction),
-            );
-        });
+        new_bytes_acked
     }
 }
 
-impl<T: Ipc> CongAlg<T> for Reno<T> {
-    type Config = RenoConfig;
+impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
+    type Config = GenericCongAvoidConfig;
 
     fn name() -> String {
         String::from("reno")
     }
 
-    fn create(control: Datapath<T>, cfg: Config<T, Reno<T>>, info: DatapathInfo) -> Self {
+    fn create(control: Datapath<T>, cfg: Config<T, GenericCongAvoid<T, A>>, info: DatapathInfo) -> Self {
+        let init_cwnd = if cfg.config.init_cwnd != 0 {
+            cfg.config.init_cwnd
+        } else {
+            info.init_cwnd
+        };
+
         let mut s = Self {
             control_channel: control,
             logger: cfg.logger,
             report_option: cfg.config.report,
-            cwnd: info.init_cwnd,
-            init_cwnd: info.init_cwnd,
-            curr_cwnd_reduction: 0,
-            last_cwnd_reduction: time::now().to_timespec() - time::Duration::milliseconds(500),
             sc: None,
             sock_id: info.sock_id,
             ss_thresh: cfg.config.ss_thresh,
             rtt: 0,
             in_startup: false,
-		    use_compensation: cfg.config.use_compensation,
             mss: info.mss,
+		    use_compensation: cfg.config.use_compensation,
+            init_cwnd: init_cwnd,
+            curr_cwnd_reduction: 0,
+            last_cwnd_reduction: time::now().to_timespec() - time::Duration::milliseconds(500),
+            alg: A::new(init_cwnd, info.mss),
         };
 
-        if cfg.config.init_cwnd != 0 {
-            s.cwnd = cfg.config.init_cwnd;
-            s.init_cwnd = cfg.config.init_cwnd;
-        }
-
-        s.logger.as_ref().map(|log| {
-            debug!(log, "starting reno flow"; "sock_id" => info.sock_id);
-        });
-
         match cfg.config.ss {
-            RenoConfigSS::Fold => {
+            GenericCongAvoidConfigSS::Fold => {
                 s.sc = s.install_fold_ss();
                 s.send_pattern_wait();
                 s.in_startup = true;
             }
-            RenoConfigSS::Pattern => {
+            GenericCongAvoidConfigSS::Pattern => {
                 s.sc = s.install_fold();
                 s.send_pattern_ss();
             }
-            RenoConfigSS::Ccp => {
+            GenericCongAvoidConfigSS::Ccp => {
                 s.sc = s.install_fold();
                 s.send_pattern();
             }
@@ -333,35 +353,29 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
     }
 
     fn measurement(&mut self, _sock_id: u32, m: Measurement) {
-        let (acked, was_timeout, sacked, loss, rtt, inflight) = self.get_fields(&m);
+        let mut ms = self.get_fields(&m);
 
         if self.in_startup {
             // install new fold
             self.sc = self.install_fold();
-            self.cwnd = inflight * self.mss;
+            self.alg.set_cwnd(ms.inflight * self.mss);
             self.in_startup = false;
         }
 
-        self.rtt = rtt;
-        if was_timeout {
+        self.rtt = ms.rtt;
+        if ms.was_timeout {
             self.handle_timeout();
             return;
         }
 
+        ms.acked = self.slow_start_increase(ms.acked);
+
         // increase the cwnd corresponding to new in-order cumulative ACKs
-        self.additive_increase_with_slow_start(acked, rtt);
-
-        if loss > 0 || sacked > 0 {
-            self.cwnd_reduction(loss, sacked, acked);
-        } else if acked < self.curr_cwnd_reduction {
-            self.curr_cwnd_reduction -= (acked as f32 / self.mss as f32) as u32;
-        } else {
-            self.curr_cwnd_reduction = 0;
-        }
-
+        self.alg.increase(&ms);
+        self.maybe_reduce_cwnd(&ms);
         if self.curr_cwnd_reduction > 0 {
             self.logger.as_ref().map(|log| {
-                debug!(log, "in cwnd reduction"; "acked" => acked / self.mss, "deficit" => self.curr_cwnd_reduction);
+                debug!(log, "in cwnd reduction"; "acked" => ms.acked / self.mss, "deficit" => self.curr_cwnd_reduction);
             });
             return;
         }
@@ -370,12 +384,12 @@ impl<T: Ipc> CongAlg<T> for Reno<T> {
 
         self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; 
-                "acked(pkts)" => acked / self.mss, 
-                "curr_cwnd (pkts)" => self.cwnd / self.mss, 
-                "inflight (pkts)" => inflight, 
-                "loss" => loss, 
+                "acked(pkts)" => ms.acked / self.mss, 
+                "curr_cwnd (pkts)" => self.alg.curr_cwnd() / self.mss,
+                "inflight (pkts)" => ms.inflight, 
+                "loss" => ms.loss, 
                 "ssthresh" => self.ss_thresh,
-                "rtt" => rtt,
+                "rtt" => ms.rtt,
             );
         });
     }

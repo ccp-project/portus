@@ -23,15 +23,11 @@ ipc_latency: build
 
 bench: cargo_bench ipc_latency
 
-algs: reno cubic bbr
+algs: generic bbr
 
-reno:
-	cd ccp_reno && cargo build
-	cd ccp_reno && cargo +nightly clippy
-
-cubic:
-	cd ccp_cubic && cargo build
-	cd ccp_cubic && cargo +nightly clippy
+generic:
+	cd ccp_generic_cong_avoid && cargo build
+	cd ccp_generic_cong_avoid && cargo +nightly clippy
 
 bbr:
 	cd ccp_bbr && cargo build
