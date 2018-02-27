@@ -248,6 +248,45 @@ pub struct Scope {
     tmp: Vec<Reg>,
 }
 
+macro_rules! add_reg {
+    ($scope:ident, $name:expr, $rtyp:ident, $idx:expr, $typ:expr) => ({
+        $scope.named.insert(
+            String::from($name),
+            Reg::$rtyp($idx, $typ),
+        );
+    })
+}
+
+macro_rules! expand_reg {
+    (
+        $scope:ident; 
+        $reg:ident; 
+        $count:expr; 
+        $headname:expr => $headtype:expr
+    ) => (
+        {add_reg!($scope, $headname, $reg, $count, $headtype); $count + 1}
+    );
+    (
+        $scope:ident; 
+        $reg:ident; 
+        $count:expr; 
+        $headname:expr => $headtype:expr, 
+        $( $restname:expr => $resttype:expr ),*
+    ) => ({
+        add_reg!($scope, $headname, $reg, $count, $headtype);
+        expand_reg!($scope; $reg; $count+1; $( $restname => $resttype ),* )
+    });
+    (
+        $scope:ident; 
+        $reg:ident; 
+        $headname:expr => $headtype:expr, 
+        $( $restname:expr => $resttype:expr ),*
+    ) => ({
+        add_reg!($scope, $headname, $reg, 0, $headtype);
+        expand_reg!($scope; $reg; 1; $( $restname => $resttype ),* )
+    });
+}
+
 impl Scope {
     /// Define variables always accessible in the datapath,
     /// in the context of the most recent packet.
@@ -255,74 +294,29 @@ impl Scope {
     pub(crate) fn new() -> Self {
         let mut sc = Scope {
             named: HashMap::new(),
-            num_perm: 2u8,
+            num_perm: 0,
             tmp: vec![],
         };
 
         // available measurement primitives (alphabetical order)
-        sc.named.insert(
-            String::from("Pkt.bytes_acked"),
-            Reg::Const(0, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.packets_acked"),
-            Reg::Const(1, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.bytes_misordered"),
-            Reg::Const(2, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.packets_misordered"),
-            Reg::Const(3, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.ecn_bytes"),
-            Reg::Const(4, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.ecn_packets"),
-            Reg::Const(5, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.lost_pkts_sample"),
-            Reg::Const(6, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.was_timeout"),
-            Reg::Const(7, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.rtt_sample_us"),
-            Reg::Const(8, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.rate_outgoing"),
-            Reg::Const(9, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.rate_incoming"),
-            Reg::Const(10, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.bytes_in_flight"),
-            Reg::Const(11, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.packets_in_flight"),
-            Reg::Const(12, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.snd_cwnd"),
-            Reg::Const(13, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.now"),
-            Reg::Const(14, Type::Num(None)),
-        );
-        sc.named.insert(
-            String::from("Pkt.bytes_pending"),
-            Reg::Const(15, Type::Num(None)),
+        expand_reg!(
+            sc; Const;
+            "Pkt.bytes_acked"         =>  Type::Num(None),
+            "Pkt.packets_acked"       =>  Type::Num(None),
+            "Pkt.bytes_misordered"    =>  Type::Num(None),
+            "Pkt.packets_misordered"  =>  Type::Num(None),
+            "Pkt.ecn_bytes"           =>  Type::Num(None),
+            "Pkt.ecn_packets"         =>  Type::Num(None),
+            "Pkt.lost_pkts_sample"    =>  Type::Num(None),
+            "Pkt.was_timeout"         =>  Type::Num(None),
+            "Pkt.rtt_sample_us"       =>  Type::Num(None),
+            "Pkt.rate_outgoing"       =>  Type::Num(None),
+            "Pkt.rate_incoming"       =>  Type::Num(None),
+            "Pkt.bytes_in_flight"     =>  Type::Num(None),
+            "Pkt.packets_in_flight"   =>  Type::Num(None),
+            "Pkt.snd_cwnd"            =>  Type::Num(None),
+            "Pkt.now"                 =>  Type::Num(None),
+            "Pkt.bytes_pending"       =>  Type::Num(None)
         );
 
         // implicit return registers (can bind to these without Def)
@@ -330,20 +324,16 @@ impl Scope {
         // If isUrgent is true after fold function runs:
         // - immediately send the measurement to CCP, bypassing send pattern
         // - reset it to false
-        sc.named.insert(
-            String::from("isUrgent"),
-            Reg::Perm(0, Type::Bool(None)),
-        );
-
         // By default, Cwnd is set to the value that the send pattern sets,
         // like a constant.
         // However, if a fold function writes to Cwnd, the
         // congestion window is updated, just as if a send pattern had changed it.
-        sc.named.insert(
-            String::from("Cwnd"),
-            Reg::Perm(1, Type::Num(None)),
+        sc.num_perm = expand_reg!(
+            sc; Perm;
+            "isUrgent"  =>  Type::Bool(None),
+            "Cwnd"      =>  Type::Num(None)
         );
-
+        
         sc
     }
 
