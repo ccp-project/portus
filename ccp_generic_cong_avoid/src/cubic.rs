@@ -78,6 +78,10 @@ impl Cubic {
 }
 
 impl GenericCongAvoidAlg for Cubic {
+    fn name() -> String {
+        String::from("cubic")
+    }
+
     fn new(init_cwnd: u32, mss: u32) -> Self {
         Cubic {
             pkt_size: mss,

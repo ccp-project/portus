@@ -8,6 +8,10 @@ pub struct Reno {
 }
 
 impl GenericCongAvoidAlg for Reno {
+    fn name() -> String {
+        String::from("reno")
+    }
+
     fn new(init_cwnd: u32, mss: u32) -> Self {
         Reno {
             mss: mss,

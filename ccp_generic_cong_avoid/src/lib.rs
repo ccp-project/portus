@@ -14,6 +14,7 @@ pub mod reno;
 pub mod cubic;
 
 pub trait GenericCongAvoidAlg {
+    fn name() -> String;
     fn new(init_cwnd: u32, mss: u32) -> Self;
     fn curr_cwnd(&self) -> u32;
     fn set_cwnd(&mut self, cwnd: u32);
@@ -306,7 +307,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
     type Config = GenericCongAvoidConfig;
 
     fn name() -> String {
-        String::from("reno")
+        A::name()
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, GenericCongAvoid<T, A>>, info: DatapathInfo) -> Self {
