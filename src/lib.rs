@@ -124,6 +124,7 @@ pub trait CongAlg<T: Ipc> {
     fn name() -> String;
     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
     fn measurement(&mut self, sock_id: u32, m: Measurement);
+    fn close(&mut self) {} // default implementation does nothing (optional method)
 }
 
 pub struct Config<I, U: ?Sized>
@@ -221,8 +222,14 @@ where
                     flows.insert(c.sid, alg);
                 }
                 Msg::Ms(m) => {
-                    if let Some(alg) = flows.get_mut(&m.sid) {
-                        alg.measurement(m.sid, Measurement { fields: m.fields })
+                    if flows.contains_key(&m.sid) {
+                        if m.num_fields == 0 {
+                            let mut alg = flows.remove(&m.sid).unwrap();
+                            alg.close();
+                        } else {
+                            let alg = flows.get_mut(&m.sid).unwrap();
+                            alg.measurement(m.sid, Measurement { fields: m.fields })
+                        }
                     } else {
                         cfg.logger.as_ref().map(|log| {
                             debug!(log, "measurement for unknown flow"; "sid" => m.sid);
