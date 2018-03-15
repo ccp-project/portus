@@ -47,19 +47,37 @@ impl Socket {
 
     pub fn new() -> Result<Self> {
         let s = Self::__new()?;
-        s.setsockopt_int(270, libc::NETLINK_ADD_MEMBERSHIP, 22)?;
+        let opt = 22;
+        use std::mem;
+        s.setsockopt(
+            270, 
+            libc::NETLINK_ADD_MEMBERSHIP, 
+            &opt as *const i32 as *const libc::c_void, 
+            mem::size_of::<c_int>() as u32
+        )?;
+
+        let to = libc::timespec {
+            tv_sec: 1 as libc::time_t,
+            tv_nsec: 0 as libc::c_long,
+        };
+
+        s.setsockopt(
+            libc::SOL_SOCKET, 
+            libc::SO_RCVTIMEO, 
+            &to as *const libc::timespec as *const libc::c_void,
+            mem::size_of::<libc::timespec>() as u32
+        )?;
         Ok(s)
     }
 
-    fn setsockopt_int(&self, level: c_int, option: c_int, val: c_int) -> Result<()> {
-        use std::mem;
+    fn setsockopt(&self, level: c_int, option: c_int, val: *const libc::c_void, sz: u32) -> Result<()> {
         let res = unsafe {
             libc::setsockopt(
                 self.0,
                 level,
                 option as c_int,
-                &val as *const i32 as *const libc::c_void,
-                mem::size_of::<c_int>() as u32,
+                val,
+                sz,
             )
         };
 
@@ -129,7 +147,11 @@ impl super::Ipc for Socket {
     }
 
     fn close(&self) -> Result<()> {
-        socket::shutdown(self.0, nix::sys::socket::Shutdown::Both)
-            .map_err(Error::from)
+        let ok = unsafe { libc::close(self.0) as i32 };
+        if ok < 0 {
+            Err(Error::from(format!("could not close netlink socket: {}", ok)))
+        } else {
+            Ok(())
+        }
     }
 }

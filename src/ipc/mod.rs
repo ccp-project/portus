@@ -24,6 +24,7 @@ pub trait Ipc: 'static + Sync + Send {
     fn close(&self) -> Result<()>;
 }
 
+#[derive(Copy, Clone)]
 pub enum ListenMode {
     Blocking,
     Nonblocking,
@@ -63,8 +64,7 @@ impl<T: Ipc> Backend<T> {
                 ListenMode::Blocking => 
                     match me.sock.recv(&mut rcv_buf) {
                         Ok(l) => l,
-                        Err(e) => {
-                            println!("recv err {:?}", e);
+                        Err(_) => {
                             continue;
                         }
                     },
@@ -81,6 +81,8 @@ impl<T: Ipc> Backend<T> {
 
                 let _ = tx.send(buf.to_vec());
             }
+
+            me.sock.close().expect("close socket");
         });
 
         rx

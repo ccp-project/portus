@@ -35,6 +35,11 @@ impl Socket {
             mode: mode
         })
     }
+
+    pub fn __recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
+        let len = self.r.lock().unwrap().read(msg).map_err(Error::from)?;
+        Ok(&msg[..len])
+    }
 }
 
 impl super::Ipc for Socket {
@@ -45,44 +50,21 @@ impl super::Ipc for Socket {
 
     fn recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
         if let ListenMode::Nonblocking = self.mode {
-            unreachable!();
+            panic!("Blocking call on nonblocking file");
         }
 
-        let len = self.r.lock().unwrap().read(msg).map_err(Error::from)?;
-        Ok(&msg[..len])
+        self.__recv(msg)
     }
 
     fn recv_nonblocking<'a>(&self, msg:&'a mut [u8]) -> Option<&'a [u8]> {
         if let ListenMode::Blocking = self.mode {
-            unreachable!();
+            panic!("Nonblocking call on blocking file");
         }
 
-        let len = self.r.lock().unwrap().read(msg).ok()?;
-        Some(&msg[..len])
+        self.__recv(msg).ok()
     }
 
     fn close(&self) -> Result<()> {
         Ok(())
     }
 }
-
-/*
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_kp() {
-        use std;
-        use ipc::Ipc;
-
-        let sk = super::Socket::new().expect("kp sock init");
-
-        let msg = "hello, world".as_bytes();
-        sk.send(&msg).expect("send msg");
-
-        let mut msg = [0u8; 128];
-        let buf = sk.recv(&mut msg).expect("recv msg");
-        let got = std::str::from_utf8(buf).expect("parse string");
-        assert_eq!(got, "hello, world");
-    }
-}
-*/

@@ -40,6 +40,7 @@ impl Socket {
             None => Ok(()),
         }?;
         let sock = UnixDatagram::bind(bind_to_addr)?;
+        sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
 
         Ok(Socket {
             sk: sock,
