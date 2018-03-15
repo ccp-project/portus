@@ -81,11 +81,10 @@ mod tests {
     fn test_sk() {
         use std;
         use ipc::Ipc;
+        use std::{time,thread};
 
         let sk1 = super::Socket::new("out", "in").expect("recv socket init");
         let sk2 = super::Socket::new("in", "out").expect("send socket init");
-
-        use std::{time,thread};
 
         let c2 = thread::spawn(move || {
             let msg = "hello, world".as_bytes();

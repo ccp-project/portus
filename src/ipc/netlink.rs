@@ -6,7 +6,6 @@ use libc::c_int;
 extern crate nix;
 use nix::sys::socket;
 
-#[derive(Debug)]
 pub struct Socket(c_int);
 
 const NL_CFG_F_NONROOT_RECV: c_int = 1;

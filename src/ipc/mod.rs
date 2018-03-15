@@ -1,8 +1,4 @@
-use std;
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::thread;
+use std::rc::{Rc, Weak};
 
 use super::Error;
 use super::Result;
@@ -30,78 +26,77 @@ pub enum ListenMode {
     Nonblocking,
 }
 
-#[derive(Default)]
+pub struct BackendSender<T: Ipc>(Weak<T>);
+
+impl<T: Ipc> BackendSender<T> {
+    /// Blocking send.
+    pub fn send_msg(&self, msg: &[u8]) -> Result<()> {
+        let s = Weak::upgrade(&self.0).ok_or_else(|| Error(String::from("Send on closed IPC socket!")))?;
+        s.send(msg).map_err(Error::from)
+    }
+}
+
+impl<T: Ipc> Clone for BackendSender<T> {
+    fn clone(&self) -> Self {
+        BackendSender(self.0.clone())
+    }
+}
+
+/// Backend will yield incoming IPC messages forever.
+/// It owns the socket; senders hold weak references.
 pub struct Backend<T: Ipc> {
-    sock: Arc<T>,
-    close: Arc<std::sync::atomic::AtomicBool>,
+    sock: Rc<T>,
+    rcv_buf: Vec<u8>,
+    listen_mode: ListenMode,
 }
 
 impl<T: Ipc> Backend<T> {
     /// Pass in a T: Ipc, the Ipc substrate to use.
     /// Return a Backend on which to call send_msg
     /// and listen
-    pub fn new(sock: T) -> Result<Backend<T>> {
-        Ok(Backend {
-            sock: Arc::new(sock),
-            close: Default::default(), // initialized to false
-        })
+    pub fn new(sock: T, mode: ListenMode) -> Backend<T> {
+        Backend{
+            sock: Rc::new(sock),
+            rcv_buf: vec![0u8; 1024],
+            listen_mode: mode,
+        }
     }
 
-    /// Blocking send.
-    pub fn send_msg(&self, msg: &[u8]) -> Result<()> {
-        self.sock.send(msg).map_err(Error::from)
-    }
-
-    /// Start listening on the IPC socket
-    /// Return a channel on which incoming messages will be passed
-    pub fn listen(&self, blocking: ListenMode) -> mpsc::Receiver<Vec<u8>> {
-        let (tx, rx): (mpsc::Sender<Vec<u8>>, mpsc::Receiver<Vec<u8>>) = mpsc::channel();
-        let me = self.clone();
-        thread::spawn(move || {
-            let mut rcv_buf = vec![0u8; 1024];
-            while !me.close.load(Ordering::SeqCst) {
-                let buf = match blocking {
-                ListenMode::Blocking => 
-                    match me.sock.recv(&mut rcv_buf) {
-                        Ok(l) => l,
-                        Err(_) => {
-                            continue;
-                        }
-                    },
-                ListenMode::Nonblocking => 
-                    match me.sock.recv_nonblocking(&mut rcv_buf) {
-                        Some(l) => l,
-                        None => continue,
-                    },
-                };
-
-                if buf.is_empty() {
-                    continue;
-                }
-
-                let _ = tx.send(buf.to_vec());
-            }
-
-            me.sock.close().expect("close socket");
-        });
-
-        rx
+    pub fn sender(&self) -> BackendSender<T> {
+        BackendSender(Rc::downgrade(&self.sock))
     }
 }
 
-impl<T: Ipc> Clone for Backend<T> {
-    fn clone(&self) -> Self {
-        Backend {
-            sock: self.sock.clone(),
-            close: self.close.clone(),
+impl<T: Ipc> Iterator for Backend<T> {
+    type Item = Vec<u8>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let buf = match self.listen_mode {
+                ListenMode::Blocking => 
+                    match self.sock.recv(&mut self.rcv_buf) {
+                        Ok(l) => l,
+                        Err(_) => continue,
+                    },
+                ListenMode::Nonblocking => 
+                    match self.sock.recv_nonblocking(&mut self.rcv_buf) {
+                        Some(l) => l,
+                        None => continue,
+                    },
+            };
+
+            if buf.is_empty() {
+                continue;
+            }
+
+            return Some(buf.to_vec());
         }
     }
 }
 
 impl<T: Ipc> Drop for Backend<T> {
     fn drop(&mut self) {
-        // tell the receive loop to exit
-        self.close.store(true, Ordering::SeqCst)
+        self.sock.close().unwrap_or_else(|e| println!("{:?}", e))
     }
 }
 

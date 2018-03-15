@@ -62,31 +62,29 @@ fn main() {
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out").and_then(Backend::new).expect(
-                "ipc initialization",
-            );
+            let b = Socket::new("in", "out")
+                .map(|sk| Backend::new(sk, ListenMode::Blocking))
+                .expect("ipc initialization");
             portus::start::<_, Bbr<_>>(
                 b,
                 &portus::Config {
                     logger: Some(log),
                     config: cfg,
-                },
-                ListenMode::Blocking,
+                }
             );
         }
         #[cfg(all(target_os = "linux"))]
         "netlink" => {
             use portus::ipc::netlink::Socket;
-            let b = Socket::new().and_then(Backend::new).expect(
-                "ipc initialization",
-            );
+            let b = Socket::new()
+                .map(|sk| Backend::new(sk, ListenMode::Blocking))
+                .expect("ipc initialization");
             portus::start::<_, Bbr<_>>(
                 b,
                 &portus::Config {
                     logger: Some(log),
                     config: cfg,
-                },
-                ListenMode::Blocking,
+                }
             );
         }
         _ => unreachable!(),

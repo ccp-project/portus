@@ -46,10 +46,9 @@ fn test_unix() {
     let (tx, rx) = std::sync::mpsc::channel();
     let c1 = thread::spawn(move || {
         let sk1 = super::unix::Socket::new("in", "out").expect("init socket");
-        let b1 = super::Backend::new(sk1).expect("init backend");
-        let r1 = b1.listen(super::ListenMode::Blocking);
+        let mut b1 = super::Backend::new(sk1, super::ListenMode::Blocking);
         tx.send(true).expect("chan send");
-        let msg = r1.recv().expect("receive message"); // Vec<u8>
+        let msg = b1.next().expect("receive message"); // Vec<u8>
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
         assert_eq!(got, "hello, world");
     });
@@ -57,8 +56,8 @@ fn test_unix() {
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
         let sk2 = super::unix::Socket::new("out", "in").expect("init socket");
-        let b2 = super::Backend::new(sk2).expect("init backend");
-        b2.send_msg("hello, world".as_bytes()).expect(
+        let b2 = super::Backend::new(sk2, super::ListenMode::Blocking);
+        b2.sender().send_msg("hello, world".as_bytes()).expect(
             "send message",
         );
     });

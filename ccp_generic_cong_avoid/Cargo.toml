@@ -1,6 +1,6 @@
 [package]
-name = "ccp_reno"
-version = "0.1.5"
+name = "ccp_generic_cong_avoid"
+version = "0.1.8"
 authors = ["Akshay Narayan <akshayn@mit.edu>"]
 
 [dependencies]

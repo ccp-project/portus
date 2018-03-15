@@ -2,11 +2,13 @@ use std::thread;
 use std::vec::Vec;
 
 extern crate bytes;
+extern crate clap;
 extern crate portus;
 extern crate time;
 
 use bytes::{ByteOrder, LittleEndian};
-use portus::ipc::{Backend, Ipc, ListenMode};
+use clap::Arg;
+use portus::ipc::{Backend, BackendSender, Ipc, ListenMode};
 use time::Duration;
 
 struct TimeMsg(time::Timespec);
@@ -44,8 +46,8 @@ impl portus::serialize::AsRawMsg for TimeMsg {
 use std::sync::mpsc;
 use portus::serialize::AsRawMsg;
 fn bench<T: Ipc>(
-    b: &Backend<T>,
-    rx: &mpsc::Receiver<Vec<u8>>,
+    b: &BackendSender<T>,
+    mut l: Backend<T>,
     iter: u32,
 ) -> Vec<Duration> {
     (0..iter)
@@ -54,7 +56,7 @@ fn bench<T: Ipc>(
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
 
-            let echo = rx.recv().expect("receive echo");
+            let echo = l.next().expect("receive echo");
             if let portus::serialize::Msg::Other(raw) =
                 portus::serialize::Msg::from_buf(&echo[..]).expect("parse error")
             {
@@ -68,7 +70,7 @@ fn bench<T: Ipc>(
 }
 
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
-fn netlink(iter: u32) -> Vec<Duration> {
+fn netlink(iter: u32, lmode: ListenMode) -> Vec<Duration> {
     use std::process::Command;
 
     Command::new("sudo")
@@ -94,16 +96,15 @@ fn netlink(iter: u32) -> Vec<Duration> {
 
     // listen
     let c1 = thread::spawn(move || {
-        let b = portus::ipc::netlink::Socket::new()
-            .and_then(Backend::new)
-            .expect("ipc initialization");
+        let mut nl = portus::ipc::netlink::Socket::new()
+            .map(|sk| Backend::new(sk, lmode))
+            .expect("nl ipc initialization");
         tx.send(vec![]).expect("ok to insmod");
-        let rx = b.listen(ListenMode::Blocking);
-        let msg = rx.recv().expect("receive message");
+        let msg = nl.next().expect("receive message");
         let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
         assert_eq!(got, "hello, netlink\0\0"); // word aligned
 
-        tx.send(bench(&b, &rx, iter)).expect("report rtts");
+        tx.send(bench(&nl.sender(), nl, iter)).expect("report rtts");
     });
 
     rx.recv().expect("wait to insmod");
@@ -115,54 +116,81 @@ fn netlink(iter: u32) -> Vec<Duration> {
         .expect("insmod failed");
 
     c1.join().expect("join netlink thread");
-
     Command::new("sudo")
         .arg("rmmod")
         .arg("nltest")
         .output()
         .expect("rmmod failed");
-
-    rx.recv().expect("get rtts")
-}
-
-#[cfg(all(target_os = "linux"))] // kernel-pipe is linux-only
-fn kp(iter: u32) -> Vec<Duration> {
-    let (tx, rx) = mpsc::channel::<Vec<Duration>>();
-
-    let c1 = thread::spawn(move || {
-        let b = portus::ipc::kp::Socket::new(ListenMode::Blocking)
-            .and_then(Backend::new)
-            .expect("ipc initialization");
-        let rx = b.listen(ListenMode::Blocking);
-        tx.send(bench(&b, &rx, iter)).expect("report rtts");
-    });
-
-    c1.join().expect("join kp thread");
     rx.recv().expect("get rtts")
 }
 
 #[cfg(not(target_os = "linux"))] // netlink is linux-only
-fn netlink(_: u32) -> Vec<Duration> {
+fn netlink(_: u32, _: ListenMode) -> Vec<Duration> {
     vec![]
+}
+
+#[cfg(all(target_os = "linux"))] // kernel-pipe is linux-only
+fn kp(iter: u32, lmode: ListenMode) -> Vec<Duration> {
+    use std::process::Command;
+    let (tx, rx) = mpsc::channel::<Vec<Duration>>();
+
+    Command::new("sudo")
+        .arg("./ccpkp_unload")
+        .current_dir("./src/ipc/test-char-dev")
+        .output()
+        .expect("unload failed");
+
+    // make clean
+    Command::new("make")
+        .arg("clean")
+        .current_dir("./src/ipc/test-char-dev")
+        .output()
+        .expect("make failed to start");
+
+    // compile kernel module
+    Command::new("make")
+        .current_dir("./src/ipc/test-char-dev")
+        .output()
+        .expect("make failed to start");
+
+    Command::new("sudo")
+        .arg("./ccpkp_load")
+        .current_dir("./src/ipc/test-char-dev")
+        .output()
+        .expect("load failed");
+
+    let c1 = thread::spawn(move || {
+        let kp = portus::ipc::kp::Socket::new(lmode)
+            .map(|sk| Backend::new(sk, lmode))
+            .expect("kp ipc initialization");
+        tx.send(bench(&kp.sender(), kp, iter)).expect("report rtts");
+    });
+
+    c1.join().expect("join kp thread");
+    Command::new("sudo")
+        .arg("./ccpkp_unload")
+        .current_dir("./src/ipc/test-char-dev")
+        .output()
+        .expect("unload failed");
+    rx.recv().expect("get rtts")
 }
 
 #[cfg(not(target_os = "linux"))] // kp is linux-only
-fn kp(_: u32) -> Vec<Duration> {
+fn kp(_: u32, _: ListenMode) -> Vec<Duration> {
     vec![]
 }
 
-fn unix(iter: u32) -> Vec<Duration> {
+fn unix(iter: u32, lmode: ListenMode) -> Vec<Duration> {
     let (tx, rx) = mpsc::channel::<Vec<Duration>>();
     let (ready_tx, ready_rx) = mpsc::channel::<bool>();
 
     // listen
     let c1 = thread::spawn(move || {
-        let b = portus::ipc::unix::Socket::new("in", "out")
-            .and_then(Backend::new)
-            .expect("ipc initialization");
-        let rx = b.listen(ListenMode::Blocking);
+        let unix = portus::ipc::unix::Socket::new("in", "out")
+            .map(|sk| Backend::new(sk, lmode))
+            .expect("unix ipc initialization");
         ready_rx.recv().expect("sync");
-        tx.send(bench(&b, &rx, iter)).expect(
+        tx.send(bench(&unix.sender(), unix, iter)).expect(
             "report rtts",
         );
     });
@@ -185,26 +213,56 @@ fn unix(iter: u32) -> Vec<Duration> {
 }
 
 fn main() {
-    let trials = 100_000;
-    if cfg!(target_os = "linux") {
-        let nl_rtts: Vec<i64> = netlink(trials)
-            .iter()
-            .map(|d| d.num_nanoseconds().unwrap())
-            .collect();
-       println!("nl:{:?}", nl_rtts);
-    }
+    let matches = clap::App::new("IPC Latency Benchmark")
+        .version("0.1.0")
+        .author("Akshay Narayan <akshayn@mit.edu>")
+        .about("Benchmark of IPC Latency")
+        .arg(Arg::with_name("iterations")
+             .long("iterations")
+             .short("i")
+             .help("Specifies how many trials to run (default 100)")
+             .default_value("100"))
+        .get_matches();
 
-    if cfg!(target_os = "linux") {
-        let kp_rtts: Vec<i64> = kp(trials)
-            .iter()
-            .map(|d| d.num_nanoseconds().unwrap())
-            .collect();
-        println!("kp:{:?}", kp_rtts);
-    }
+    let trials = u32::from_str_radix(matches.value_of("iterations").unwrap(), 10).expect("iterations must be integral");
 
-    let unix_rtts: Vec<i64> = unix(trials)
+    for t in unix(trials, ListenMode::Blocking)
         .iter()
-        .map(|d| d.num_nanoseconds().unwrap())
-        .collect();
-    println!("unix:{:?}-", unix_rtts);
+        .map(|d| d.num_nanoseconds().unwrap()) {
+        println!("unix_blk {:?}", t);
+    }
+
+    for t in unix(trials, ListenMode::Nonblocking)
+        .iter()
+        .map(|d| d.num_nanoseconds().unwrap()) {
+        println!("unix_nonblk {:?}", t);
+    }
+
+    if cfg!(target_os = "linux") {
+        for t in netlink(trials, ListenMode::Nonblocking)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap()) {
+            println!("nl_nonblk {:?}", t);
+        }
+
+        for t in netlink(trials, ListenMode::Blocking)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap()) {
+            println!("nl_blk {:?}", t);
+        }
+    }
+
+    if cfg!(target_os = "linux") {
+        for t in kp(trials, ListenMode::Nonblocking)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap()) {
+            println!("kp_nonblk {:?}", t);
+        }
+
+        for t in kp(trials, ListenMode::Blocking)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap()) {
+            println!("kp_blk {:?}", t);
+        }
+    }
 }

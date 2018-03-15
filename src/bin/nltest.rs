@@ -94,13 +94,13 @@ fn test(log: &slog::Logger) {
     // listen
     let listen_log = log.clone();
     let c1 = thread::spawn(move || {
-        let b = portus::ipc::netlink::Socket::new()
-            .and_then(Backend::new)
+        let mut b = portus::ipc::netlink::Socket::new()
+            .map(|sk| Backend::new(sk, ListenMode::Blocking))
             .expect("ipc initialization");
-        let rx = b.listen(ListenMode::Blocking);
+        let sender = b.sender();
         debug!(listen_log, "listen");
         tx.send(true).expect("sync");
-        let msg = rx.recv().expect("receive message");
+        let msg = b.next().expect("get message from iterator");
         let got: String = std::str::from_utf8(&msg[..])
             .expect("parse message to str")
             .chars()
@@ -112,9 +112,9 @@ fn test(log: &slog::Logger) {
         let msg = TestMsg(String::from("hello, kernel"));
         let test = msg.clone();
         let buf = portus::serialize::serialize(&msg).expect("serialize");
-        b.send_msg(&buf[..]).expect("send response");
+        sender.send_msg(&buf[..]).expect("send response");
 
-        let echo = rx.recv().expect("receive echo");
+        let echo = b.next().expect("get message from iterator");
         if let portus::serialize::Msg::Other(raw) =
             portus::serialize::Msg::from_buf(&echo[..]).expect("parse error")
         {

@@ -24,7 +24,7 @@ pub mod algs;
 use std::collections::HashMap;
 
 use ipc::Ipc;
-use ipc::Backend;
+use ipc::{Backend, BackendSender};
 use serialize::Msg;
 
 #[derive(Debug)]
@@ -38,8 +38,7 @@ impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-use std::rc::Rc;
-pub struct Datapath<T: Ipc>(Rc<Backend<T>>);
+pub struct Datapath<T: Ipc>(BackendSender<T>);
 
 use lang::{Reg, Scope};
 impl<T: Ipc> Datapath<T> {
@@ -153,14 +152,14 @@ pub struct DatapathInfo {
 /// `start()` will never return (`-> !`). It will panic if:
 /// 1. It receives a `pattern` or `install_fold` control message (only a datapath should receive these)
 /// 2. The IPC channel fails.
-pub fn start<I, U>(b: Backend<I>, cfg: &Config<I, U>, blocking: ipc::ListenMode) -> !
+pub fn start<I, U>(b: Backend<I>, cfg: &Config<I, U>) -> !
 where
     I: Ipc,
     U: CongAlg<I>,
 {
     let mut flows = HashMap::<u32, U>::new();
-    let backend = std::rc::Rc::new(b);
-    for m in backend.listen(blocking).iter() {
+    let backend = b.sender();
+    for m in b {
         if let Ok(msg) = Msg::from_buf(&m[..]) {
             match msg {
                 Msg::Cr(c) => {

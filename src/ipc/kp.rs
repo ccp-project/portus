@@ -2,20 +2,17 @@ extern crate libc;
 extern crate nix;
 
 use std;
-use std::fs::File;
 use std::fs::OpenOptions;
+use std::fs::File;
 use std::os::unix::fs::OpenOptionsExt;
-use std::io::Read;
-use std::io::Write;
-use std::sync::Mutex;
+use std::os::unix::io::AsRawFd;
 
 use super::Error;
 use super::Result;
 use super::ListenMode;
 
 pub struct Socket {
-    r : Mutex<File>,
-    w : Mutex<File>,
+    fd : File,
     mode: ListenMode
 }
 
@@ -30,33 +27,30 @@ impl Socket {
             }
         };
 
-        let rfd = options.open("/dev/ccpkp")?;
-        let wfd = rfd.try_clone()?;
+        let file = options.open("/dev/ccpkp")?;
         Ok(Socket {
-            r : Mutex::new(rfd),
-            w : Mutex::new(wfd),
-            mode: mode
+            fd : file,
+            mode: mode,
         })
     }
 
     pub fn __recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
-        use std::os::unix::io::AsRawFd;
-        let mut f = self.r.lock()?;
-        let pollfd = nix::poll::PollFd::new((*f).as_raw_fd(), nix::poll::POLLIN);
+        let pollfd = nix::poll::PollFd::new(self.fd.as_raw_fd(), nix::poll::POLLIN);
         let ok = nix::poll::poll(&mut [pollfd], 1000)?;
         if ok < 0 {
             return Err(Error::from(std::io::Error::from_raw_os_error(ok)));
         }
 
-        let len = f.read(msg).map_err(Error::from)?;
+        let len = nix::unistd::read(self.fd.as_raw_fd(), msg).map_err(Error::from)?;
         Ok(&msg[..len])
     }
 }
 
 impl super::Ipc for Socket {
     fn send(&self, buf:&[u8]) -> Result<()> {
-        self.w.lock().unwrap().write(buf).map_err(Error::from)?;
-        Ok(())
+        nix::unistd::write(self.fd.as_raw_fd(), buf)
+            .map(|_| ())
+            .map_err(Error::from)
     }
 
     fn recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {

@@ -10,10 +10,9 @@ fn test_ser_over_ipc() {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
-        let b1 = ipc::Backend::new(sk1).expect("init backend");
-        let r1 = b1.listen(ipc::ListenMode::Blocking);
+        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking);
         tx.send(true).expect("ready chan send");
-        let mut msg = r1.recv().expect("receive message"); // Vec<u8>
+        let mut msg = b1.next().expect("receive message"); // Vec<u8>
 
         // deserialize the message
         if msg.len() <= 6 {
@@ -34,7 +33,7 @@ fn test_ser_over_ipc() {
     let sk2 = sk.clone();
     let c2 = thread::spawn(move || {
         rx.recv().expect("ready chan rcv");
-        let b2 = ipc::Backend::new(sk2).expect("init backend");
+        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking);
 
         // serialize a message
         let m = serialize::measure::Msg {
@@ -44,7 +43,7 @@ fn test_ser_over_ipc() {
         };
 
         let buf = serialize::serialize(&m.clone()).expect("serialize");
-        b2.send_msg(&buf[..]).expect("send message");
+        b2.sender().send_msg(&buf[..]).expect("send message");
     });
 
     c2.join().expect("join sender thread");
@@ -65,11 +64,10 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     thread::spawn(move || {
-        let b1 = ipc::Backend::new(sk1).expect("init backend");
-        let r1 = b1.listen(ipc::ListenMode::Blocking);
+        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking);
         loop {
             tx.send(true).expect("ready chan send");
-            let mut msg = r1.recv().expect("receive message"); // Vec<u8>
+            let mut msg = b1.next().expect("receive message"); // Vec<u8>
 
             // deserialize the message
             if msg.len() <= 6 {
@@ -94,7 +92,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
 
     let sk2 = sk.clone();
     thread::spawn(move || {
-        let b2 = ipc::Backend::new(sk2).expect("init backend");
+        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking);
         let m = serialize::measure::Msg {
             sid: 42,
             num_fields: 1,
@@ -111,7 +109,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
 
             // send a message
             let buf = serialize::serialize(&m.clone()).expect("serialize");
-            b2.send_msg(&buf[..]).expect("send message");
+            b2.sender().send_msg(&buf[..]).expect("send message");
         }
     });
 
