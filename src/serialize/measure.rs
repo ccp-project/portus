@@ -16,7 +16,7 @@ pub struct Msg {
 fn deserialize_fields(buf: &[u8]) -> Result<Vec<u64>> {
     buf.chunks(8)
         .map(|sl| if sl.len() < 8 {
-            Err(Error::from(format!("not long enough: {:?}", sl)))
+            Err(Error(format!("not long enough: {:?}", sl)))
         } else {
             Ok(u64_from_u8s(sl))
         })

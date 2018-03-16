@@ -1,8 +1,22 @@
 use std;
 use nom;
 
+use std::fmt::{Display, Formatter};
+
 #[derive(Debug)]
 pub struct Error(pub String);
+impl std::error::Error for Error {
+    fn description(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        f.write_str(self.0.as_str())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 impl From<String> for Error {
     fn from(e: String) -> Error {

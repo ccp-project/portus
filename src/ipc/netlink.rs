@@ -6,12 +6,6 @@ use libc::c_int;
 extern crate nix;
 use nix::sys::socket;
 
-impl From<nix::Error> for Error {
-    fn from(e: nix::Error) -> Self {
-        Error(format!("err {}", e))
-    }
-}
-
 #[derive(Debug)]
 pub struct Socket(c_int);
 
@@ -149,7 +143,7 @@ impl super::Ipc for Socket {
     fn close(&self) -> Result<()> {
         let ok = unsafe { libc::close(self.0) as i32 };
         if ok < 0 {
-            Err(Error::from(format!("could not close netlink socket: {}", ok)))
+            Err(Error(format!("could not close netlink socket: {}", ok)))
         } else {
             Ok(())
         }
