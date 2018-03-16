@@ -1,4 +1,7 @@
 extern crate libc;
+extern crate nix;
+
+use std;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::os::unix::fs::OpenOptionsExt;
@@ -37,7 +40,15 @@ impl Socket {
     }
 
     pub fn __recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
-        let len = self.r.lock().unwrap().read(msg).map_err(Error::from)?;
+        use std::os::unix::io::AsRawFd;
+        let mut f = self.r.lock()?;
+        let pollfd = nix::poll::PollFd::new((*f).as_raw_fd(), nix::poll::POLLIN);
+        let ok = nix::poll::poll(&mut [pollfd], 1000)?;
+        if ok < 0 {
+            return Err(Error::from(std::io::Error::from_raw_os_error(ok)));
+        }
+
+        let len = f.read(msg).map_err(Error::from)?;
         Ok(&msg[..len])
     }
 }
