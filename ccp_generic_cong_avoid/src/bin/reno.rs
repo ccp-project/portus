@@ -4,16 +4,16 @@ extern crate time;
 #[macro_use]
 extern crate slog;
 
-extern crate ccp_reno;
+extern crate ccp_generic_cong_avoid;
 extern crate portus;
 
 use clap::Arg;
 use portus::ipc::{Backend, ListenMode};
-use ccp_reno::reno::Reno;
-use ccp_reno::GenericCongAvoid;
+use ccp_generic_cong_avoid::reno::Reno;
+use ccp_generic_cong_avoid::GenericCongAvoid;
 
-fn make_args() -> Result<(ccp_reno::GenericCongAvoidConfig, String), std::num::ParseIntError> {
-    let ss_thresh_default = format!("{}", ccp_reno::DEFAULT_SS_THRESH);
+fn make_args() -> Result<(ccp_generic_cong_avoid::GenericCongAvoidConfig, String), std::num::ParseIntError> {
+    let ss_thresh_default = format!("{}", ccp_generic_cong_avoid::DEFAULT_SS_THRESH);
     let matches = clap::App::new("CCP Reno")
         .version("0.1.0")
         .author("Akshay Narayan <akshayn@mit.edu>")
@@ -56,13 +56,13 @@ fn make_args() -> Result<(ccp_reno::GenericCongAvoidConfig, String), std::num::P
         .get_matches();
 
     Ok((
-        ccp_reno::GenericCongAvoidConfig {
+        ccp_generic_cong_avoid::GenericCongAvoidConfig {
             ss_thresh: u32::from_str_radix(matches.value_of("ss_thresh").unwrap(), 10)?,
             init_cwnd: u32::from_str_radix(matches.value_of("init_cwnd").unwrap(), 10)?,
             report: if matches.is_present("report_per_ack") {
-                ccp_reno::GenericCongAvoidConfigReport::Ack
+                ccp_generic_cong_avoid::GenericCongAvoidConfigReport::Ack
             } else if matches.is_present("report_per_interval") {
-                ccp_reno::GenericCongAvoidConfigReport::Interval(
+                ccp_generic_cong_avoid::GenericCongAvoidConfigReport::Interval(
                     time::Duration::milliseconds(matches
                         .value_of("report_per_interval")
                         .unwrap()
@@ -71,9 +71,9 @@ fn make_args() -> Result<(ccp_reno::GenericCongAvoidConfig, String), std::num::P
                     )
                 )
             } else {
-                ccp_reno::GenericCongAvoidConfigReport::Rtt
+                ccp_generic_cong_avoid::GenericCongAvoidConfigReport::Rtt
             },
-            ss: if matches.is_present("ss_in_fold") {ccp_reno::GenericCongAvoidConfigSS::Fold} else if matches.is_present("ss_in_pattern") {ccp_reno::GenericCongAvoidConfigSS::Pattern} else {ccp_reno::GenericCongAvoidConfigSS::Ccp},
+            ss: if matches.is_present("ss_in_fold") {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Fold} else if matches.is_present("ss_in_pattern") {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Pattern} else {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Ccp},
             use_compensation: matches.is_present("compensate_update"),
         },
         String::from(matches.value_of("ipc").unwrap()),
