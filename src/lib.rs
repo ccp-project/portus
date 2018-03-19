@@ -1,5 +1,5 @@
 #![feature(box_patterns)]
-#![cfg_attr(feature = "bench", feature(test))]
+#![feature(test)]
 
 extern crate bytes;
 extern crate clap;
@@ -18,6 +18,7 @@ pub mod lang;
 #[macro_use]
 pub mod pattern;
 pub mod serialize;
+pub mod test_helper;
 #[macro_use]
 pub mod algs;
 

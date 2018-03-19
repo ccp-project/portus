@@ -4,42 +4,9 @@ extern crate slog_term;
 extern crate slog_async;
 extern crate portus;
 
+use portus::test_helper::TestMsg;
+use portus::serialize::AsRawMsg;
 use slog::Drain;
-
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
-struct TestMsg(String);
-
-use std::io::prelude::*;
-impl portus::serialize::AsRawMsg for TestMsg {
-    fn get_hdr(&self) -> (u8, u32, u32) {
-        (0xff, portus::serialize::HDR_LENGTH + self.0.len() as u32, 0)
-    }
-
-    fn get_u32s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
-        Ok(())
-    }
-
-    fn get_u64s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
-        Ok(())
-    }
-
-    fn get_bytes<W: Write>(&self, w: &mut W) -> portus::Result<()> {
-        w.write_all(self.0.as_bytes())?;
-        Ok(())
-    }
-
-    fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
-        let b = msg.get_bytes()?;
-        let got: String = std::str::from_utf8(&b[..])
-            .expect("parse message to str")
-            .chars()
-            .take_while(|b| *b != '\0')
-            .collect();
-        Ok(TestMsg(got))
-    }
-}
 
 /// If ccp.ko is loaded, return false.
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
@@ -58,7 +25,6 @@ fn test_ccp_present(log: &slog::Logger) -> bool {
 fn test(log: &slog::Logger) {
     use std::process::Command;
     use portus::ipc::{Backend, ListenMode};
-    use portus::serialize::AsRawMsg;
 
     if !test_ccp_present(log) {
         warn!(log, "ccp.ko loaded, aborting test");

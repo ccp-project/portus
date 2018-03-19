@@ -1,11 +1,10 @@
+use std;
+use std::thread;
 use super::ipc;
 use super::serialize;
 
 #[test]
 fn test_ser_over_ipc() {
-    use std;
-    use std::thread;
-
     let (tx, rx) = std::sync::mpsc::channel();
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
@@ -55,9 +54,6 @@ use self::test::Bencher;
 
 #[bench]
 fn bench_ser_over_ipc(b: &mut Bencher) {
-    use std;
-    use std::thread;
-
     let (exp_start_tx, exp_start_rx) = std::sync::mpsc::channel();
     let (exp_end_tx, exp_end_rx) = std::sync::mpsc::channel();
     let (tx, rx) = std::sync::mpsc::channel();

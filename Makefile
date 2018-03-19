@@ -5,7 +5,7 @@ build:
 
 OS := $(shell uname)
 test: build
-	cargo +nightly test --features bench --all
+	cargo +nightly test --all
 ifeq ($(OS), Linux)
 	sudo ./target/debug/nltest
 	sudo ./target/debug/kptest

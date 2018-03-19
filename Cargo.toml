@@ -13,6 +13,3 @@ slog = "2"
 slog-async = "2"
 slog-term = "2"
 time = "0.1"
-
-[features]
-bench = []
