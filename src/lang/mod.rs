@@ -65,3 +65,68 @@ pub fn compile(src: &[u8]) -> Result<(Bin, Scope)> {
 pub fn compile_and_serialize(src: &[u8]) -> Result<(Vec<u8>, Scope)> {
     compile(src).and_then(|(b, s)| Ok((b.serialize()?, s)))
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate test;
+    use self::test::Bencher;
+    
+    #[bench]
+    fn bench_1_line_compileonly(b: &mut Bencher) {
+        let fold = "
+            (def (foo 0))
+            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+        ".as_bytes();
+        b.iter(|| super::compile(fold).unwrap())
+    }
+
+    #[bench]
+    fn bench_1_line(b: &mut Bencher) {
+        let fold = "
+            (def (foo 0))
+            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+        ".as_bytes();
+        b.iter(|| super::compile_and_serialize(fold).unwrap())
+    }
+    
+    #[bench]
+    fn bench_2_line(b: &mut Bencher) {
+        let fold = "
+            (def (foo 0) (bar 0))
+            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            (:= Report.bar (+ Report.bar Ack.bytes_misordered))
+        ".as_bytes();
+        b.iter(|| super::compile_and_serialize(fold).unwrap())
+    }
+    
+    #[bench]
+    fn bench_ewma(b: &mut Bencher) {
+        let fold = "
+            (def (foo 0) (bar 0))
+            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            (:= Report.bar (ewma 2 Flow.rate_outgoing))
+        ".as_bytes();
+        b.iter(|| super::compile_and_serialize(fold).unwrap())
+    }
+    
+    #[bench]
+    fn bench_if(b: &mut Bencher) {
+        let fold = "
+            (def (foo 0) (bar 0))
+            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            (bind isUrgent (!if isUrgent (> Ack.lost_pkts_sample 0)))
+        ".as_bytes();
+        b.iter(|| super::compile_and_serialize(fold).unwrap())
+    }
+    
+    #[bench]
+    fn bench_3_line(b: &mut Bencher) {
+        let fold = "
+            (def (foo 0) (bar 0) (baz 0))
+            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            (:= Report.bar (+ Report.bar Ack.bytes_misordered))
+            (:= Report.baz (+ Report.bar Ack.ecn_bytes))
+        ".as_bytes();
+        b.iter(|| super::compile_and_serialize(fold).unwrap())
+    }
+}

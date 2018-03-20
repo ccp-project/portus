@@ -16,10 +16,10 @@ lint:
 	cargo +nightly clippy
 
 cargo_bench: build test
-	cargo +nightly bench --features bench --all
+	cargo +nightly bench --all
 
 ipc_latency: build
-	sudo ./target/debug/ipc_latency
+	sudo ./target/debug/ipc_latency -i 10
 
 bench: cargo_bench ipc_latency
 
