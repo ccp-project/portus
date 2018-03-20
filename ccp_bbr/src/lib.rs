@@ -4,7 +4,7 @@ extern crate time;
 #[macro_use]
 extern crate portus;
 
-use portus::{CongAlg, Config, Datapath, DatapathInfo, Measurement};
+use portus::{CongAlg, Config, Datapath, DatapathInfo, Report};
 use portus::pattern;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
@@ -124,9 +124,9 @@ impl<T: Ipc> Bbr<T> {
             self.sock_id,
             b"
                 (def (loss 0) (minrtt +infinity) (rate 0))
-                (bind Flow.loss (+ Flow.loss Pkt.lost_pkts_sample))
-                (bind Flow.minrtt (min Flow.minrtt Pkt.rtt_sample_us))
-                (bind Flow.rate (max Flow.rate (min Pkt.rate_outgoing Pkt.rate_incoming)))
+                (bind Report.loss (+ Report.loss Ack.lost_pkts_sample))
+                (bind Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
+                (bind Report.rate (max Report.rate (min Flow.rate_outgoing Flow.rate_incoming)))
             "
         ) {
             Ok(s) => Some(s),
@@ -139,11 +139,11 @@ impl<T: Ipc> Bbr<T> {
         }
     }
 
-    fn get_probe_bw_fields(&mut self, m: &Measurement) -> Option<(u32, u32, f64)> {
+    fn get_probe_bw_fields(&mut self, m: &Report) -> Option<(u32, u32, f64)> {
         let sc = self.sc.as_ref().expect("scope should be initialized");
-        let rtt = m.get_field(&String::from("Flow.minrtt"), sc).map(|x| x as u32)?;
-        let loss = m.get_field(&String::from("Flow.loss"), sc).map(|x| x as u32)?;
-        let rate = m.get_field(&String::from("Flow.rate"), sc).map(|x| x as f64)?;
+        let rtt = m.get_field(&String::from("Report.minrtt"), sc).map(|x| x as u32)?;
+        let loss = m.get_field(&String::from("Report.loss"), sc).map(|x| x as u32)?;
+        let rate = m.get_field(&String::from("Report.rate"), sc).map(|x| x as f64)?;
 
         Some((loss, rtt, rate))
     }
@@ -171,8 +171,8 @@ impl<T: Ipc> Bbr<T> {
             self.sock_id,
             b"
                 (def (minrtt +infinity))
-                (bind Flow.minrtt (min Flow.minrtt Pkt.rtt_sample_us))
-                (bind isUrgent (< Pkt.packets_in_flight 4))
+                (bind Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
+                (bind isUrgent (< Flow.packets_in_flight 4))
             "
         ) {
             Ok(s) => Some(s),
@@ -185,9 +185,9 @@ impl<T: Ipc> Bbr<T> {
         }
     }
 
-    fn get_probe_rtt_minrtt(&mut self, m: &Measurement) -> u32 {
+    fn get_probe_rtt_minrtt(&mut self, m: &Report) -> u32 {
         let sc = self.sc.as_ref().expect("scope should be initialized");
-        m.get_field(&String::from("Flow.minrtt"), sc).expect(
+        m.get_field(&String::from("Report.minrtt"), sc).expect(
             "expected minrtt field in returned measurement",
         ) as u32
     }
@@ -239,7 +239,7 @@ impl<T: Ipc> CongAlg<T> for Bbr<T> {
         s
     }
 
-    fn measurement(&mut self, _sock_id: u32, m: Measurement) {
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
         match self.curr_mode {
             BbrMode::ProbeRtt => {
                 self.min_rtt_us = self.get_probe_rtt_minrtt(&m);

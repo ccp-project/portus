@@ -5,7 +5,7 @@ extern crate slog;
 #[macro_use]
 extern crate portus;
 
-use portus::{CongAlg, Config, Datapath, DatapathInfo, Measurement};
+use portus::{CongAlg, Config, Datapath, DatapathInfo, Report};
 use portus::pattern;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
@@ -143,14 +143,14 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
             self.sock_id,
             b"
                 (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
-                (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
-                (bind Flow.loss Pkt.lost_pkts_sample)
-                (bind Flow.timeout Pkt.was_timeout)
-                (bind Flow.inflight Pkt.packets_in_flight)
-                (bind Flow.rtt Pkt.rtt_sample_us)
-                (bind Cwnd (+ Cwnd Pkt.bytes_acked))
-                (bind isUrgent Pkt.was_timeout)
-                (bind isUrgent (!if isUrgent (> Flow.loss 0)))
+                (bind Report.sacked (+ Report.sacked Ack.packets_misordered))
+                (bind Report.loss Ack.lost_pkts_sample)
+                (bind Report.timeout Flow.was_timeout)
+                (bind Report.inflight Flow.packets_in_flight)
+                (bind Report.rtt Flow.rtt_sample_us)
+                (bind Cwnd (+ Cwnd Ack.bytes_acked))
+                (bind isUrgent Flow.was_timeout)
+                (bind isUrgent (!if isUrgent (> Report.loss 0)))
             "
         ) {
             Ok(s) => Some(s),
@@ -164,25 +164,25 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
             if let GenericCongAvoidConfigReport::Ack = self.report_option {
                 b"
                     (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
-                    (bind Flow.inflight Pkt.packets_in_flight)
-                    (bind Flow.rtt Pkt.rtt_sample_us)
-                    (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
-                    (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
-                    (bind Flow.loss Pkt.lost_pkts_sample)
-                    (bind Flow.timeout Pkt.was_timeout)
+                    (bind Report.inflight Flow.packets_in_flight)
+                    (bind Report.rtt Flow.rtt_sample_us)
+                    (bind Report.acked (+ Report.acked Ack.bytes_acked))
+                    (bind Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (bind Report.loss Ack.lost_pkts_sample)
+                    (bind Report.timeout Flow.was_timeout)
                     (bind isUrgent true)
                 "
             } else {
                 b"
                     (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
-                    (bind Flow.inflight Pkt.packets_in_flight)
-                    (bind Flow.rtt Pkt.rtt_sample_us)
-                    (bind Flow.acked (+ Flow.acked Pkt.bytes_acked))
-                    (bind Flow.sacked (+ Flow.sacked Pkt.packets_misordered))
-                    (bind Flow.loss Pkt.lost_pkts_sample)
-                    (bind Flow.timeout Pkt.was_timeout)
-                    (bind isUrgent Pkt.was_timeout)
-                    (bind isUrgent (!if isUrgent (> Flow.loss 0)))
+                    (bind Report.inflight Flow.packets_in_flight)
+                    (bind Report.rtt Flow.rtt_sample_us)
+                    (bind Report.acked (+ Report.acked Ack.bytes_acked))
+                    (bind Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (bind Report.loss Ack.lost_pkts_sample)
+                    (bind Report.timeout Flow.was_timeout)
+                    (bind isUrgent Report.timeout)
+                    (bind isUrgent (!if isUrgent (> Report.loss 0)))
                 "
             }
         ) {
@@ -191,29 +191,29 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
         }
     }
 
-    fn get_fields(&mut self, m: &Measurement) -> GenericCongAvoidMeasurements {
+    fn get_fields(&mut self, m: &Report) -> GenericCongAvoidMeasurements {
         let sc = self.sc.as_ref().expect("scope should be initialized");
-        let ack = m.get_field(&String::from("Flow.acked"), sc).expect(
+        let ack = m.get_field(&String::from("Report.acked"), sc).expect(
             "expected acked field in returned measurement",
         ) as u32;
 
-        let sack = m.get_field(&String::from("Flow.sacked"), sc).expect(
+        let sack = m.get_field(&String::from("Report.sacked"), sc).expect(
             "expected sacked field in returned measurement",
         ) as u32;
 
-        let was_timeout = m.get_field(&String::from("Flow.timeout"), sc).expect(
+        let was_timeout = m.get_field(&String::from("Report.timeout"), sc).expect(
             "expected timeout field in returned measurement",
         ) as u32;
 
-        let inflight = m.get_field(&String::from("Flow.inflight"), sc).expect(
+        let inflight = m.get_field(&String::from("Report.inflight"), sc).expect(
             "expected inflight field in returned measurement",
         ) as u32;
 
-        let loss = m.get_field(&String::from("Flow.loss"), sc).expect(
+        let loss = m.get_field(&String::from("Report.loss"), sc).expect(
             "expected loss field in returned measurement",
         ) as u32;
 
-        let rtt = m.get_field(&String::from("Flow.rtt"), sc).expect(
+        let rtt = m.get_field(&String::from("Report.rtt"), sc).expect(
             "expected rtt field in returned measurement",
         ) as u32;
 
@@ -353,7 +353,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
         s
     }
 
-    fn measurement(&mut self, _sock_id: u32, m: Measurement) {
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
         let mut ms = self.get_fields(&m);
 
         if self.in_startup {

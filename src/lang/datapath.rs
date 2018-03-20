@@ -301,22 +301,22 @@ impl Scope {
         // available measurement primitives (alphabetical order)
         expand_reg!(
             sc; Const;
-            "Pkt.bytes_acked"         =>  Type::Num(None),
-            "Pkt.packets_acked"       =>  Type::Num(None),
-            "Pkt.bytes_misordered"    =>  Type::Num(None),
-            "Pkt.packets_misordered"  =>  Type::Num(None),
-            "Pkt.ecn_bytes"           =>  Type::Num(None),
-            "Pkt.ecn_packets"         =>  Type::Num(None),
-            "Pkt.lost_pkts_sample"    =>  Type::Num(None),
-            "Pkt.was_timeout"         =>  Type::Num(None),
-            "Pkt.rtt_sample_us"       =>  Type::Num(None),
-            "Pkt.rate_outgoing"       =>  Type::Num(None),
-            "Pkt.rate_incoming"       =>  Type::Num(None),
-            "Pkt.bytes_in_flight"     =>  Type::Num(None),
-            "Pkt.packets_in_flight"   =>  Type::Num(None),
-            "Pkt.snd_cwnd"            =>  Type::Num(None),
-            "Pkt.now"                 =>  Type::Num(None),
-            "Pkt.bytes_pending"       =>  Type::Num(None)
+            "Ack.bytes_acked"         =>  Type::Num(None),
+            "Ack.packets_acked"       =>  Type::Num(None),
+            "Ack.bytes_misordered"    =>  Type::Num(None),
+            "Ack.packets_misordered"  =>  Type::Num(None),
+            "Ack.ecn_bytes"           =>  Type::Num(None),
+            "Ack.ecn_packets"         =>  Type::Num(None),
+            "Ack.lost_pkts_sample"    =>  Type::Num(None),
+            "Flow.was_timeout"        =>  Type::Num(None),
+            "Flow.rtt_sample_us"      =>  Type::Num(None),
+            "Flow.rate_outgoing"      =>  Type::Num(None),
+            "Flow.rate_incoming"      =>  Type::Num(None),
+            "Flow.bytes_in_flight"    =>  Type::Num(None),
+            "Flow.packets_in_flight"  =>  Type::Num(None),
+            "Flow.snd_cwnd"           =>  Type::Num(None),
+            "Ack.now"                 =>  Type::Num(None),
+            "Flow.bytes_pending"      =>  Type::Num(None)
         );
 
         // implicit return registers (can bind to these without Def)
@@ -399,7 +399,7 @@ impl Iterator for ScopeDefInstrIter {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let (name, reg) = self.v.next()?;
-            if !name.as_str().starts_with("Flow.") {
+            if !name.as_str().starts_with("Report.") {
                 continue;
             }
 
@@ -453,7 +453,7 @@ mod tests {
     fn prog() {
         let foo = b"
         (def (foo 0))
-        (bind Flow.foo 4)
+        (bind Report.foo 4)
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -482,7 +482,7 @@ mod tests {
     fn def() {
         let foo = b"
         (def (foo 0))
-        (bind Flow.foo (+ 2 3))
+        (bind Report.foo (+ 2 3))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -517,7 +517,7 @@ mod tests {
     fn ewma() {
         let foo = b"
         (def (foo 0))
-        (bind Flow.foo (ewma 2 Pkt.rate_outgoing))
+        (bind Report.foo (ewma 2 Flow.rate_outgoing))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -546,7 +546,7 @@ mod tests {
     fn infinity_if() {
         let foo = b"
         (def (foo +infinity))
-        (bind Flow.foo (if (< Pkt.rtt_sample_us Flow.foo) Pkt.rtt_sample_us))
+        (bind Report.foo (if (< Flow.rtt_sample_us Report.foo) Flow.rtt_sample_us))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -582,7 +582,7 @@ mod tests {
         let foo = b"
         (def (foo 0))
         (bind bar 3)
-        (bind Flow.foo (+ 2 bar))
+        (bind Report.foo (+ 2 bar))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -623,8 +623,8 @@ mod tests {
     fn prog_reset_tmps() {
         let foo = b"
         (def (foo 0))
-        (bind Flow.foo (+ (+ 1 2) 3))
-        (bind Flow.foo (+ (+ 4 5) 6))
+        (bind Report.foo (+ (+ 1 2) 3))
+        (bind Report.foo (+ (+ 4 5) 6))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -683,7 +683,7 @@ mod tests {
     fn underscored_state_variable() {
         let foo = b"
             (def (foo_bar 0))
-			(bind Flow.foo_bar (+ 1 2))
+			(bind Report.foo_bar (+ 1 2))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -717,8 +717,8 @@ mod tests {
 	#[test]
     fn optional_flow_prefix() {
         let foo = b"
-            (def (Flow.foo_bar 0))
-			(bind Flow.foo_bar (+ 1 2))
+            (def (Report.foo_bar 0))
+			(bind Report.foo_bar (+ 1 2))
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();

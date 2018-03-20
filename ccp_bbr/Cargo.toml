@@ -1,6 +1,6 @@
 [package]
 name = "ccp_bbr"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["Akshay Narayan <akshayn@mit.edu>"]
 
 [dependencies]

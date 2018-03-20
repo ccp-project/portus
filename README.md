@@ -51,9 +51,9 @@ Note that almost all algorithm implementations will install a send pattern and f
 An example follows.
 
 ```rust
-let scope = Datapath.install_measurement("(def (Flow.foo 0))");
+let scope = Datapath.install_measurement("(def (Report.foo 0))");
 ...
-let zero = Measurement.get_field("Flow.foo", scope);
+let zero = Measurement.get_field("Report.foo", scope);
 ```
 
 ### `close()`

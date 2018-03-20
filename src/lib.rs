@@ -33,7 +33,7 @@ pub struct Error(pub String);
 
 impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
     fn from(e: T) -> Error {
-        Error(format!("err {}", e))
+        Error(format!("portus err: {}", e))
     }
 }
 
@@ -76,11 +76,11 @@ impl<T: Ipc> Datapath<T> {
     }
 }
 
-pub struct Measurement {
+pub struct Report {
     fields: Vec<u64>,
 }
 
-impl Measurement {
+impl Report {
     pub fn get_field(&self, field: &str, sc: &Scope) -> Option<u64> {
         sc.get(field).and_then(|r| match *r {
             Reg::Perm(idx, _) => {
@@ -99,7 +99,7 @@ pub trait CongAlg<T: Ipc> {
     type Config: Clone;
     fn name() -> String;
     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
-    fn measurement(&mut self, sock_id: u32, m: Measurement);
+    fn on_report(&mut self, sock_id: u32, m: Report);
     fn close(&mut self) {} // default implementation does nothing (optional method)
 }
 
@@ -204,7 +204,7 @@ where
                             alg.close();
                         } else {
                             let alg = flows.get_mut(&m.sid).unwrap();
-                            alg.measurement(m.sid, Measurement { fields: m.fields })
+                            alg.on_report(m.sid, Report { fields: m.fields })
                         }
                     } else {
                         cfg.logger.as_ref().map(|log| {

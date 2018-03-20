@@ -201,15 +201,16 @@ use super::datapath::{Scope, Type, check_atom_type};
 pub struct Prog(pub Vec<Expr>);
 
 /// Declare a state variable and provide an initial value
-/// Optionally use Flow. as a variable prefix, to match the fold function body
-/// (Foo 0) (Flow.this_is_allowed 14) (Bar true) 
+/// Optionally use Report. as a variable prefix, to match the fold function body:
+/// (Foo 0) (Report.this_is_allowed 14) (Bar true) 
+/// See also `portus::lang::ast::tests::defs1()`.
 named!(
     decl<(Type, Type)>,
     delimited!(
         tag!("("),
         tuple!(
 			map_res!(do_parse!(
-				opt!(tag!("Flow.")) >>
+				opt!(tag!("Report.")) >>
 				n: name >>
 				(n)
 			), |b| str::from_utf8(b).and_then(|i| Ok(Type::Name(String::from(i))))),
@@ -218,7 +219,7 @@ named!(
         tag!(")")
     )
 );
-/// a Prog has special syntax *at the beginning* to declare the Flow state variables.
+/// a Prog has special syntax *at the beginning* to declare the Report state variables.
 /// (def (decl) ...)
 named!(
     defs<Vec<(Type, Type)>>,
@@ -249,7 +250,7 @@ impl Prog {
                 flow_state
                     .into_iter()
                     .map(|(var, typ)| match var {
-                        Type::Name(v) => (format!("Flow.{}", v), typ),
+                        Type::Name(v) => (format!("Report.{}", v), typ),
                         _ => unreachable!(),
                     })
                     .for_each(|(var, typ)| { scope.new_perm(var, typ); });
@@ -476,7 +477,7 @@ mod tests {
 
     #[test]
     fn defs1() {
-        let foo = b"(def (Foo 0) (Flow.this_is_allowed 14) (Bar true))";
+        let foo = b"(def (Foo 0) (Report.this_is_allowed 14) (Bar true))";
         use nom::{IResult, Needed};
         match super::defs(foo) {
             IResult::Done(r, me) => {
