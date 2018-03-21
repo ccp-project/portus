@@ -748,4 +748,45 @@ mod tests {
             ])
         );
     }
+	
+    #[test]
+    fn optional_flow_prefix_2() {
+        let foo = b"
+            (def (Report.oldrate 0))
+            (bind Report.oldrate (max Report.oldrate (min Flow.rate_outgoing Flow.rate_incoming)))
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+
+        assert_eq!(
+            b,
+            Bin(vec![
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    op: Op::Def,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::ImmNum(0),
+                },
+                Instr {
+                    res: Reg::Tmp(0, Type::Num(None)),
+                    op: Op::Min,
+                    left: Reg::Const(9, Type::Num(None)),
+                    right: Reg::Const(10, Type::Num(None)),
+                },
+                Instr {
+                    res: Reg::Tmp(1, Type::Num(None)),
+                    op: Op::Max,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::Tmp(0, Type::Num(None)),
+                },
+                Instr {
+                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    op: Op::Bind,
+                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    right: Reg::Tmp(1, Type::Num(None)),
+                },
+            ])
+        );
+    }
 }
