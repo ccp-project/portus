@@ -44,14 +44,6 @@ fn test_unix() {
     use std::thread;
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let c1 = thread::spawn(move || {
-        let sk1 = super::unix::Socket::new("in", "out").expect("init socket");
-        let mut b1 = super::Backend::new(sk1, super::ListenMode::Blocking);
-        tx.send(true).expect("chan send");
-        let msg = b1.next().expect("receive message"); // Vec<u8>
-        let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
-        assert_eq!(got, "hello, world");
-    });
 
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
@@ -61,7 +53,13 @@ fn test_unix() {
             "send message",
         );
     });
+        
+    let sk1 = super::unix::Socket::new("in", "out").expect("init socket");
+    let mut b1 = super::Backend::new(sk1, super::ListenMode::Blocking);
+    tx.send(true).expect("chan send");
+    let msg = b1.next().expect("receive message"); // Vec<u8>
+    let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
+    assert_eq!(got, "hello, world");
 
     c2.join().expect("join sender thread");
-    c1.join().expect("join rcvr thread");
 }
