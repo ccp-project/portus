@@ -30,7 +30,7 @@ impl Socket {
         let file = options.open("/dev/ccpkp")?;
         Ok(Socket {
             fd : file,
-            mode: mode,
+            mode,
         })
     }
 

@@ -139,8 +139,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     instrs.push(Instr {
                         res: res.clone(),
                         op: *o,
-                        left: left,
-                        right: right,
+                        left,
+                        right,
                     });
 
                     Ok((instrs, res))
@@ -160,8 +160,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     instrs.push(Instr {
                         res: res.clone(),
                         op: *o,
-                        left: left,
-                        right: right,
+                        left,
+                        right,
                     });
 
                     Ok((instrs, res))
@@ -205,7 +205,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                                 res: left.clone(),
                                 op: *o,
                                 left: left.clone(),
-                                right: right,
+                                right,
                             });
 
                             Ok((instrs, left))
@@ -229,8 +229,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     instrs.push(Instr {
                         res: Reg::None,
                         op: *o,
-                        left: left,
-                        right: right,
+                        left,
+                        right,
                     });
 
                     Ok((instrs, Reg::None))

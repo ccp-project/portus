@@ -2,19 +2,14 @@ use std;
 use nom::IResult;
 use super::{Error, Result};
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Prim {
     Bool(bool),
     Name(String),
     Num(u64),
 }
 
-#[derive(Clone)]
-#[derive(Copy)]
-#[derive(Debug)]
-#[derive(Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Op {
     Add, // (add a b) return a+b
     Bind, // (bind a b) assign variable a to value b
@@ -42,9 +37,7 @@ pub enum Op {
     Ewma, // (ewma a b) ret * a/10 + b * (10-a)/10.
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Atom(Prim),
     Sexp(Op, Box<Expr>, Box<Expr>),

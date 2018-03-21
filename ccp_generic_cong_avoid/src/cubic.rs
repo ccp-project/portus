@@ -113,8 +113,8 @@ impl GenericCongAvoidAlg for Cubic {
     }
 
     fn increase(&mut self, m: &GenericCongAvoidMeasurements) {
-        self.cubic_rtt = (f64::from(m.rtt))*0.000001;
-        let f_rtt = (f64::from(m.rtt))*0.000001;
+        self.cubic_rtt = (f64::from(m.rtt))*0.000_001;
+        let f_rtt = (f64::from(m.rtt))*0.000_001;
         let no_of_acks = ((f64::from(m.acked))/(f64::from(self.pkt_size))) as u32;
         for _i in 0..no_of_acks{
             if self.d_min <= 0.0 || f_rtt < self.d_min {

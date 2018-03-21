@@ -221,9 +221,9 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
             acked: ack,
             was_timeout: was_timeout == 1,
             sacked: sack,
-            loss: loss,
-            rtt: rtt,
-            inflight: inflight,
+            loss,
+            rtt,
+            inflight,
         }
     }
 
@@ -328,7 +328,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
             in_startup: false,
             mss: info.mss,
 		    use_compensation: cfg.config.use_compensation,
-            init_cwnd: init_cwnd,
+            init_cwnd,
             curr_cwnd_reduction: 0,
             last_cwnd_reduction: time::now().to_timespec() - time::Duration::milliseconds(500),
             alg: A::new(init_cwnd, info.mss),

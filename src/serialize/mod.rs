@@ -142,9 +142,9 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     let (typ, len, sid) = deserialize_header(&mut buf)?;
     let i = buf.position();
     Ok(RawMsg {
-        typ: typ,
-        len: len,
-        sid: sid,
+        typ,
+        len,
+        sid,
         bytes: &buf.into_inner()[i as usize..],
     })
 }
