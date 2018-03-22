@@ -23,15 +23,11 @@ ipc_latency: build
 
 bench: cargo_bench ipc_latency
 
-algs: generic bbr
+algs: generic
 
 generic:
 	cd ccp_generic_cong_avoid && cargo build
 	cd ccp_generic_cong_avoid && cargo +nightly clippy
-
-bbr:
-	cd ccp_bbr && cargo build
-	cd ccp_bbr && cargo +nightly clippy
 
 clean:
 	cargo clean
