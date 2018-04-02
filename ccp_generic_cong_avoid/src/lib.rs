@@ -93,7 +93,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
             match self.report_option {
                 GenericCongAvoidConfigReport::Ack => make_pattern!(
                     pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
-                    pattern::Event::WaitNs(100_000_000) 
+                    pattern::Event::WaitDuration(time::Duration::milliseconds(100)) 
                 ),
                 GenericCongAvoidConfigReport::Rtt => make_pattern!(
                     pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
@@ -102,7 +102,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 ),
                 GenericCongAvoidConfigReport::Interval(dur) => make_pattern!(
                     pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
-                    pattern::Event::WaitNs(dur.num_nanoseconds().unwrap() as u32) => 
+                    pattern::Event::WaitDuration(dur) => 
                     pattern::Event::Report
                 ),
             }
@@ -131,7 +131,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
         self.control_channel.send_pattern(
             self.sock_id,
             make_pattern!(
-                pattern::Event::WaitNs(500_000_000) //=> // 500ms
+                pattern::Event::WaitDuration(time::Duration::milliseconds(100)) //=> // 500ms
                 //pattern::Event::Report
             ),
         ).unwrap();

@@ -143,10 +143,17 @@ macro_rules! check_pattern_msg {
     )
 }
 
+use time;
 use pattern;
-check_pattern_msg!(test_pattern_1,
-                   42,
-                   make_pattern!(pattern::Event::Report => pattern::Event::SetCwndAbs(10) => pattern::Event::WaitNs(100)));
+check_pattern_msg!(
+    test_pattern_1,
+    42,
+    make_pattern!(
+        pattern::Event::Report => 
+        pattern::Event::SetCwndAbs(10) => 
+        pattern::Event::WaitDuration(time::Duration::nanoseconds(100))
+    )
+);
 check_pattern_msg!(
     test_pattern_2,
     43,

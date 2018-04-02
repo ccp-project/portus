@@ -1,4 +1,5 @@
 use std::vec::Vec;
+use time::Duration;
 use std::io::prelude::*;
 
 #[derive(Clone)]
@@ -6,7 +7,7 @@ use std::io::prelude::*;
 #[derive(PartialEq)]
 pub enum Event {
     SetCwndAbs(u32), // bytes
-    WaitNs(u32), // ns
+    WaitDuration(Duration), // ns
     SetRateAbs(u32), // bytes/s
     SetRateAbsWithCwnd(u32), // bytes/s
     SetRateRel(f32), // no units
@@ -45,8 +46,9 @@ impl Event {
             Event::SetCwndAbs(x) => {
                 write_event!(SETCWND, buf, w, x);
             }
-            Event::WaitNs(x) => {
-                write_event!(WAIT, buf, w, x);
+            Event::WaitDuration(x) => {
+                let nanos = x.num_nanoseconds().unwrap();
+                write_event!(WAIT, buf, w, nanos as u32);
             }
             Event::SetRateAbs(x) => {
                 write_event!(SETRATE, buf, w, x);
@@ -83,7 +85,7 @@ impl Event {
                 (SETCWND, 6) => Ok(Event::SetCwndAbs(num)),
                 (SETRATE, 6) => Ok(Event::SetRateAbs(num)),
                 (SETRATEWITHCWND, 6) => Ok(Event::SetRateAbsWithCwnd(num)),
-                (WAIT, 6) => Ok(Event::WaitNs(num)),
+                (WAIT, 6) => Ok(Event::WaitDuration(Duration::nanoseconds(i64::from(num)))),
                 (SETRATEREL, 6) => Ok(Event::SetRateRel((num as f32) / 1e3)),
                 (WAITREL, 6) => Ok(Event::WaitRtts((num as f32) / 1e3)),
                 (_, _) => Err(super::Error(String::from("unknown pattern event type"))),

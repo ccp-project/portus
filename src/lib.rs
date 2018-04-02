@@ -7,6 +7,7 @@ extern crate libc;
 extern crate nix;
 #[macro_use]
 extern crate nom;
+extern crate time;
 
 #[macro_use]
 extern crate slog;
