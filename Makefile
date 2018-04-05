@@ -31,6 +31,4 @@ generic:
 
 clean:
 	cargo clean
-	cd ccp_reno && cargo clean
-	cd ccp_cubic && cargo clean
-	cd ccp_bbr && cargo clean
+	cd ccp_generic_cong_avoid && cargo clean
