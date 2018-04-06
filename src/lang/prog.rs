@@ -127,8 +127,17 @@ impl Prog {
             ),
         }?;
 
+        let mut p = Prog(evs);
+        p.desugar();
+
         // TODO make Expr::new return Iter, make self wrap an iter also
-        Ok((Prog(evs), scope))
+        Ok((p, scope))
+    }
+    
+    fn desugar(&mut self) {
+        self.0.iter_mut()
+            .for_each(|v| v.body.iter_mut()
+            .for_each(|e| e.desugar()));
     }
 }
 

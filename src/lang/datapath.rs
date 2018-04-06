@@ -178,6 +178,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                 Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
             }
         }
+        Expr::Cmd(_) => unreachable!(),
         Expr::Sexp(ref o, box ref left_expr, box ref right_expr) => {
             let (mut instrs, mut left) = compile_expr(left_expr, &mut scope)?;
             let (mut right_instrs, right) = compile_expr(right_expr, &mut scope)?;
@@ -402,11 +403,12 @@ impl Scope {
         // congestion window is updated, just as if a send pattern had changed it.
         sc.num_perm = expand_reg!(
             sc; Perm;
-            "eventFlag"     =>  Type::Bool(None),
-            "shouldReport"  =>  Type::Bool(None),
-            "Ns"            =>  Type::Num(None),
-            "Cwnd"          =>  Type::Num(None),
-            "Rate"          =>  Type::Num(None)
+            "eventFlag"      => Type::Bool(None),
+            "shouldContinue" => Type::Bool(None),
+            "shouldReport"   => Type::Bool(None),
+            "Ns"             => Type::Num(None),
+            "Cwnd"           => Type::Num(None),
+            "Rate"           => Type::Num(None)
         );
         
         sc
@@ -554,18 +556,19 @@ mod tests {
         assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(14, Type::Bool(None)));
 
         // implicit
-        assert_eq!(sc.get("eventFlag"   ).unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
-        assert_eq!(sc.get("shouldReport").unwrap().clone(), Reg::Perm(1, Type::Bool(None)));
-        assert_eq!(sc.get("Ns"          ).unwrap().clone(), Reg::Perm(2, Type::Num(None)));
-        assert_eq!(sc.get("Cwnd"        ).unwrap().clone(), Reg::Perm(3, Type::Num(None)));
-        assert_eq!(sc.get("Rate"        ).unwrap().clone(), Reg::Perm(4, Type::Num(None)));
+        assert_eq!(sc.get("eventFlag"     ).unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
+        assert_eq!(sc.get("shouldContinue").unwrap().clone(), Reg::Perm(1, Type::Bool(None)));
+        assert_eq!(sc.get("shouldReport"  ).unwrap().clone(), Reg::Perm(2, Type::Bool(None)));
+        assert_eq!(sc.get("Ns"            ).unwrap().clone(), Reg::Perm(3, Type::Num(None)));
+        assert_eq!(sc.get("Cwnd"          ).unwrap().clone(), Reg::Perm(4, Type::Num(None)));
+        assert_eq!(sc.get("Rate"          ).unwrap().clone(), Reg::Perm(5, Type::Num(None)));
 
         // state
-        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Perm(5, Type::Num(Some(0))));
+        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Perm(6, Type::Num(Some(0))));
     }
 
     #[test]
-    fn reg() { 
+    fn reg() {
         let foo = b"
         (def (foo 0))
         (when true
@@ -902,7 +905,6 @@ mod tests {
     
     #[test]
     fn multiple_events() {
-        // check that the registers are where they're supposed to be so we can just get from scope after this test
         let foo = b"
         (def (foo 0))
         (when true
@@ -964,6 +966,95 @@ mod tests {
                         op: Op::Bind,
                         left: foo_reg.clone(),
                         right: Reg::ImmNum(5),
+                    },
+                ]
+            }
+        );
+    }
+
+    #[test]
+    fn commands() {
+        let foo = b"
+        (def (foo 0))
+        (when true
+            (bind Report.foo 4)
+            (fallthrough)
+        )
+        (when (> Ns 3000)
+            (bind Report.foo 5)
+            (report)
+            (reset)
+        )";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let foo_reg = sc.get("Report.foo").unwrap().clone();
+
+        assert_eq!(
+            b,
+            Bin{
+                events: vec![
+                    Event{
+                        flag_idx: 1,
+                        num_flag_instrs: 1,
+                        body_idx: 2,
+                        num_body_instrs: 2,
+                    },
+                    Event{
+                        flag_idx: 4,
+                        num_flag_instrs: 1,
+                        body_idx: 5,
+                        num_body_instrs: 3,
+                    },
+                ],
+                instrs: vec![
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Def,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("eventFlag").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(4),
+                    },
+                    Instr {
+                        res: sc.get("shouldContinue").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("shouldContinue").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Gt,
+                        left: sc.get("Ns").unwrap().clone(),
+                        right: Reg::ImmNum(3000),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(5),
+                    },
+                    Instr {
+                        res: sc.get("shouldReport").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("shouldReport").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: Reg::Tmp(0, Type::Bool(None)),
+                        op: Op::Reset,
+                        left: Reg::ImmBool(false),
+                        right: Reg::ImmBool(false),
                     },
                 ]
             }

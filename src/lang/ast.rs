@@ -38,9 +38,17 @@ pub enum Op {
 
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Command {
+    Fallthrough, // Continue and evaluate the next `when` clause. desugars to `(:= shouldContinue true)`
+    Report, // Send a report. desugars to `(bind shouldReport true)`
+    Reset, // Reset the control pattern time counter. Compiles to {Tmp(_) <- reset 0 0}.
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Atom(Prim),
+    Cmd(Command),
     Sexp(Op, Box<Expr>, Box<Expr>),
 }
 
@@ -138,8 +146,24 @@ named!(
 );
 
 named!(
+    command<Result<Expr>>,
+    ws!(delimited!(
+        tag!("("),
+        map!(
+            alt!(
+                tag!("fallthrough") => { |_| Command::Fallthrough } |
+                tag!("report")      => { |_| Command::Report      } |
+                tag!("reset")       => { |_| Command::Reset       }
+            ),
+            |c| Ok(Expr::Cmd(c))
+        ),
+        tag!(")")
+    ))
+);
+
+named!(
     pub expr<Result<Expr>>,
-    alt_complete!(sexp | atom)
+    alt_complete!(sexp | command | atom)
 );
 
 named!(
@@ -160,11 +184,42 @@ impl Expr {
             ),
         }
     }
+
+    pub fn desugar(&mut self) {
+        match *self {
+            Expr::Cmd(Command::Fallthrough) => {
+                *self = Expr::Sexp(
+                    Op::Bind,
+                    Box::new(Expr::Atom(Prim::Name(String::from("shouldContinue")))),
+                    Box::new(Expr::Atom(Prim::Bool(true))),
+                )
+            }
+            Expr::Cmd(Command::Report) => {
+                *self = Expr::Sexp(
+                    Op::Bind,
+                    Box::new(Expr::Atom(Prim::Name(String::from("shouldReport")))),
+                    Box::new(Expr::Atom(Prim::Bool(true))),
+                )
+            }
+            Expr::Cmd(Command::Reset) => {
+                *self = Expr::Sexp(
+                    Op::Reset,
+                    Box::new(Expr::Atom(Prim::Bool(false))),
+                    Box::new(Expr::Atom(Prim::Bool(false))),
+                )
+            }
+            Expr::Atom(_) => {},
+            Expr::Sexp(_, box ref mut left, box ref mut right) => {
+                left.desugar();
+                right.desugar();
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Expr, Op, Prim};
+    use super::{Command, Expr, Op, Prim};
 
     #[test]
     fn atom() {
@@ -418,6 +473,25 @@ mod tests {
                         )),
                     ))
                 ),
+            ]
+        );
+    }
+
+    #[test]
+    fn commands() {
+        let foo = b"
+            (report)
+            (reset)
+            (fallthrough)
+        ";
+
+        let e = Expr::new(foo).unwrap();
+        assert_eq!(
+            e,
+            vec![
+                Expr::Cmd(Command::Report),
+                Expr::Cmd(Command::Reset),
+                Expr::Cmd(Command::Fallthrough),
             ]
         );
     }
