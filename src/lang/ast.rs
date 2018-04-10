@@ -16,7 +16,6 @@ pub enum Op {
     Div, // (div a b) return a/b (integer division)
     Equiv, // (eq a b) return a == b
     Gt, // (> a b) return a > b
-    Let, // (let (bind a b) c) with variable a bound to b, evaluate c
     Lt, // (< a b) return a < b
     Max, // (max a b) return max(a,b)
     MaxWrap, // (max a b) return max(a,b) with integer wraparound
@@ -55,7 +54,6 @@ named!(
         alt!(tag!("==") | tag!("eq"))   => { |_| Ok(Op::Equiv) }   | 
         tag!("ewma")                    => { |_| Ok(Op::Ewma) }    | 
         alt!(tag!(">") | tag!("gt"))    => { |_| Ok(Op::Gt) }      | 
-        tag!("let")                     => { |_| Ok(Op::Let) }     | 
         alt!(tag!("<") | tag!("lt"))    => { |_| Ok(Op::Lt) }      | 
         tag!("wrapped_max")             => { |_| Ok(Op::MaxWrap) } |
         tag!("max")                     => { |_| Ok(Op::Max) }     | 
@@ -70,16 +68,6 @@ named!(
 
 fn check_expr(op: Op, left: Expr, right: Expr) -> Result<Expr> {
     match op {
-        // let operation must have a bind clause
-        Op::Let => {
-            if let Expr::Sexp(Op::Bind, _, _) = left {
-                Ok(Expr::Sexp(op, Box::new(left), Box::new(right)))
-            } else {
-                Err(Error::from(
-                    format!("let requires (bind _ _) on left: {:?}", left),
-                ))
-            }
-        }
         Op::Bind => Ok(Expr::Sexp(op, Box::new(left), Box::new(right))),
         _ => {
             match left {

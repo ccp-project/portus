@@ -1,6 +1,6 @@
 [package]
 name = "portus"
-version = "0.1.10"
+version = "0.1.11"
 authors = ["Akshay Narayan <akshayn@csail.mit.edu>"]
 
 [dependencies]

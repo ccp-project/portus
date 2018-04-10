@@ -216,7 +216,6 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                         ))),
                     }
                 }
-                Op::Let => Ok((instrs, right)),
                 Op::Ewma | Op::If | Op::NotIf => {
                     // ewma: SPECIAL: reads return register
                     // (ewma a b) ret * a/10 + b * (10-a)/10.
