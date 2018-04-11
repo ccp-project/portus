@@ -315,7 +315,6 @@ impl Scope {
             "Flow.rate_incoming"      =>  Type::Num(None),
             "Flow.rate_outgoing"      =>  Type::Num(None),
             "Flow.rtt_sample_us"      =>  Type::Num(None),
-            "Flow.snd_cwnd"           =>  Type::Num(None),
             "Flow.was_timeout"        =>  Type::Bool(None)
         );
 
@@ -476,8 +475,7 @@ mod tests {
         assert_eq!(sc.get("Flow.rate_incoming"    ).unwrap().clone(), Reg::Const(11, Type::Num(None)));
         assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Const(12, Type::Num(None)));
         assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Const(13, Type::Num(None)));
-        assert_eq!(sc.get("Flow.snd_cwnd"         ).unwrap().clone(), Reg::Const(14, Type::Num(None)));
-        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(15, Type::Bool(None)));
+        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(14, Type::Bool(None)));
                               
         // implicit
         assert_eq!(sc.get("shouldReport").unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
