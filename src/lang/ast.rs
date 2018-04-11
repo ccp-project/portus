@@ -28,8 +28,6 @@ pub enum Op {
 
     // SPECIAL: cannot be bound to temp register
     If, // (if a b) if a == True, evaluate b (write return register), otherwise don't write return register
-
-    // SPECIAL: cannot be bound to temp register
     NotIf, // (!if a b) if a == False, evaluate b (write return register), otherwise don't write return register
 
     // SPECIAL: reads return register
@@ -47,20 +45,20 @@ named!(
     op<Result<Op>>,
     alt!(
         alt!(tag!("+") | tag!("add") | 
-             tag!("&&") | tag!("and"))   => { |_| Ok(Op::Add) }    | 
-        alt!(tag!(":=") | tag!("bind")) => { |_| Ok(Op::Bind) }    | 
+             tag!("&&") | tag!("and"))   => { |_| Ok(Op::Add) }    |
+        alt!(tag!(":=") | tag!("bind")) => { |_| Ok(Op::Bind) }    |
         tag!("if")                      => { |_| Ok(Op::If) }      |
-        alt!(tag!("/") | tag!("div"))   => { |_| Ok(Op::Div) }     | 
-        alt!(tag!("==") | tag!("eq"))   => { |_| Ok(Op::Equiv) }   | 
-        tag!("ewma")                    => { |_| Ok(Op::Ewma) }    | 
-        alt!(tag!(">") | tag!("gt"))    => { |_| Ok(Op::Gt) }      | 
-        alt!(tag!("<") | tag!("lt"))    => { |_| Ok(Op::Lt) }      | 
+        alt!(tag!("/") | tag!("div"))   => { |_| Ok(Op::Div) }     |
+        alt!(tag!("==") | tag!("eq"))   => { |_| Ok(Op::Equiv) }   |
+        tag!("ewma")                    => { |_| Ok(Op::Ewma) }    |
+        alt!(tag!(">") | tag!("gt"))    => { |_| Ok(Op::Gt) }      |
+        alt!(tag!("<") | tag!("lt"))    => { |_| Ok(Op::Lt) }      |
         tag!("wrapped_max")             => { |_| Ok(Op::MaxWrap) } |
-        tag!("max")                     => { |_| Ok(Op::Max) }     | 
-        tag!("min")                     => { |_| Ok(Op::Min) }     | 
+        tag!("max")                     => { |_| Ok(Op::Max) }     |
+        tag!("min")                     => { |_| Ok(Op::Min) }     |
         alt!(tag!("*") | tag!("mul") |
              tag!("||") | tag!("or"))   => { |_| Ok(Op::Mul) }     |
-        tag!("!if")                     => { |_| Ok(Op::NotIf) }   | 
+        tag!("!if")                     => { |_| Ok(Op::NotIf) }   |
         alt!(tag!("-") | tag!("sub"))   => { |_| Ok(Op::Sub) }     |
         atom => { |f: Result<Expr>| Err(Error::from(format!("unexpected token {:?}", f))) }
     )

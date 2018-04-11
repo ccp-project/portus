@@ -66,21 +66,21 @@ impl Iterator for InstrBytes {
 
 fn serialize_op(o: &Op) -> u8 {
     match *o {
-        Op::Add => 0,
-        Op::Bind => 1,
-        Op::Def => 14, // TODO fix the numbers
-        Op::Div => 2,
-        Op::Equiv => 3,
-        Op::Ewma => 4,
-        Op::Gt => 5,
-        Op::If => 6,
-        Op::Lt => 8,
-        Op::Max => 9,
-        Op::MaxWrap => 15,
-        Op::Min => 10,
-        Op::Mul => 11,
-        Op::NotIf => 12,
-        Op::Sub => 13,
+        Op::Add      =>  0,
+        Op::Bind     =>  1,
+        Op::Def      =>  14,
+        Op::Div      =>  2,
+        Op::Equiv    =>  3,
+        Op::Ewma     =>  4,
+        Op::Gt       =>  5,
+        Op::If       =>  6,
+        Op::Lt       =>  8,
+        Op::Max      =>  9,
+        Op::MaxWrap  =>  15,
+        Op::Min      =>  10,
+        Op::Mul      =>  11,
+        Op::NotIf    =>  12,
+        Op::Sub      =>  13,
     }
 }
 
