@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use super::{Error, Result};
-use super::ast::{Expr, Op, Prim, Prog};
+use super::ast::{Expr, Op, Prim};
+use super::prog::Prog;
 
 #[derive(Clone)]
 #[derive(Debug)]

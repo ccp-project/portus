@@ -41,13 +41,14 @@ impl From<std::string::FromUtf8Error> for Error {
 
 mod ast;
 mod datapath;
+mod prog;
 mod serialize;
 
 pub use self::datapath::Bin;
 pub use self::datapath::Reg;
 pub use self::datapath::Scope;
 
-use self::ast::Prog;
+use self::prog::Prog;
 
 /// `compile()` uses 3 passes to yield Instrs.
 ///
