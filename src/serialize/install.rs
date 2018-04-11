@@ -3,13 +3,14 @@ use Result;
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};
 use lang::Bin;
 
-pub(crate) const INSTALL_FOLD: u8 = 4;
+pub(crate) const INSTALL: u8 = 2;
 
 #[derive(Clone)]
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct Msg {
     pub sid: u32,
+    pub num_events: u32,
     pub num_instrs: u32,
     pub instrs: Bin,
 }
@@ -17,14 +18,16 @@ pub struct Msg {
 impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u32, u32) {
         (
-            INSTALL_FOLD,
-            HDR_LENGTH + 4 + (self.instrs.0.len() as u32 * 10),
+            INSTALL,
+            HDR_LENGTH + 8 + (self.num_events * 4 + self.num_instrs * 10),
             self.sid,
         )
     }
 
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
         let mut buf = [0u8; 4];
+        u32_to_u8s(&mut buf, self.num_events);
+        w.write_all(&buf[..])?;
         u32_to_u8s(&mut buf, self.num_instrs);
         w.write_all(&buf[..])?;
         Ok(())

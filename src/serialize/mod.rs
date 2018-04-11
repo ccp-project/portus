@@ -69,7 +69,7 @@ impl<'a> RawMsg<'a> {
         use std::mem;
         match self.typ {
             create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
-            measure::MEASURE | pattern::CWND => Ok(mem::transmute(&self.bytes[0..4])),
+            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
         }
     }
@@ -88,7 +88,7 @@ impl<'a> RawMsg<'a> {
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
-            measure::MEASURE | pattern::CWND => Ok(&self.bytes[4..(self.len as usize - 6)]),
+            measure::MEASURE => Ok(&self.bytes[4..(self.len as usize - 6)]),
             create::CREATE => Ok(&self.bytes[(4 * 6)..(self.len as usize - 6)]),
             _ => Ok(self.bytes),
         }
@@ -124,8 +124,7 @@ pub trait AsRawMsg {
 
 pub mod create;
 pub mod measure;
-pub mod pattern;
-pub mod install_fold;
+pub mod install;
 mod testmsg;
 
 pub fn serialize<T: AsRawMsg>(m: &T) -> Result<Vec<u8>> {
@@ -158,8 +157,7 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
 pub enum Msg<'a> {
     Cr(create::Msg),
     Ms(measure::Msg),
-    Pt(pattern::Msg),
-    Fld(install_fold::Msg),
+    Ins(install::Msg),
     Other(RawMsg<'a>),
 }
 
@@ -168,8 +166,7 @@ impl<'a> Msg<'a> {
         match m.typ {
             create::CREATE => Ok(Msg::Cr(create::Msg::from_raw_msg(m)?)),
             measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
-            pattern::CWND => Ok(Msg::Pt(pattern::Msg::from_raw_msg(m)?)),
-            install_fold::INSTALL_FOLD => Ok(Msg::Fld(install_fold::Msg::from_raw_msg(m)?)),
+            install::INSTALL => Ok(Msg::Ins(install::Msg::from_raw_msg(m)?)),
             _ => Ok(Msg::Other(m)),
         }
     }

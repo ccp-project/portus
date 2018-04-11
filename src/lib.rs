@@ -44,30 +44,12 @@ pub struct Datapath<T: Ipc>(BackendSender<T>);
 
 use lang::{Reg, Scope};
 impl<T: Ipc> Datapath<T> {
-    /// Algorithm implementations use send_pattern() to control the datapath's behavior by
-    /// calling send_pattern() with:
-    /// 1. An initialized backend b.
-    /// 2. The flow's sock_id. IPC implementations supporting addressing (e.g. Unix sockets, which can
-    /// communicate with many applications using UDP datapaths)  MUST make the address be sock_id
-    /// 3. The control pattern prog to install. Implementations can create patterns using make_pattern!.
-    /// send_pattern() will return quickly with a Result indicating whether the send was successful.
-    pub fn send_pattern(&self, sock_id: u32, prog: pattern::Pattern) -> Result<()> {
-        let msg = serialize::pattern::Msg {
-            sid: sock_id,
-            num_events: prog.len() as u32,
-            pattern: prog,
-        };
-
-        let buf = serialize::serialize(&msg)?;
-        self.0.send_msg(&buf[..])?;
-        Ok(())
-    }
-
-    pub fn install_measurement(&self, sock_id: u32, src: &[u8]) -> Result<Scope> {
+    pub fn install(&self, sock_id: u32, src: &[u8]) -> Result<Scope> {
         let (bin, sc) = lang::compile(src)?;
-        let msg = serialize::install_fold::Msg {
+        let msg = serialize::install::Msg {
             sid: sock_id,
-            num_instrs: bin.0.len() as u32,
+            num_events: bin.events.len() as u32,
+            num_instrs: bin.instrs.len() as u32,
             instrs: bin,
         };
 
@@ -213,10 +195,10 @@ where
                         });
                     }
                 }
-                Msg::Pt(_) | Msg::Fld(_) => {
+                Msg::Ins(_) => {
                     panic!(
-                        "The start() listener should never receive a pattern \
-                        or install_fold message, since it is on the CCP side."
+                        "The start() listener should never receive an install \
+                        message, since it is on the CCP side."
                     )
                 }
                 _ => continue,

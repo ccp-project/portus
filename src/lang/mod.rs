@@ -76,7 +76,9 @@ mod tests {
     fn bench_1_line_compileonly(b: &mut Bencher) {
         let fold = "
             (def (foo 0))
-            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            (when true
+                (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            )
         ".as_bytes();
         b.iter(|| super::compile(fold).unwrap())
     }
@@ -85,7 +87,9 @@ mod tests {
     fn bench_1_line(b: &mut Bencher) {
         let fold = "
             (def (foo 0))
-            (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            (when true
+                (:= Report.foo (+ Report.foo Ack.bytes_acked))
+            )
         ".as_bytes();
         b.iter(|| super::compile_and_serialize(fold).unwrap())
     }
@@ -94,8 +98,10 @@ mod tests {
     fn bench_2_line(b: &mut Bencher) {
         let fold = "
             (def (foo 0) (bar 0))
-            (:= Report.foo (+ Report.foo Ack.bytes_acked))
-            (:= Report.bar (+ Report.bar Ack.bytes_misordered))
+            (when true
+                (:= Report.foo (+ Report.foo Ack.bytes_acked))
+                (:= Report.bar (+ Report.bar Ack.bytes_misordered))
+            )
         ".as_bytes();
         b.iter(|| super::compile_and_serialize(fold).unwrap())
     }
@@ -104,8 +110,10 @@ mod tests {
     fn bench_ewma(b: &mut Bencher) {
         let fold = "
             (def (foo 0) (bar 0))
-            (:= Report.foo (+ Report.foo Ack.bytes_acked))
-            (:= Report.bar (ewma 2 Flow.rate_outgoing))
+            (when true
+                (:= Report.foo (+ Report.foo Ack.bytes_acked))
+                (:= Report.bar (ewma 2 Flow.rate_outgoing))
+            )
         ".as_bytes();
         b.iter(|| super::compile_and_serialize(fold).unwrap())
     }
@@ -113,9 +121,11 @@ mod tests {
     #[bench]
     fn bench_if(b: &mut Bencher) {
         let fold = "
-            (def (foo 0) (bar 0))
-            (:= Report.foo (+ Report.foo Ack.bytes_acked))
-            (bind isUrgent (!if isUrgent (> Ack.lost_pkts_sample 0)))
+            (def (foo 0) (bar false))
+            (when true
+                (:= Report.foo (+ Report.foo Ack.bytes_acked))
+                (bind Report.bar (!if Report.bar (> Ack.lost_pkts_sample 0)))
+            )
         ".as_bytes();
         b.iter(|| super::compile_and_serialize(fold).unwrap())
     }
@@ -124,9 +134,11 @@ mod tests {
     fn bench_3_line(b: &mut Bencher) {
         let fold = "
             (def (foo 0) (bar 0) (baz 0))
-            (:= Report.foo (+ Report.foo Ack.bytes_acked))
-            (:= Report.bar (+ Report.bar Ack.bytes_misordered))
-            (:= Report.baz (+ Report.bar Ack.ecn_bytes))
+            (when true
+                (:= Report.foo (+ Report.foo Ack.bytes_acked))
+                (:= Report.bar (+ Report.bar Ack.bytes_misordered))
+                (:= Report.baz (+ Report.bar Ack.ecn_bytes))
+            )
         ".as_bytes();
         b.iter(|| super::compile_and_serialize(fold).unwrap())
     }

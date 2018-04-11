@@ -48,6 +48,14 @@ impl Reg {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Event {
+    pub flag_idx: u32,
+    pub num_flag_instrs: u32,
+    pub body_idx: u32,
+    pub num_body_instrs: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Instr {
     pub res: Reg,
     pub op: Op,
@@ -56,37 +64,91 @@ pub struct Instr {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Bin(pub Vec<Instr>);
+pub struct Bin {
+    pub events: Vec<Event>,
+    pub instrs: Vec<Instr>,
+}
 
 impl Bin {
-    /// Given a Prog, call compile_expr() on each Expr, then append the resulting Vec<Instrs>
+    /// Take a `Prog`, which is a `Vec<portus::lang::prog::Event>`, and turn it into
+    /// a `Bin`, which is a `Vec<portus::lang::datapath::Event>` and a `Vec<Instr>`.
     pub fn compile_prog(p: &Prog, mut scope: &mut Scope) -> Result<Self> {
-        // TODO once compile_expr returns iterator, can chain without
-        // intermediate collect()
+        let def_instrs = scope.clone().into_iter().collect::<Vec<Instr>>();
+        let mut curr_idx = def_instrs.len() as u32;
+
         // this is ugly
-        let i = scope.clone().into_iter().collect::<Vec<Instr>>();
-        p.0
+        // there might be some way to do this without all the intermediate `.collect()`
+        // to turn Vec<Result<_>> into Result<Vec<_>>.
+        let ls: Result<Vec<(Event, Vec<Instr>)>> = p.0
             .iter()
-            .map(|e| {
+            .map(|ev| {
                 scope.clear_tmps();
-                compile_expr(e, &mut scope).map(|t| match t {
-                    (instrs, _) => instrs,
-                })
-            })
-            .fold(
-                // TODO once compile_expr returns iterator, can just flatMap
-                Ok(i),
-                |acc, rv| match rv { 
-                    Ok(mut v) => {
-                        acc.and_then(|mut x| {
-                            x.append(&mut v);
-                            Ok(x)
-                        })
+                let flag_instrs = compile_expr(&ev.flag, &mut scope).and_then(|t| {
+                    let (mut instrs, res) = t;
+                    // assign the flag value to the EventFlag reg.
+                    let flag_reg = scope.get("eventFlag").unwrap();
+                    match res {
+                        Reg::Tmp(_, Type::Bool(_)) => {
+                            if let Some(last) = instrs.last_mut() {
+                                (*last).res = flag_reg.clone();
+                            } else {
+                                return Err(Error(String::from("Empty instruction list")));
+                            }
+                                
+                            Ok(instrs)
+                        }
+                        Reg::ImmBool(_) => {
+                            instrs.push(
+                                Instr{
+                                    res: flag_reg.clone(),
+                                    op: Op::Bind,
+                                    left: flag_reg.clone(),
+                                    right: res,
+                                }
+                            );
+
+                            Ok(instrs)
+                        }
+                        Reg::Perm(_, _) => unreachable!(),
+                        x => {
+                            Err(Error::from(format!("Flag expression must result in bool: {:?}", x)))
+                        }
                     }
-                    e => e,
-                },
-            )
-            .map(Bin)
+                })?;
+                let num_flag_instrs = flag_instrs.len() as u32;
+
+                let body_instrs_nested: Result<Vec<Vec<Instr>>> = ev.body.iter().map(|expr| {
+                    scope.clear_tmps();
+                    compile_expr(expr, &mut scope).map(|t| t.0) // Result<Vec<Instr>>
+                }).collect(); // do this intermediate collect to go from Vec<Result<Vec<Instr>>> -> Result<Vec<Vec<Instr>>>
+
+                // flatten the Vec<Vec<Instr>>
+                let body_instrs: Vec<Instr> = body_instrs_nested?
+                    .into_iter()
+                    .flat_map(|x| x.into_iter())
+                    .collect();
+
+                let new_event = Event{
+                    flag_idx: curr_idx,
+                    num_flag_instrs,
+                    body_idx: curr_idx + num_flag_instrs,
+                    num_body_instrs: body_instrs.len() as u32,
+                };
+
+                curr_idx += new_event.num_flag_instrs + new_event.num_body_instrs;
+                Ok((
+                    new_event,
+                    flag_instrs.into_iter().chain(body_instrs).collect()
+                ))
+            }).collect();
+
+        let (evs, instrs): (Vec<_>, Vec<_>) = ls?.into_iter().unzip();
+        Ok(Bin{
+            events: evs,
+            instrs: def_instrs.into_iter().chain(
+                instrs.into_iter().flat_map(|x| x.into_iter())
+            ).collect(),
+        })
     }
 }
 
@@ -254,8 +316,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
 
 #[derive(Debug, Clone)]
 pub struct Scope {
-    named: HashMap<String, Reg>,
-    num_perm: u8,
+    pub(crate) named: HashMap<String, Reg>,
+    pub(crate) num_perm: u8,
     tmp: Vec<Reg>,
 }
 
@@ -340,8 +402,11 @@ impl Scope {
         // congestion window is updated, just as if a send pattern had changed it.
         sc.num_perm = expand_reg!(
             sc; Perm;
-            "shouldReport" =>  Type::Bool(None),
-            "Cwnd"         =>  Type::Num(None)
+            "eventFlag"     =>  Type::Bool(None),
+            "shouldReport"  =>  Type::Bool(None),
+            "Ns"            =>  Type::Num(None),
+            "Cwnd"          =>  Type::Num(None),
+            "Rate"          =>  Type::Num(None)
         );
         
         sc
@@ -370,8 +435,8 @@ impl Scope {
         r
     }
 
-    /// if the Type was initially None, update it now that we know what it is.
-    pub(crate) fn update_type(&mut self, name: &str, t: &Type) -> Result<Reg> {
+    // if the Type was initially None, update it now that we know what it is.
+    fn update_type(&mut self, name: &str, t: &Type) -> Result<Reg> {
         self.named
             .get_mut(name)
             .ok_or_else(|| Error::from(format!("Unknown {:?}", name)))
@@ -451,7 +516,7 @@ impl IntoIterator for Bin {
     type IntoIter = ::std::vec::IntoIter<Instr>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.instrs.into_iter()
     }
 }
 
@@ -459,15 +524,15 @@ impl IntoIterator for Bin {
 mod tests {
     use lang::ast::Op;
     use lang::prog::Prog;
-    use super::{Bin, Instr, Type, Reg};
-
+    use super::{Bin, Event, Instr, Reg, Type};
     #[test]
     fn primitives() {
         let foo = b"
         (def (foo 0))
-        (bind Report.foo 4)
-        ";
-
+        (when true
+            (bind Report.foo 4)
+        )";
+        
         let (_, sc) = Prog::new_with_scope(foo).unwrap();
 
         // check that the registers are where they're supposed to be so we can just get from scope after this test
@@ -487,105 +552,157 @@ mod tests {
         assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Const(12, Type::Num(None)));
         assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Const(13, Type::Num(None)));
         assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(14, Type::Bool(None)));
-                              
+
         // implicit
-        assert_eq!(sc.get("shouldReport").unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
-        assert_eq!(sc.get("Cwnd"        ).unwrap().clone(), Reg::Perm(1, Type::Num(None)));
+        assert_eq!(sc.get("eventFlag"   ).unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
+        assert_eq!(sc.get("shouldReport").unwrap().clone(), Reg::Perm(1, Type::Bool(None)));
+        assert_eq!(sc.get("Ns"          ).unwrap().clone(), Reg::Perm(2, Type::Num(None)));
+        assert_eq!(sc.get("Cwnd"        ).unwrap().clone(), Reg::Perm(3, Type::Num(None)));
+        assert_eq!(sc.get("Rate"        ).unwrap().clone(), Reg::Perm(4, Type::Num(None)));
 
         // state
-        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Perm(2, Type::Num(Some(0))));
+        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Perm(5, Type::Num(Some(0))));
     }
 
     #[test]
-    fn prog() {
+    fn reg() { 
         let foo = b"
         (def (foo 0))
-        (bind Report.foo 4)
+        (when true
+            (bind Report.foo 4)
+        )
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
-
+        
         assert_eq!(
             b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::ImmNum(4),
-                },
-            ])
+            Bin{
+                events: vec![Event{
+                    flag_idx: 1,
+                    num_flag_instrs: 1,
+                    body_idx: 2,
+                    num_body_instrs: 1,
+                }],
+                instrs: vec![
+                    Instr {
+                        res: sc.get("Report.foo").unwrap().clone(),
+                        op: Op::Def,
+                        left: sc.get("Report.foo").unwrap().clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("eventFlag").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: sc.get("Report.foo").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("Report.foo").unwrap().clone(),
+                        right: Reg::ImmNum(4),
+                    },
+                ]
+            }
         );
     }
 
     #[test]
-    fn def() {
+    fn underscored_var() {
         let foo = b"
         (def (foo 0))
-        (bind Report.foo (+ 2 3))
+        (when true
+            (bind Report.foo 4)
+        )
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        
+        // check for underscored state variable
+        let foo2 = b"
+        (def (foo_bar 0))
+        (when true
+            (bind Report.foo_bar 4)
+        )
+        ";
+        
+        let (p2, mut sc2) = Prog::new_with_scope(foo2).unwrap();
+        let b2 = Bin::compile_prog(&p2, &mut sc2).unwrap();
+        assert_eq!(b2, b);
+    }
 
-        assert_eq!(
-            b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::ImmNum(2),
-                    right: Reg::ImmNum(3),
-                },
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::Tmp(0, Type::Num(None)),
-                },
-            ])
-        );
+    #[test]
+    fn optional_prefix() {
+        let foo = b"
+        (def (foo 0))
+        (when true
+            (bind Report.foo 4)
+        )
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        
+        // check for underscored state variable
+        let foo2 = b"
+        (def (Report.foo 0))
+        (when true
+            (bind Report.foo 4)
+        )
+        ";
+        
+        let (p2, mut sc2) = Prog::new_with_scope(foo2).unwrap();
+        let b2 = Bin::compile_prog(&p2, &mut sc2).unwrap();
+        assert_eq!(b2, b);
     }
 
     #[test]
     fn ewma() {
         let foo = b"
         (def (foo 0))
-        (bind Report.foo (ewma 2 Flow.rate_outgoing))
+        (when true
+            (bind Report.foo (ewma 2 Flow.rate_outgoing))
+        )
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
 
+        let foo_reg = sc.get("Report.foo").unwrap().clone();
+
         assert_eq!(
             b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Ewma,
-                    left: Reg::ImmNum(2),
-                    right: sc.get("Flow.rate_outgoing").unwrap().clone(),
-                },
-            ])
+            Bin{
+                events: vec![Event{
+                    flag_idx: 1,
+                    num_flag_instrs: 1,
+                    body_idx: 2,
+                    num_body_instrs: 1,
+                }],
+                instrs: vec![
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Def,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("eventFlag").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Ewma,
+                        left: Reg::ImmNum(2),
+                        right: sc.get("Flow.rate_outgoing").unwrap().clone(),
+                    },
+                ]
+            }
         );
     }
 
@@ -593,34 +710,51 @@ mod tests {
     fn infinity_if() {
         let foo = b"
         (def (foo +infinity))
-        (bind Report.foo (if (< Flow.rtt_sample_us Report.foo) Flow.rtt_sample_us))
+        (when true
+            (bind Report.foo (if (< Flow.rtt_sample_us Report.foo) Flow.rtt_sample_us))
+        )
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let foo_reg = sc.get("Report.foo").unwrap().clone();
 
         assert_eq!(
             b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::ImmNum(u64::max_value()),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Bool(None)),
-                    op: Op::Lt,
-                    left: Reg::Const(8, Type::Num(None)),
-                    right: sc.get("Report.foo").unwrap().clone(),
-                },
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::If,
-                    left: Reg::Tmp(0, Type::Bool(None)),
-                    right: sc.get("Flow.rtt_sample_us").unwrap().clone(),
-                },
-            ])
+            Bin{
+                events: vec![Event{
+                    flag_idx: 1,
+                    num_flag_instrs: 1,
+                    body_idx: 2,
+                    num_body_instrs: 2,
+                }],
+                instrs: vec![
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Def,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(u64::max_value()),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("eventFlag").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: Reg::Tmp(0, Type::Bool(None)),
+                        op: Op::Lt,
+                        left: sc.get("Flow.rtt_sample_us").unwrap().clone(),
+                        right: foo_reg.clone(),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::If,
+                        left: Reg::Tmp(0, Type::Bool(None)),
+                        right: sc.get("Flow.rtt_sample_us").unwrap().clone(),
+                    },
+                ]
+            }
         );
     }
 
@@ -628,41 +762,58 @@ mod tests {
     fn intermediate() {
         let foo = b"
         (def (foo 0))
-        (bind bar 3)
-        (bind Report.foo (+ 2 bar))
+        (when true
+            (bind bar 3)
+            (bind Report.foo (+ 2 bar))
+        )
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let foo_reg = sc.get("Report.foo").unwrap().clone();
 
         assert_eq!(
             b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: sc.get("bar").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("bar").unwrap().clone(),
-                    right: Reg::ImmNum(3),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::ImmNum(2),
-                    right: sc.get("bar").unwrap().clone(),
-                },
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::Tmp(0, Type::Num(None)),
-                },
-            ])
+            Bin{
+                events: vec![Event{
+                    flag_idx: 1,
+                    num_flag_instrs: 1,
+                    body_idx: 2,
+                    num_body_instrs: 3,
+                }],
+                instrs: vec![
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Def,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("eventFlag").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: sc.get("bar").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("bar").unwrap().clone(),
+                        right: Reg::ImmNum(3),
+                    },
+                    Instr {
+                        res: Reg::Tmp(0, Type::Num(None)),
+                        op: Op::Add,
+                        left: Reg::ImmNum(2),
+                        right: sc.get("bar").unwrap().clone(),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: Reg::Tmp(0, Type::Num(None)),
+                    },
+                ]
+            }
         );
     }
 
@@ -670,170 +821,152 @@ mod tests {
     fn prog_reset_tmps() {
         let foo = b"
         (def (foo 0))
-        (bind Report.foo (+ (+ 1 2) 3))
-        (bind Report.foo (+ (+ 4 5) 6))
+        (when (> (+ 1 2) 3)
+            (bind Report.foo (+ (+ 1 2) 3))
+            (bind Report.foo (+ (+ 4 5) 6))
+        )
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let foo_reg = sc.get("Report.foo").unwrap().clone();
 
         assert_eq!(
             b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::ImmNum(1),
-                    right: Reg::ImmNum(2),
-                },
-                Instr {
-                    res: Reg::Tmp(1, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::Tmp(0, Type::Num(None)),
-                    right: Reg::ImmNum(3),
-                },
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::Tmp(1, Type::Num(None)),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::ImmNum(4),
-                    right: Reg::ImmNum(5),
-                },
-                Instr {
-                    res: Reg::Tmp(1, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::Tmp(0, Type::Num(None)),
-                    right: Reg::ImmNum(6),
-                },
-                Instr {
-                    res: sc.get("Report.foo").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.foo").unwrap().clone(),
-                    right: Reg::Tmp(1, Type::Num(None)),
-                },
-            ])
-        );
-    }
-
-    #[test]
-    fn underscored_state_variable() {
-        let foo = b"
-            (def (foo_bar 0))
-			(bind Report.foo_bar (+ 1 2))
-        ";
-
-        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
-        let b = Bin::compile_prog(&p, &mut sc).unwrap();
-
-        assert_eq!(
-            b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo_bar").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo_bar").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::ImmNum(1),
-                    right: Reg::ImmNum(2),
-                },
-                Instr {
-                    res: sc.get("Report.foo_bar").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.foo_bar").unwrap().clone(),
-                    right: Reg::Tmp(0, Type::Num(None)),
-                },
-            ])
+            Bin{
+                events: vec![Event{
+                    flag_idx: 1,
+                    num_flag_instrs: 2,
+                    body_idx: 3,
+                    num_body_instrs: 6,
+                }],
+                instrs: vec![
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Def,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: Reg::Tmp(0, Type::Num(None)),
+                        op: Op::Add,
+                        left: Reg::ImmNum(1),
+                        right: Reg::ImmNum(2),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Gt,
+                        left: Reg::Tmp(0, Type::Num(None)),
+                        right: Reg::ImmNum(3),
+                    },
+                    Instr {
+                        res: Reg::Tmp(0, Type::Num(None)),
+                        op: Op::Add,
+                        left: Reg::ImmNum(1),
+                        right: Reg::ImmNum(2),
+                    },
+                    Instr {
+                        res: Reg::Tmp(1, Type::Num(None)),
+                        op: Op::Add,
+                        left: Reg::Tmp(0, Type::Num(None)),
+                        right: Reg::ImmNum(3),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: Reg::Tmp(1, Type::Num(None)),
+                    },
+                    Instr {
+                        res: Reg::Tmp(0, Type::Num(None)),
+                        op: Op::Add,
+                        left: Reg::ImmNum(4),
+                        right: Reg::ImmNum(5),
+                    },
+                    Instr {
+                        res: Reg::Tmp(1, Type::Num(None)),
+                        op: Op::Add,
+                        left: Reg::Tmp(0, Type::Num(None)),
+                        right: Reg::ImmNum(6),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: Reg::Tmp(1, Type::Num(None)),
+                    },
+                ]
+            }
         );
     }
     
-	#[test]
-    fn optional_flow_prefix() {
-        let foo = b"
-            (def (Report.foo_bar 0))
-			(bind Report.foo_bar (+ 1 2))
-        ";
-
-        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
-        let b = Bin::compile_prog(&p, &mut sc).unwrap();
-
-        assert_eq!(
-            b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.foo_bar").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.foo_bar").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Num(None)),
-                    op: Op::Add,
-                    left: Reg::ImmNum(1),
-                    right: Reg::ImmNum(2),
-                },
-                Instr {
-                    res: sc.get("Report.foo_bar").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.foo_bar").unwrap().clone(),
-                    right: Reg::Tmp(0, Type::Num(None)),
-                },
-            ])
-        );
-    }
-	
     #[test]
-    fn optional_flow_prefix_2() {
+    fn multiple_events() {
+        // check that the registers are where they're supposed to be so we can just get from scope after this test
         let foo = b"
-            (def (Report.oldrate 0))
-            (bind Report.oldrate (max Report.oldrate (min Flow.rate_outgoing Flow.rate_incoming)))
+        (def (foo 0))
+        (when true
+            (bind Report.foo 4)
+        )
+        (when (> 2 3)
+            (bind Report.foo 5)
+        )
         ";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
-
+        let foo_reg = sc.get("Report.foo").unwrap().clone();
+        
         assert_eq!(
             b,
-            Bin(vec![
-                Instr {
-                    res: sc.get("Report.oldrate").unwrap().clone(),
-                    op: Op::Def,
-                    left: sc.get("Report.oldrate").unwrap().clone(),
-                    right: Reg::ImmNum(0),
-                },
-                Instr {
-                    res: Reg::Tmp(0, Type::Num(None)),
-                    op: Op::Min,
-                    left: sc.get("Flow.rate_outgoing").unwrap().clone(),
-                    right: sc.get("Flow.rate_incoming").unwrap().clone(),
-                },
-                Instr {
-                    res: Reg::Tmp(1, Type::Num(None)),
-                    op: Op::Max,
-                    left: sc.get("Report.oldrate").unwrap().clone(),
-                    right: Reg::Tmp(0, Type::Num(None)),
-                },
-                Instr {
-                    res: sc.get("Report.oldrate").unwrap().clone(),
-                    op: Op::Bind,
-                    left: sc.get("Report.oldrate").unwrap().clone(),
-                    right: Reg::Tmp(1, Type::Num(None)),
-                },
-            ])
+            Bin{
+                events: vec![
+                    Event{
+                        flag_idx: 1,
+                        num_flag_instrs: 1,
+                        body_idx: 2,
+                        num_body_instrs: 1,
+                    },
+                    Event{
+                        flag_idx: 3,
+                        num_flag_instrs: 1,
+                        body_idx: 4,
+                        num_body_instrs: 1,
+                    },
+                ],
+                instrs: vec![
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Def,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("eventFlag").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(4),
+                    },
+                    Instr {
+                        res: sc.get("eventFlag").unwrap().clone(),
+                        op: Op::Gt,
+                        left: Reg::ImmNum(2),
+                        right: Reg::ImmNum(3),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(5),
+                    },
+                ]
+            }
         );
     }
 }

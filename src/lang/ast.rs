@@ -1,4 +1,3 @@
-use std;
 use nom::IResult;
 use super::{Error, Result};
 
@@ -36,6 +35,7 @@ pub enum Op {
 
     // SPECIAL: reads return register
     Ewma, // (ewma a b) ret * a/10 + b * (10-a)/10.
+
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -72,10 +72,10 @@ fn check_expr(op: Op, left: Expr, right: Expr) -> Result<Expr> {
     match op {
         Op::Bind => Ok(Expr::Sexp(op, Box::new(left), Box::new(right))),
         _ => {
-            match left {
-                Expr::Sexp(Op::If, _, _) |
-                Expr::Sexp(Op::NotIf, _, _) => Err(Error::from(
-                    format!("conditionals cannot be bound to temp registers: {:?}", left),
+            match (&left, &right) {
+                (&Expr::Sexp(Op::If, _, _), _) |
+                (&Expr::Sexp(Op::NotIf, _, _), _) => Err(Error::from(
+                    format!("Conditional cannot be bound to temp register: {:?}", left.clone()),
                 )),
                 _ => Ok(Expr::Sexp(op, Box::new(left), Box::new(right))),
             }
@@ -89,7 +89,6 @@ named!(
     ws!(delimited!(
         tag!("("),
         do_parse!(
-            opt!(multispace) >>
             first: op >>
             opt!(multispace) >>
             second: expr >>
@@ -121,11 +120,10 @@ named!(
     take_while1!(|u: u8| is_alphanumeric(u) || u == b'.' || u == b'_')
 );
 
-use nom::rest;
 named!(
     pub atom<Result<Expr>>,
     ws!(do_parse!(
-        val: alt_complete!(
+        val: alt!(
             tag!("true")  => { |_| Ok(Prim::Bool(true)) }  |
             tag!("false") => { |_| Ok(Prim::Bool(false)) } |
             tag!("+infinity") => { |_| Ok(Prim::Num(u64::max_value())) } |
@@ -133,13 +131,7 @@ named!(
             name => { |n: &[u8]| match String::from_utf8(n.to_vec()) {
                 Ok(s) => Ok(Prim::Name(s)),
                 Err(e) => Err(Error::from(e)),
-            } } |
-            rest => { 
-                |f: &[u8]| {
-                    let rest = std::str::from_utf8(f).unwrap();
-                    Err(Error::from(format!("unexpected: {:?}", rest))) 
-                }
-            }
+            } }
         ) >>
         (val.and_then(|t| Ok(Expr::Atom(t))))
     ))
@@ -212,10 +204,22 @@ mod tests {
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(e, vec![Expr::Atom(Prim::Name(String::from("acbdefg")))]);
+        
+        let foo = b"blah 10 20";
+        let er = Expr::new(foo);
+        let e = er.unwrap();
+        assert_eq!(
+            e,
+            vec![
+                Expr::Atom(Prim::Name(String::from("blah"))),
+                Expr::Atom(Prim::Num(10)),
+                Expr::Atom(Prim::Num(20)),
+            ]
+        );
     }
 
     #[test]
-    fn simple() {
+    fn simple_exprs() {
         let foo = b"(+ 10 20)";
         let er = Expr::new(foo);
         let e = er.unwrap();
@@ -231,6 +235,13 @@ mod tests {
         );
 
         let foo = b"(blah 10 20)";
+        let er = Expr::new(foo);
+        match er {
+            Ok(e) => panic!("false ok: {:?}", e),
+            Err(_) => (),
+        }
+        
+        let foo = b"(blah 10 20";
         let er = Expr::new(foo);
         match er {
             Ok(e) => panic!("false ok: {:?}", e),
@@ -267,6 +278,34 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn expr_leftover() {
+        let foo = b"(+ 10 20))";
+        use nom::{IResult, Needed};
+        use super::exprs;
+        use lang::{Error, Result};
+        match exprs(foo) {
+            IResult::Done(r, me) => {
+                assert_eq!(r, b")");
+                assert_eq!(
+                    me.into_iter().collect::<Result<Vec<Expr>>>().unwrap(),
+                    vec![
+                        Expr::Sexp(
+                            Op::Add,
+                            Box::new(Expr::Atom(Prim::Num(10))),
+                            Box::new(Expr::Atom(Prim::Num(20)))
+                        ),
+                    ],
+                );
+            },
+            IResult::Error(e) => panic!(e),
+            IResult::Incomplete(Needed::Unknown) => panic!("need more src"),
+            IResult::Incomplete(Needed::Size(s)) => panic!(
+                Error::from(format!("need {} more bytes", s)),
+            ),
+        }
     }
 
     #[test]

@@ -127,39 +127,6 @@ check_measure_msg!(
     ]
 );
 
-macro_rules! check_pattern_msg {
-    ($id: ident, $sid:expr, $p:expr) => (
-        check_msg!(
-            $id, 
-            super::pattern::Msg,
-            super::pattern::Msg{
-                sid: $sid,
-                num_events: $p.len() as u32,
-                pattern: $p,
-            },
-            Msg::Pt(pat),
-            pat
-        );
-    )
-}
-
-use time;
-use pattern;
-check_pattern_msg!(
-    test_pattern_1,
-    42,
-    make_pattern!(
-        pattern::Event::Report => 
-        pattern::Event::SetCwndAbs(10) => 
-        pattern::Event::WaitDuration(time::Duration::nanoseconds(100))
-    )
-);
-check_pattern_msg!(
-    test_pattern_2,
-    43,
-    make_pattern!(pattern::Event::SetRateAbs(1000000) => pattern::Event::WaitRtts(2.0))
-);
-
 #[test]
 fn test_other_msg() {
     use super::testmsg;
@@ -182,14 +149,4 @@ use self::test::Bencher;
 #[bench]
 fn bench_flip_create(b: &mut Bencher) {
     b.iter(|| test_create_1())
-}
-
-//#[bench]
-//fn bench_flip_measure(b: &mut Bencher) {
-//    b.iter(|| test_measure_1())
-//}
-
-#[bench]
-fn bench_flip_pattern(b: &mut Bencher) {
-    b.iter(|| test_pattern_1())
 }
