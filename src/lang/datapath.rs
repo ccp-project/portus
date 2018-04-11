@@ -302,21 +302,21 @@ impl Scope {
         expand_reg!(
             sc; Const;
             "Ack.bytes_acked"         =>  Type::Num(None),
-            "Ack.packets_acked"       =>  Type::Num(None),
             "Ack.bytes_misordered"    =>  Type::Num(None),
-            "Ack.packets_misordered"  =>  Type::Num(None),
             "Ack.ecn_bytes"           =>  Type::Num(None),
             "Ack.ecn_packets"         =>  Type::Num(None),
             "Ack.lost_pkts_sample"    =>  Type::Num(None),
-            "Flow.was_timeout"        =>  Type::Bool(None),
-            "Flow.rtt_sample_us"      =>  Type::Num(None),
-            "Flow.rate_outgoing"      =>  Type::Num(None),
-            "Flow.rate_incoming"      =>  Type::Num(None),
-            "Flow.bytes_in_flight"    =>  Type::Num(None),
-            "Flow.packets_in_flight"  =>  Type::Num(None),
-            "Flow.snd_cwnd"           =>  Type::Num(None),
             "Ack.now"                 =>  Type::Num(None),
-            "Flow.bytes_pending"      =>  Type::Num(None)
+            "Ack.packets_acked"       =>  Type::Num(None),
+            "Ack.packets_misordered"  =>  Type::Num(None),
+            "Flow.bytes_in_flight"    =>  Type::Num(None),
+            "Flow.bytes_pending"      =>  Type::Num(None),
+            "Flow.packets_in_flight"  =>  Type::Num(None),
+            "Flow.rate_incoming"      =>  Type::Num(None),
+            "Flow.rate_outgoing"      =>  Type::Num(None),
+            "Flow.rtt_sample_us"      =>  Type::Num(None),
+            "Flow.snd_cwnd"           =>  Type::Num(None),
+            "Flow.was_timeout"        =>  Type::Bool(None)
         );
 
         // implicit return registers (can bind to these without Def)
@@ -463,21 +463,21 @@ mod tests {
         // check that the registers are where they're supposed to be so we can just get from scope after this test
         // primitive
         assert_eq!(sc.get("Ack.bytes_acked"       ).unwrap().clone(), Reg::Const(0, Type::Num(None)));
-        assert_eq!(sc.get("Ack.packets_acked"     ).unwrap().clone(), Reg::Const(1, Type::Num(None)));
-        assert_eq!(sc.get("Ack.bytes_misordered"  ).unwrap().clone(), Reg::Const(2, Type::Num(None)));
-        assert_eq!(sc.get("Ack.packets_misordered").unwrap().clone(), Reg::Const(3, Type::Num(None)));
-        assert_eq!(sc.get("Ack.ecn_bytes"         ).unwrap().clone(), Reg::Const(4, Type::Num(None)));
-        assert_eq!(sc.get("Ack.ecn_packets"       ).unwrap().clone(), Reg::Const(5, Type::Num(None)));
-        assert_eq!(sc.get("Ack.lost_pkts_sample"  ).unwrap().clone(), Reg::Const(6, Type::Num(None)));
-        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(7, Type::Bool(None)));
-        assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Const(8, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Const(9, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rate_incoming"    ).unwrap().clone(), Reg::Const(10, Type::Num(None)));
-        assert_eq!(sc.get("Flow.bytes_in_flight"  ).unwrap().clone(), Reg::Const(11, Type::Num(None)));
-        assert_eq!(sc.get("Flow.packets_in_flight").unwrap().clone(), Reg::Const(12, Type::Num(None)));
-        assert_eq!(sc.get("Flow.snd_cwnd"         ).unwrap().clone(), Reg::Const(13, Type::Num(None)));
-        assert_eq!(sc.get("Ack.now"               ).unwrap().clone(), Reg::Const(14, Type::Num(None)));
-        assert_eq!(sc.get("Flow.bytes_pending"    ).unwrap().clone(), Reg::Const(15, Type::Num(None)));
+        assert_eq!(sc.get("Ack.bytes_misordered"  ).unwrap().clone(), Reg::Const(1, Type::Num(None)));
+        assert_eq!(sc.get("Ack.ecn_bytes"         ).unwrap().clone(), Reg::Const(2, Type::Num(None)));
+        assert_eq!(sc.get("Ack.ecn_packets"       ).unwrap().clone(), Reg::Const(3, Type::Num(None)));
+        assert_eq!(sc.get("Ack.lost_pkts_sample"  ).unwrap().clone(), Reg::Const(4, Type::Num(None)));
+        assert_eq!(sc.get("Ack.now"               ).unwrap().clone(), Reg::Const(5, Type::Num(None)));
+        assert_eq!(sc.get("Ack.packets_acked"     ).unwrap().clone(), Reg::Const(6, Type::Num(None)));
+        assert_eq!(sc.get("Ack.packets_misordered").unwrap().clone(), Reg::Const(7, Type::Num(None)));
+        assert_eq!(sc.get("Flow.bytes_in_flight"  ).unwrap().clone(), Reg::Const(8, Type::Num(None)));
+        assert_eq!(sc.get("Flow.bytes_pending"    ).unwrap().clone(), Reg::Const(9, Type::Num(None)));
+        assert_eq!(sc.get("Flow.packets_in_flight").unwrap().clone(), Reg::Const(10, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rate_incoming"    ).unwrap().clone(), Reg::Const(11, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Const(12, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Const(13, Type::Num(None)));
+        assert_eq!(sc.get("Flow.snd_cwnd"         ).unwrap().clone(), Reg::Const(14, Type::Num(None)));
+        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(15, Type::Bool(None)));
                               
         // implicit
         assert_eq!(sc.get("shouldReport").unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
