@@ -81,9 +81,7 @@ impl Prog {
 
 #[cfg(test)]
 mod tests {
-    use lang::ast::{Expr, Op, Prim};
-    use lang::prog::{Event,Prog};
-    use lang::datapath::{Scope, Type};
+    use lang::datapath::Type;
 
     #[test]
     fn defs() {

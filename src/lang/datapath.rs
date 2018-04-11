@@ -308,7 +308,7 @@ impl Scope {
             "Ack.ecn_bytes"           =>  Type::Num(None),
             "Ack.ecn_packets"         =>  Type::Num(None),
             "Ack.lost_pkts_sample"    =>  Type::Num(None),
-            "Flow.was_timeout"        =>  Type::Num(None),
+            "Flow.was_timeout"        =>  Type::Bool(None),
             "Flow.rtt_sample_us"      =>  Type::Num(None),
             "Flow.rate_outgoing"      =>  Type::Num(None),
             "Flow.rate_incoming"      =>  Type::Num(None),
@@ -447,8 +447,46 @@ impl IntoIterator for Bin {
 
 #[cfg(test)]
 mod tests {
-    use lang::ast::{Op, Prog};
+    use lang::ast::Op;
+    use lang::prog::Prog;
     use super::{Bin, Instr, Type, Reg};
+
+    #[test]
+    fn primitives() {
+        let foo = b"
+        (def (foo 0))
+        (bind Report.foo 4)
+        ";
+
+        let (_, sc) = Prog::new_with_scope(foo).unwrap();
+
+        // check that the registers are where they're supposed to be so we can just get from scope after this test
+        // primitive
+        assert_eq!(sc.get("Ack.bytes_acked"       ).unwrap().clone(), Reg::Const(0, Type::Num(None)));
+        assert_eq!(sc.get("Ack.packets_acked"     ).unwrap().clone(), Reg::Const(1, Type::Num(None)));
+        assert_eq!(sc.get("Ack.bytes_misordered"  ).unwrap().clone(), Reg::Const(2, Type::Num(None)));
+        assert_eq!(sc.get("Ack.packets_misordered").unwrap().clone(), Reg::Const(3, Type::Num(None)));
+        assert_eq!(sc.get("Ack.ecn_bytes"         ).unwrap().clone(), Reg::Const(4, Type::Num(None)));
+        assert_eq!(sc.get("Ack.ecn_packets"       ).unwrap().clone(), Reg::Const(5, Type::Num(None)));
+        assert_eq!(sc.get("Ack.lost_pkts_sample"  ).unwrap().clone(), Reg::Const(6, Type::Num(None)));
+        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(7, Type::Bool(None)));
+        assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Const(8, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Const(9, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rate_incoming"    ).unwrap().clone(), Reg::Const(10, Type::Num(None)));
+        assert_eq!(sc.get("Flow.bytes_in_flight"  ).unwrap().clone(), Reg::Const(11, Type::Num(None)));
+        assert_eq!(sc.get("Flow.packets_in_flight").unwrap().clone(), Reg::Const(12, Type::Num(None)));
+        assert_eq!(sc.get("Flow.snd_cwnd"         ).unwrap().clone(), Reg::Const(13, Type::Num(None)));
+        assert_eq!(sc.get("Ack.now"               ).unwrap().clone(), Reg::Const(14, Type::Num(None)));
+        assert_eq!(sc.get("Flow.bytes_pending"    ).unwrap().clone(), Reg::Const(15, Type::Num(None)));
+                              
+        // implicit
+        assert_eq!(sc.get("isUrgent").unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
+        assert_eq!(sc.get("Cwnd"    ).unwrap().clone(), Reg::Perm(1, Type::Num(None)));
+
+        // state
+        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Perm(2, Type::Num(Some(0))));
+    }
+
     #[test]
     fn prog() {
         let foo = b"
@@ -463,15 +501,15 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::ImmNum(4),
                 },
             ])
@@ -492,9 +530,9 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -504,9 +542,9 @@ mod tests {
                     right: Reg::ImmNum(3),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::Tmp(0, Type::Num(None)),
                 },
             ])
@@ -527,16 +565,16 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Ewma,
                     left: Reg::ImmNum(2),
-                    right: Reg::Const(9, Type::Num(None)),
+                    right: sc.get("Flow.rate_outgoing").unwrap().clone(),
                 },
             ])
         );
@@ -556,22 +594,22 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::ImmNum(u64::max_value()),
                 },
                 Instr {
                     res: Reg::Tmp(0, Type::Bool(None)),
                     op: Op::Lt,
                     left: Reg::Const(8, Type::Num(None)),
-                    right: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+                    right: sc.get("Report.foo").unwrap().clone(),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::If,
                     left: Reg::Tmp(0, Type::Bool(None)),
-                    right: Reg::Const(8, Type::Num(None)),
+                    right: sc.get("Flow.rtt_sample_us").unwrap().clone(),
                 },
             ])
         );
@@ -592,27 +630,27 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
-                    res: Reg::Perm(3, Type::Num(Some(3))),
+                    res: sc.get("bar").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(3, Type::Num(Some(3))),
+                    left: sc.get("bar").unwrap().clone(),
                     right: Reg::ImmNum(3),
                 },
                 Instr {
                     res: Reg::Tmp(0, Type::Num(None)),
                     op: Op::Add,
                     left: Reg::ImmNum(2),
-                    right: Reg::Perm(3, Type::Num(Some(3))),
+                    right: sc.get("bar").unwrap().clone(),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::Tmp(0, Type::Num(None)),
                 },
             ])
@@ -634,9 +672,9 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -652,9 +690,9 @@ mod tests {
                     right: Reg::ImmNum(3),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::Tmp(1, Type::Num(None)),
                 },
                 Instr {
@@ -670,9 +708,9 @@ mod tests {
                     right: Reg::ImmNum(6),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo").unwrap().clone(),
                     right: Reg::Tmp(1, Type::Num(None)),
                 },
             ])
@@ -693,9 +731,9 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo_bar").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo_bar").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -705,9 +743,9 @@ mod tests {
                     right: Reg::ImmNum(2),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo_bar").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo_bar").unwrap().clone(),
                     right: Reg::Tmp(0, Type::Num(None)),
                 },
             ])
@@ -728,9 +766,9 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo_bar").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo_bar").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -740,9 +778,9 @@ mod tests {
                     right: Reg::ImmNum(2),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.foo_bar").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.foo_bar").unwrap().clone(),
                     right: Reg::Tmp(0, Type::Num(None)),
                 },
             ])
@@ -763,27 +801,27 @@ mod tests {
             b,
             Bin(vec![
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.oldrate").unwrap().clone(),
                     op: Op::Def,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.oldrate").unwrap().clone(),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
                     res: Reg::Tmp(0, Type::Num(None)),
                     op: Op::Min,
-                    left: Reg::Const(9, Type::Num(None)),
-                    right: Reg::Const(10, Type::Num(None)),
+                    left: sc.get("Flow.rate_outgoing").unwrap().clone(),
+                    right: sc.get("Flow.rate_incoming").unwrap().clone(),
                 },
                 Instr {
                     res: Reg::Tmp(1, Type::Num(None)),
                     op: Op::Max,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.oldrate").unwrap().clone(),
                     right: Reg::Tmp(0, Type::Num(None)),
                 },
                 Instr {
-                    res: Reg::Perm(2, Type::Num(Some(0))),
+                    res: sc.get("Report.oldrate").unwrap().clone(),
                     op: Op::Bind,
-                    left: Reg::Perm(2, Type::Num(Some(0))),
+                    left: sc.get("Report.oldrate").unwrap().clone(),
                     right: Reg::Tmp(1, Type::Num(None)),
                 },
             ])
