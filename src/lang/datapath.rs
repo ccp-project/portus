@@ -321,7 +321,7 @@ impl Scope {
 
         // implicit return registers (can bind to these without Def)
 
-        // If isUrgent is true after fold function runs:
+        // If shouldReport is true after fold function runs:
         // - immediately send the measurement to CCP, bypassing send pattern
         // - reset it to false
         // By default, Cwnd is set to the value that the send pattern sets,
@@ -330,8 +330,8 @@ impl Scope {
         // congestion window is updated, just as if a send pattern had changed it.
         sc.num_perm = expand_reg!(
             sc; Perm;
-            "isUrgent"  =>  Type::Bool(None),
-            "Cwnd"      =>  Type::Num(None)
+            "shouldReport" =>  Type::Bool(None),
+            "Cwnd"         =>  Type::Num(None)
         );
         
         sc
@@ -480,8 +480,8 @@ mod tests {
         assert_eq!(sc.get("Flow.bytes_pending"    ).unwrap().clone(), Reg::Const(15, Type::Num(None)));
                               
         // implicit
-        assert_eq!(sc.get("isUrgent").unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
-        assert_eq!(sc.get("Cwnd"    ).unwrap().clone(), Reg::Perm(1, Type::Num(None)));
+        assert_eq!(sc.get("shouldReport").unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
+        assert_eq!(sc.get("Cwnd"        ).unwrap().clone(), Reg::Perm(1, Type::Num(None)));
 
         // state
         assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Perm(2, Type::Num(Some(0))));
