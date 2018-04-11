@@ -43,7 +43,7 @@ Algorithms specify `Config`, a configuration struct, to define parameters to pas
 
 `create()` is called to initialize state for a new flow. `portus` will pass in `Datapath`, a handle to send messages to the datapath (i.e., to set the congestion window via a send pattern), `Config`, an instance of the custom configuration struct created by the CCP binary and passed into `portus::start()`, and `DatapathInfo`, which contains the flow's 5-tuple and the MSS the datapath will use.
 
-Note that almost all algorithm implementations will install a send pattern and fold function in the `create()` handler; otherwise, no further measurements will be reported.
+Note that almost all algorithm implementations will install a fold function in the `create()` handler; otherwise, no further measurements will be reported.
 
 ### `measure(Measurement)`
 

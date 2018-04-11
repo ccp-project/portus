@@ -74,16 +74,6 @@ impl<'a> RawMsg<'a> {
         }
     }
 
-    /// For predefined messages, get u64s separately for convenience
-    //pub(crate) unsafe fn get_u64s(&self) -> Result<&'a [u64]> {
-    //    use std::mem;
-    //    match self.typ {
-    //        create::CREATE => Ok(&[]),
-    //        measure::MEASURE => Ok(mem::transmute(&self.bytes[(4 * 3)..(4 * 3 + 8 * 2)])),
-    //        pattern::CWND => Ok(&[]),
-    //        _ => Ok(&[]),
-    //    }
-    //}
     /// For predefined messages, bytes blob is whatever's left (may be nothing)
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {

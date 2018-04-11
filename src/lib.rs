@@ -16,8 +16,6 @@ extern crate slog_term;
 
 pub mod ipc;
 pub mod lang;
-#[macro_use]
-pub mod pattern;
 pub mod serialize;
 pub mod test_helper;
 #[macro_use]
@@ -134,7 +132,7 @@ pub struct DatapathInfo {
 /// 2. call the appropriate message in `U: impl CongAlg`
 ///
 /// `start()` will never return (`-> !`). It will panic if:
-/// 1. It receives a `pattern` or `install_fold` control message (only a datapath should receive these)
+/// 1. It receives an `install` control message (only a datapath should receive these)
 /// 2. The IPC channel fails.
 pub fn start<I, U>(b: Backend<I>, cfg: &Config<I, U>) -> !
 where

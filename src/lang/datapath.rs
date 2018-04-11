@@ -395,12 +395,8 @@ impl Scope {
         // implicit return registers (can bind to these without Def)
 
         // If __shouldReport is true after fold function runs:
-        // - immediately send the measurement to CCP, bypassing send pattern
+        // - immediately send the measurement to CCP
         // - reset it to false
-        // By default, Cwnd is set to the value that the send pattern sets,
-        // like a constant.
-        // However, if a fold function writes to Cwnd, the
-        // congestion window is updated, just as if a send pattern had changed it.
         sc.num_perm = expand_reg!(
             sc; Perm;
             "__eventFlag"      => Type::Bool(None),
