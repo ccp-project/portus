@@ -235,6 +235,17 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
 
                     Ok((instrs, Reg::None))
                 }
+                Op::Reset => {
+                    let res = scope.new_tmp(Type::Bool(None));
+                    instrs.push(Instr {
+                        res: res.clone(),
+                        op: *o,
+                        left: Reg::ImmBool(false),
+                        right: Reg::ImmBool(false),
+                    });
+
+                    Ok((instrs, res))
+                }
                 Op::Def => unreachable!(),
             }
         }

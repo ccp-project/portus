@@ -66,21 +66,22 @@ impl Iterator for InstrBytes {
 
 fn serialize_op(o: &Op) -> u8 {
     match *o {
-        Op::Add      =>  0,
-        Op::Bind     =>  1,
-        Op::Def      =>  14,
-        Op::Div      =>  2,
-        Op::Equiv    =>  3,
-        Op::Ewma     =>  4,
-        Op::Gt       =>  5,
-        Op::If       =>  6,
-        Op::Lt       =>  8,
-        Op::Max      =>  9,
-        Op::MaxWrap  =>  15,
-        Op::Min      =>  10,
-        Op::Mul      =>  11,
-        Op::NotIf    =>  12,
-        Op::Sub      =>  13,
+        Op::Add      => 0, 
+        Op::Bind     => 1, 
+        Op::Def      => 2, 
+        Op::Div      => 3, 
+        Op::Equiv    => 4, 
+        Op::Ewma     => 5, 
+        Op::Gt       => 6, 
+        Op::If       => 7, 
+        Op::Lt       => 8, 
+        Op::Max      => 9, 
+        Op::MaxWrap  => 10, 
+        Op::Min      => 11, 
+        Op::Mul      => 12, 
+        Op::NotIf    => 13, 
+        Op::Reset    => 14, 
+        Op::Sub      => 15, 
     }
 }
 
@@ -94,7 +95,7 @@ fn serialize_reg_u8(r: &Reg) -> Result<u8> {
                     i
                 )));
             } else {
-                i | 0b1100_0000
+                i | 0b1101_0000
             };
 
             Ok((reg & 0b0111_1111) as u8)

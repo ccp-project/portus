@@ -23,6 +23,10 @@ pub enum Op {
     Mul, // (mul a b) return a * b
     Sub, // (sub a b) return a - b
 
+    // SPECIAL: takes no arguments
+    // directs the state machine to reset its internal time
+    Reset,
+
     // SPECIAL: cannot be called by user, only generated
     Def, // top of prog: (def (Foo 0) (Bar 100000000) ...)
 
