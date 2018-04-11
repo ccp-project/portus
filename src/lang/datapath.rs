@@ -86,7 +86,7 @@ impl Bin {
                 let flag_instrs = compile_expr(&ev.flag, &mut scope).and_then(|t| {
                     let (mut instrs, res) = t;
                     // assign the flag value to the EventFlag reg.
-                    let flag_reg = scope.get("eventFlag").unwrap();
+                    let flag_reg = scope.get("__eventFlag").unwrap();
                     match res {
                         Reg::Tmp(_, Type::Bool(_)) => {
                             if let Some(last) = instrs.last_mut() {
@@ -394,7 +394,7 @@ impl Scope {
 
         // implicit return registers (can bind to these without Def)
 
-        // If shouldReport is true after fold function runs:
+        // If __shouldReport is true after fold function runs:
         // - immediately send the measurement to CCP, bypassing send pattern
         // - reset it to false
         // By default, Cwnd is set to the value that the send pattern sets,
@@ -403,9 +403,9 @@ impl Scope {
         // congestion window is updated, just as if a send pattern had changed it.
         sc.num_perm = expand_reg!(
             sc; Perm;
-            "eventFlag"      => Type::Bool(None),
-            "shouldContinue" => Type::Bool(None),
-            "shouldReport"   => Type::Bool(None),
+            "__eventFlag"      => Type::Bool(None),
+            "__shouldContinue" => Type::Bool(None),
+            "__shouldReport"   => Type::Bool(None),
             "Ns"             => Type::Num(None),
             "Cwnd"           => Type::Num(None),
             "Rate"           => Type::Num(None)
@@ -556,9 +556,9 @@ mod tests {
         assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(14, Type::Bool(None)));
 
         // implicit
-        assert_eq!(sc.get("eventFlag"     ).unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
-        assert_eq!(sc.get("shouldContinue").unwrap().clone(), Reg::Perm(1, Type::Bool(None)));
-        assert_eq!(sc.get("shouldReport"  ).unwrap().clone(), Reg::Perm(2, Type::Bool(None)));
+        assert_eq!(sc.get("__eventFlag"     ).unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
+        assert_eq!(sc.get("__shouldContinue").unwrap().clone(), Reg::Perm(1, Type::Bool(None)));
+        assert_eq!(sc.get("__shouldReport"  ).unwrap().clone(), Reg::Perm(2, Type::Bool(None)));
         assert_eq!(sc.get("Ns"            ).unwrap().clone(), Reg::Perm(3, Type::Num(None)));
         assert_eq!(sc.get("Cwnd"          ).unwrap().clone(), Reg::Perm(4, Type::Num(None)));
         assert_eq!(sc.get("Rate"          ).unwrap().clone(), Reg::Perm(5, Type::Num(None)));
@@ -596,9 +596,9 @@ mod tests {
                         right: Reg::ImmNum(0),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("eventFlag").unwrap().clone(),
+                        left: sc.get("__eventFlag").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {
@@ -693,9 +693,9 @@ mod tests {
                         right: Reg::ImmNum(0),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("eventFlag").unwrap().clone(),
+                        left: sc.get("__eventFlag").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {
@@ -739,9 +739,9 @@ mod tests {
                         right: Reg::ImmNum(u64::max_value()),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("eventFlag").unwrap().clone(),
+                        left: sc.get("__eventFlag").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {
@@ -792,9 +792,9 @@ mod tests {
                         right: Reg::ImmNum(0),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("eventFlag").unwrap().clone(),
+                        left: sc.get("__eventFlag").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {
@@ -857,7 +857,7 @@ mod tests {
                         right: Reg::ImmNum(2),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Gt,
                         left: Reg::Tmp(0, Type::Num(None)),
                         right: Reg::ImmNum(3),
@@ -944,9 +944,9 @@ mod tests {
                         right: Reg::ImmNum(0),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("eventFlag").unwrap().clone(),
+                        left: sc.get("__eventFlag").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {
@@ -956,7 +956,7 @@ mod tests {
                         right: Reg::ImmNum(4),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Gt,
                         left: Reg::ImmNum(2),
                         right: Reg::ImmNum(3),
@@ -1015,9 +1015,9 @@ mod tests {
                         right: Reg::ImmNum(0),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("eventFlag").unwrap().clone(),
+                        left: sc.get("__eventFlag").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {
@@ -1027,13 +1027,13 @@ mod tests {
                         right: Reg::ImmNum(4),
                     },
                     Instr {
-                        res: sc.get("shouldContinue").unwrap().clone(),
+                        res: sc.get("__shouldContinue").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("shouldContinue").unwrap().clone(),
+                        left: sc.get("__shouldContinue").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {
-                        res: sc.get("eventFlag").unwrap().clone(),
+                        res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Gt,
                         left: sc.get("Ns").unwrap().clone(),
                         right: Reg::ImmNum(3000),
@@ -1045,9 +1045,9 @@ mod tests {
                         right: Reg::ImmNum(5),
                     },
                     Instr {
-                        res: sc.get("shouldReport").unwrap().clone(),
+                        res: sc.get("__shouldReport").unwrap().clone(),
                         op: Op::Bind,
-                        left: sc.get("shouldReport").unwrap().clone(),
+                        left: sc.get("__shouldReport").unwrap().clone(),
                         right: Reg::ImmBool(true),
                     },
                     Instr {

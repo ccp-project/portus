@@ -1,4 +1,3 @@
-use std::str;
 use super::{Error, Result};
 use super::ast::{atom, expr, Expr, exprs, name};
 use super::datapath::{Scope, Type, check_atom_type};
@@ -32,11 +31,11 @@ named!(
     delimited!(
         tag!("("),
         tuple!(
-			map_res!(do_parse!(
+			do_parse!(
 				opt!(tag!("Report.")) >>
 				n: name >>
-				(n)
-			), |b| str::from_utf8(b).and_then(|i| Ok(Type::Name(String::from(i))))),
+				(Type::Name(n))
+			),
             map_res!(atom, |a: Result<Expr>| a.and_then(|i| check_atom_type(&i)))
         ),
         tag!(")")
@@ -206,6 +205,18 @@ mod tests {
             );
             }
             IResult::Error(e) => panic!(e),
+            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
+            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+        }
+    }
+
+    #[test]
+    fn reserved_names() {
+        let foo = b"(def (__illegalname 0))";
+        use nom::{IResult, Needed};
+        match super::defs(foo) {
+            IResult::Done(r, me) => panic!("Should not have succeeded: rest {:?}, result {:?}", r, me),
+            IResult::Error(_) => (),
             IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
             IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
         }

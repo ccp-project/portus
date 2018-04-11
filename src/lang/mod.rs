@@ -38,6 +38,11 @@ impl From<std::string::FromUtf8Error> for Error {
         Error(format!("err {}", e))
     }
 }
+impl From<std::str::Utf8Error> for Error {
+    fn from(e: std::str::Utf8Error) -> Error {
+        Error(format!("err {}", e))
+    }
+}
 
 mod ast;
 mod datapath;

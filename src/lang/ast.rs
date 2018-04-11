@@ -124,8 +124,24 @@ named!(
 
 use nom::is_alphanumeric;
 named!(
-    pub name<&[u8]>,
+    name_raw<&[u8]>,
     take_while1!(|u: u8| is_alphanumeric(u) || u == b'.' || u == b'_')
+);
+
+named!(
+    pub name<String>,
+    map_res!(
+        name_raw,
+        |n: &[u8]| str::from_utf8(n).map_err(Error::from).and_then(|s|
+            if s.starts_with("__") {
+                Err(Error::from(
+                    format!("Names beginning with \"__\" are reserved for internal use: {:?}", s),
+                ))
+            } else {
+                Ok(String::from(s))
+            }
+        )
+    )
 );
 
 named!(
@@ -136,10 +152,7 @@ named!(
             tag!("false") => { |_| Ok(Prim::Bool(false)) } |
             tag!("+infinity") => { |_| Ok(Prim::Num(u64::max_value())) } |
             num => { |n: u64| Ok(Prim::Num(n)) } |
-            name => { |n: &[u8]| match String::from_utf8(n.to_vec()) {
-                Ok(s) => Ok(Prim::Name(s)),
-                Err(e) => Err(Error::from(e)),
-            } }
+            name => { |n: String| Ok(Prim::Name(n)) }
         ) >>
         (val.and_then(|t| Ok(Expr::Atom(t))))
     ))
@@ -190,14 +203,14 @@ impl Expr {
             Expr::Cmd(Command::Fallthrough) => {
                 *self = Expr::Sexp(
                     Op::Bind,
-                    Box::new(Expr::Atom(Prim::Name(String::from("shouldContinue")))),
+                    Box::new(Expr::Atom(Prim::Name(String::from("__shouldContinue")))),
                     Box::new(Expr::Atom(Prim::Bool(true))),
                 )
             }
             Expr::Cmd(Command::Report) => {
                 *self = Expr::Sexp(
                     Op::Bind,
-                    Box::new(Expr::Atom(Prim::Name(String::from("shouldReport")))),
+                    Box::new(Expr::Atom(Prim::Name(String::from("__shouldReport")))),
                     Box::new(Expr::Atom(Prim::Bool(true))),
                 )
             }
