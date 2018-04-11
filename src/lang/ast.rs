@@ -158,16 +158,9 @@ impl Expr {
     pub fn new(src: &[u8]) -> Result<Vec<Self>> {
         use nom::Needed;
         match exprs(src) {
-            IResult::Done(_, me) => {
-                let mut prog = vec![];
-                for exp in me {
-                    prog.push(exp?);
-                }
-
-                Ok(prog)
-            }
+            IResult::Done(_, me) => me.into_iter().collect(),
             IResult::Error(e) => Err(Error::from(e)),
-            IResult::Incomplete(Needed::Unknown) => Err(Error::from(String::from("need more src"))),
+            IResult::Incomplete(Needed::Unknown) => Err(Error::from("need more src")),
             IResult::Incomplete(Needed::Size(s)) => Err(
                 Error::from(format!("need {} more bytes", s)),
             ),
