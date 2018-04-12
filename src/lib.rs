@@ -58,6 +58,42 @@ impl<T: Ipc> Datapath<T> {
         self.sender.send_msg(&buf[..])?;
         Ok(sc)
     }
+
+    /// pass a Scope and (Reg name, new_value) pairs
+    pub fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()> {
+        let fields : Vec<(Reg, u64)> = update.iter().map(
+            |&(reg_name, new_value)| {
+                if reg_name.starts_with("__") {
+                    return Err(Error(
+                        format!("Cannot update reserved field: {:?}", reg_name)
+                    ));
+                }
+
+                sc.get(reg_name)
+                    .ok_or_else(|| Error(
+                        format!("Unknown field: {:?}", reg_name)
+                    ))
+                    .and_then(|reg| match *reg {
+                        ref r@Reg::Perm(_, _) => {
+                            Ok((r.clone(), u64::from(new_value)))
+                        }
+                        _ => Err(Error(
+                            format!("Cannot update field: {:?}", reg_name),
+                        )),
+                    })
+            }
+        ).collect::<Result<_>>()?;
+
+        let msg = serialize::update_field::Msg{
+            sid: self.sock_id,
+            num_fields: fields.len() as u8,
+            fields
+        };
+
+        let buf = serialize::serialize(&msg)?;
+        self.sender.send_msg(&buf[..])?;
+        Ok(())
+    }
 }
 
 pub struct Report {

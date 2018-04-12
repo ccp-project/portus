@@ -69,7 +69,7 @@ impl<'a> RawMsg<'a> {
         use std::mem;
         match self.typ {
             create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
-            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..4])),
+            measure::MEASURE | update_field::UPDATE_FIELD => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
         }
     }
@@ -78,7 +78,7 @@ impl<'a> RawMsg<'a> {
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
-            measure::MEASURE => Ok(&self.bytes[4..(self.len as usize - 6)]),
+            measure::MEASURE | update_field::UPDATE_FIELD => Ok(&self.bytes[4..(self.len as usize - 6)]),
             create::CREATE => Ok(&self.bytes[(4 * 6)..(self.len as usize - 6)]),
             _ => Ok(self.bytes),
         }
@@ -115,6 +115,7 @@ pub trait AsRawMsg {
 pub mod create;
 pub mod measure;
 pub mod install;
+pub mod update_field;
 mod testmsg;
 
 pub fn serialize<T: AsRawMsg>(m: &T) -> Result<Vec<u8>> {
@@ -157,6 +158,7 @@ impl<'a> Msg<'a> {
             create::CREATE => Ok(Msg::Cr(create::Msg::from_raw_msg(m)?)),
             measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
             install::INSTALL => Ok(Msg::Ins(install::Msg::from_raw_msg(m)?)),
+            update_field::UPDATE_FIELD => unimplemented!(),
             _ => Ok(Msg::Other(m)),
         }
     }

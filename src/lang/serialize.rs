@@ -163,6 +163,12 @@ impl IntoIterator for Reg {
     }
 }
 
+impl Reg {
+    pub fn deserialize(_buf: &[u8]) -> Self {
+        unimplemented!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use lang;
