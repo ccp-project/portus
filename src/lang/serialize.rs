@@ -113,23 +113,59 @@ impl IntoIterator for Reg {
 
     fn into_iter(self) -> Self::IntoIter {
         let reg = match self {
-            Reg::ImmBool(bl) => Ok((0u8, bl as u32)),
+            Reg::Control(i, _) => {
+                if i > 15 {
+                    Err(Error::from(
+                        format!("Control Register index too big (max 15): {:?}", i),
+                    ))
+                } else {
+                    Ok((0u8, u32::from(i)))
+                }
+            }
+            Reg::ImmBool(bl) => Ok((1u8, bl as u32)),
             Reg::ImmNum(num) => {
                 if num == u64::max_value() || num < (1 << 31) {
-                    Ok((0u8, num as u32))
+                    Ok((1u8, num as u32))
                 } else {
                     Err(Error::from(
                         format!("ImmNum too big (max 32 bits): {:?}", num),
                     ))
                 }
             }
-            Reg::Const(i, _) => {
-                if i > 15 {
+            Reg::Implicit(i, _) => {
+                if i > 5 {
                     Err(Error::from(
-                        format!("Const Register index too big (max 15): {:?}", i),
+                        format!("Implicit Register index too big (max 5): {:?}", i),
                     ))
                 } else {
-                    Ok((1u8, u32::from(i)))
+                    Ok((2u8, u32::from(i)))
+                }
+            }
+            Reg::Local(i, _) => {
+                if i > 5 {
+                    Err(Error::from(
+                        format!("Local Register index too big (max 5): {:?}", i),
+                    ))
+                } else {
+                    Ok((3u8, u32::from(i)))
+                }
+            }
+            Reg::Primitive(i, _) => {
+                if i > 15 {
+                    Err(Error::from(
+                        format!("Primitive Register index too big (max 15): {:?}", i),
+                    ))
+                } else {
+                    Ok((4u8, u32::from(i)))
+                }
+            }
+            Reg::Report(i, _) => {
+                if i > 15 {
+                    Err(Error::from(
+                        format!("Report Register index too big (max 15): {:?}", i),
+                    ))
+                } else {
+                    Ok((5u8, u32::from(i)))
                 }
             }
             Reg::Tmp(i, _) => {
@@ -138,16 +174,7 @@ impl IntoIterator for Reg {
                         format!("Tmp Register index too big (max 15): {:?}", i),
                     ))
                 } else {
-                    Ok((2u8, u32::from(i)))
-                }
-            }
-            Reg::Perm(i, _) => {
-                if i > 15 {
-                    Err(Error::from(
-                        format!("Perm Register index too big (max 15): {:?}", i),
-                    ))
-                } else {
-                    Ok((3u8, u32::from(i)))
+                    Ok((6u8, u32::from(i)))
                 }
             }
             Reg::None => unreachable!(),
@@ -186,21 +213,21 @@ mod tests {
             }],
             instrs: vec![
                 Instr {
-                    res: Reg::Perm(6, Type::Num(Some(0))),
+                    res: Reg::Report(6, Type::Num(Some(0))),
                     op: Op::Def,
-                    left: Reg::Perm(6, Type::Num(Some(0))),
+                    left: Reg::Report(6, Type::Num(Some(0))),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
-                    res: Reg::Perm(0, Type::Bool(None)),
+                    res: Reg::Implicit(0, Type::Bool(None)),
                     op: Op::Bind,
-                    left: Reg::Perm(0, Type::Bool(None)),
+                    left: Reg::Implicit(0, Type::Bool(None)),
                     right: Reg::ImmBool(true),
                 },
                 Instr {
-                    res: Reg::Perm(6, Type::Num(Some(0))),
+                    res: Reg::Report(6, Type::Num(Some(0))),
                     op: Op::Bind,
-                    left: Reg::Perm(6, Type::Num(Some(0))),
+                    left: Reg::Report(6, Type::Num(Some(0))),
                     right: Reg::ImmNum(4),
                 },
             ]
@@ -212,12 +239,12 @@ mod tests {
             vec![
                 // event description
                 0x01, 0x01, 0x02, 0x01,
-                // def reg::perm(6) <- 0
-                0x02, 0x03, 0x06, 0x00, 0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                // def reg::report(6) <- 0
+                0x02, 0x05, 0x06, 0x00, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 
                 // reg::eventFlag <- 1
-                0x01, 0x03, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-                // def reg::perm(6) <- 0
-                0x01, 0x03, 0x06, 0x00, 0x00, 0x00, 0x03, 0x06, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 
+                0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
+                // def reg::report(6) <- 0
+                0x01, 0x05, 0x06, 0x00, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x00, 0x00, 
             ]
         );
     }
@@ -236,7 +263,7 @@ mod tests {
         assert_eq!(
             v,
             vec![ 
-                0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0x3f, 0x00, 0xff, 0xff, 0xff, 0x3f, 
+                0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0x3f, 0x01, 0xff, 0xff, 0xff, 0x3f, 
             ]
         );
     }
@@ -245,9 +272,9 @@ mod tests {
     fn do_ser_def_max_imm() {
         // make a Bin to serialize
         let b = Instr {
-            res: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+            res: Reg::Report(2, Type::Num(Some(u64::max_value()))),
             op: Op::Def,
-            left: Reg::Perm(2, Type::Num(Some(u64::max_value()))),
+            left: Reg::Report(2, Type::Num(Some(u64::max_value()))),
             right: Reg::ImmNum(u64::max_value()),
         };
 
@@ -255,7 +282,7 @@ mod tests {
         assert_eq!(
             v,
             vec![
-                0x02, 0x03, 0x02, 0x00, 0x00, 0x00, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+                0x02, 0x05, 0x02, 0x00, 0x00, 0x00, 0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0xff,
             ]
         );
     }

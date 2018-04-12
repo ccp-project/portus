@@ -1,3 +1,4 @@
+use std::str;
 use super::{Error, Result};
 use super::ast::{atom, expr, Expr, exprs, name};
 use super::datapath::{Scope, Type, check_atom_type};
@@ -32,9 +33,16 @@ named!(
         tag!("("),
         tuple!(
 			do_parse!(
-				opt!(tag!("Report.")) >>
+				typ: map_res!(
+                    alt!(tag!("Report.") | tag!("Control.")),
+                    str::from_utf8
+                ) >>
 				n: name >>
-				(Type::Name(n))
+				({
+                    let mut rn = String::from(typ);
+                    rn.push_str(&n);
+                    Type::Name(rn) 
+                })
 			),
             map_res!(atom, |a: Result<Expr>| a.and_then(|i| check_atom_type(&i)))
         ),
@@ -100,13 +108,21 @@ impl Prog {
         use nom::{IResult, Needed};
         let body = match defs(source) {
             IResult::Done(rest, flow_state) => {
-                flow_state
+                let (reports, controls): (Vec<(String, Type)>, Vec<(String, Type)>) = flow_state
                     .into_iter()
                     .map(|(var, typ)| match var {
-                        Type::Name(v) => (format!("Report.{}", v), typ),
+                        Type::Name(v) => (v, typ),
                         _ => unreachable!(),
                     })
-                    .for_each(|(var, typ)| { scope.new_perm(var, typ); });
+                    .partition(|&(ref var, _)| var.starts_with("Report."));
+
+                for (var, typ) in reports {
+                    scope.new_report(var, typ); 
+                }
+
+                for (var, typ) in controls {
+                    scope.new_control(var, typ);
+                }
 
                 Ok(rest)
             }
@@ -148,7 +164,7 @@ mod tests {
 
     #[test]
     fn defs() {
-        let foo = b"(def (Foo 0) (Bar 0) (Baz 0))";
+        let foo = b"(def (Report.Foo 0) (Control.Bar 0) (Report.Baz 0))";
         use nom::{IResult, Needed};
         match super::defs(foo) {
             IResult::Done(r, me) => {
@@ -156,31 +172,9 @@ mod tests {
                 assert_eq!(
                 me,
                 vec![
-                    (Type::Name(String::from("Foo")), Type::Num(Some(0))),
-                    (Type::Name(String::from("Bar")), Type::Num(Some(0))),
-                    (Type::Name(String::from("Baz")), Type::Num(Some(0))),
-                ]
-            );
-            }
-            IResult::Error(e) => panic!(e),
-            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
-            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
-        }
-    }
-
-    #[test]
-    fn defs1() {
-        let foo = b"(def (Foo 0) (Report.this_is_allowed 14) (Bar true))";
-        use nom::{IResult, Needed};
-        match super::defs(foo) {
-            IResult::Done(r, me) => {
-                assert_eq!(r, &[]);
-                assert_eq!(
-                me,
-                vec![
-                    (Type::Name(String::from("Foo")), Type::Num(Some(0))),
-                    (Type::Name(String::from("this_is_allowed")), Type::Num(Some(14))),
-                    (Type::Name(String::from("Bar")), Type::Bool(Some(true))),
+                    (Type::Name(String::from("Report.Foo")), Type::Num(Some(0))),
+                    (Type::Name(String::from("Control.Bar")), Type::Num(Some(0))),
+                    (Type::Name(String::from("Report.Baz")), Type::Num(Some(0))),
                 ]
             );
             }
@@ -192,7 +186,7 @@ mod tests {
 
     #[test]
     fn def_infinity() {
-        let foo = b"(def (Foo +infinity))";
+        let foo = b"(def (Report.Foo +infinity))";
         use nom::{IResult, Needed};
         match super::defs(foo) {
             IResult::Done(r, me) => {
@@ -200,7 +194,7 @@ mod tests {
                 assert_eq!(
                 me,
                 vec![
-                    (Type::Name(String::from("Foo")), Type::Num(Some(u64::max_value()))),
+                    (Type::Name(String::from("Report.Foo")), Type::Num(Some(u64::max_value()))),
                 ]
             );
             }
@@ -212,8 +206,16 @@ mod tests {
 
     #[test]
     fn reserved_names() {
-        let foo = b"(def (__illegalname 0))";
+        let foo = b"(def (foo 0))";
         use nom::{IResult, Needed};
+        match super::defs(foo) {
+            IResult::Done(r, me) => panic!("Should not have succeeded: rest {:?}, result {:?}", r, me),
+            IResult::Error(_) => (),
+            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
+            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+        }
+
+        let foo = b"(def (__illegalname 0))";
         match super::defs(foo) {
             IResult::Done(r, me) => panic!("Should not have succeeded: rest {:?}, result {:?}", r, me),
             IResult::Error(_) => (),
@@ -378,14 +380,14 @@ mod tests {
     #[test]
     fn combined() {
         let foo = b"
-            (def (foo 0) (bar 0))
-            (when (> foo 0)
-                (:= bar (+ bar 1))
-                (:= foo (* foo 2))
+            (def (Control.foo 0) (Control.bar 0))
+            (when (> Control.foo 0)
+                (:= Control.bar (+ Control.bar 1))
+                (:= Control.foo (* Control.foo 2))
             )
             (when true
-                (:= bar 0)
-                (:= foo 0)
+                (:= Control.bar 0)
+                (:= Control.foo 0)
             )
         ";
         let (ast, sc) = Prog::new_with_scope(foo).unwrap();
@@ -393,8 +395,8 @@ mod tests {
             sc,
             {
                 let mut expected_scope = Scope::new();
-                expected_scope.new_perm(String::from("Report.foo"), Type::Num(Some(0)));
-                expected_scope.new_perm(String::from("Report.bar"), Type::Num(Some(0)));
+                expected_scope.new_control(String::from("Control.foo"), Type::Num(Some(0)));
+                expected_scope.new_control(String::from("Control.bar"), Type::Num(Some(0)));
                 expected_scope
             }
         );
@@ -405,25 +407,25 @@ mod tests {
                 Event{
                     flag: Expr::Sexp(
                         Op::Gt,
-                        Box::new(Expr::Atom(Prim::Name(String::from("foo")))),
+                        Box::new(Expr::Atom(Prim::Name(String::from("Control.foo")))),
                         Box::new(Expr::Atom(Prim::Num(0))),
                     ),
                     body: vec![
                         Expr::Sexp(
                             Op::Bind,
-                            Box::new(Expr::Atom(Prim::Name(String::from("bar")))),
+                            Box::new(Expr::Atom(Prim::Name(String::from("Control.bar")))),
                             Box::new(Expr::Sexp(
                                 Op::Add,
-                                Box::new(Expr::Atom(Prim::Name(String::from("bar")))),
+                                Box::new(Expr::Atom(Prim::Name(String::from("Control.bar")))),
                                 Box::new(Expr::Atom(Prim::Num(1))),
                             )),
                         ),
                         Expr::Sexp(
                             Op::Bind,
-                            Box::new(Expr::Atom(Prim::Name(String::from("foo")))),
+                            Box::new(Expr::Atom(Prim::Name(String::from("Control.foo")))),
                             Box::new(Expr::Sexp(
                                 Op::Mul,
-                                Box::new(Expr::Atom(Prim::Name(String::from("foo")))),
+                                Box::new(Expr::Atom(Prim::Name(String::from("Control.foo")))),
                                 Box::new(Expr::Atom(Prim::Num(2))),
                             )),
                         ),
@@ -434,12 +436,12 @@ mod tests {
                     body: vec![
                         Expr::Sexp(
                             Op::Bind,
-                            Box::new(Expr::Atom(Prim::Name(String::from("bar")))),
+                            Box::new(Expr::Atom(Prim::Name(String::from("Control.bar")))),
                             Box::new(Expr::Atom(Prim::Num(0))),
                         ),
                         Expr::Sexp(
                             Op::Bind,
-                            Box::new(Expr::Atom(Prim::Name(String::from("foo")))),
+                            Box::new(Expr::Atom(Prim::Name(String::from("Control.foo")))),
                             Box::new(Expr::Atom(Prim::Num(0))),
                         ),
                     ],

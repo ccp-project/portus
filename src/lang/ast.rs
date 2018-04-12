@@ -57,7 +57,7 @@ named!(
     op<Result<Op>>,
     alt!(
         alt!(tag!("+") | tag!("add") | 
-             tag!("&&") | tag!("and"))   => { |_| Ok(Op::Add) }    |
+             tag!("&&") | tag!("and"))  => { |_| Ok(Op::Add) }     |
         alt!(tag!(":=") | tag!("bind")) => { |_| Ok(Op::Bind) }    |
         tag!("if")                      => { |_| Ok(Op::If) }      |
         alt!(tag!("/") | tag!("div"))   => { |_| Ok(Op::Div) }     |

@@ -28,21 +28,29 @@ pub(crate) fn check_atom_type(e: &Expr) -> Result<Type> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Reg {
+    Control(u8, Type),
     ImmNum(u64),
     ImmBool(bool),
-    Const(u8, Type),
+    Implicit(u8, Type),
+    Local(u8, Type),
+    Primitive(u8, Type),
+    Report(u8, Type),
     Tmp(u8, Type),
-    Perm(u8, Type),
     None,
 }
 
 impl Reg {
     fn get_type(&self) -> Result<Type> {
         match *self {
-            Reg::ImmNum(n) => Ok(Type::Num(Some(n))),
-            Reg::ImmBool(b) => Ok(Type::Bool(Some(b))),
-            Reg::Const(_, ref t) | Reg::Tmp(_, ref t) | Reg::Perm(_, ref t) => Ok(t.clone()),
-            Reg::None => Ok(Type::None),
+            Reg::ImmNum(n)           => Ok(Type::Num(Some(n))),
+            Reg::ImmBool(b)          => Ok(Type::Bool(Some(b))),
+            Reg::Control(_, ref t)   |
+            Reg::Implicit(_, ref t)  |
+            Reg::Local(_, ref t)     |
+            Reg::Primitive(_, ref t) | 
+            Reg::Tmp(_, ref t)       | 
+            Reg::Report(_, ref t)    => Ok(t.clone()),
+            Reg::None                => Ok(Type::None),
         }
     }
 }
@@ -109,7 +117,7 @@ impl Bin {
 
                             Ok(instrs)
                         }
-                        Reg::Perm(_, _) => unreachable!(),
+                        Reg::Report(_, _) => unreachable!(),
                         x => {
                             Err(Error::from(format!("Flag expression must result in bool: {:?}", x)))
                         }
@@ -171,7 +179,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     } else {
                         Ok((
                             vec![],
-                            scope.new_perm(name.clone(), Type::Name(name.clone())),
+                            scope.new_local(name.clone(), Type::Name(name.clone())),
                         ))
                     }
                 }
@@ -242,7 +250,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left must be a mutable register
                     // and if right is a Reg::None, we have to replace it
                     match (&left, &right) {
-                        (&Reg::Perm(_, _), &Reg::None) => {
+                        (&Reg::Report(_, _), &Reg::None) => {
                             let last_instr = instrs.last_mut().map(|last| {
                                 // Double-check that the instruction being replaced
                                 // actually is a Reg::None before we go replace it
@@ -263,7 +271,19 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                             "cannot bind stateful instruction to Reg::Tmp: {:?}",
                             right_expr,
                         ))),
-                        (&Reg::Perm(_, _), _) |
+                        (&Reg::Implicit(idx, _), _) if idx != 3 => {
+                            instrs.push(Instr {
+                                res: left.clone(),
+                                op: *o,
+                                left: left.clone(),
+                                right,
+                            });
+
+                            Ok((instrs, left))
+                        }
+                        (&Reg::Control(_, _), _) |
+                        (&Reg::Local(_, _), _)   |
+                        (&Reg::Report(_, _), _)  |
                         (&Reg::Tmp(_, _), _) => {
                             instrs.push(Instr {
                                 res: left.clone(),
@@ -318,6 +338,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
 #[derive(Debug, Clone)]
 pub struct Scope {
     pub(crate) named: HashMap<String, Reg>,
+    pub(crate) num_control: u8,
+    pub(crate) num_local: u8,
     pub(crate) num_perm: u8,
     tmp: Vec<Reg>,
 }
@@ -368,13 +390,15 @@ impl Scope {
     pub(crate) fn new() -> Self {
         let mut sc = Scope {
             named: HashMap::new(),
+            num_control: 0,
+            num_local: 0,
             num_perm: 0,
             tmp: vec![],
         };
 
         // available measurement primitives (alphabetical order)
         expand_reg!(
-            sc; Const;
+            sc; Primitive;
             "Ack.bytes_acked"         =>  Type::Num(None),
             "Ack.bytes_misordered"    =>  Type::Num(None),
             "Ack.ecn_bytes"           =>  Type::Num(None),
@@ -392,13 +416,13 @@ impl Scope {
             "Flow.was_timeout"        =>  Type::Bool(None)
         );
 
-        // implicit return registers (can bind to these without Def)
+        // implicit return registers
 
         // If __shouldReport is true after fold function runs:
         // - immediately send the measurement to CCP
         // - reset it to false
-        sc.num_perm = expand_reg!(
-            sc; Perm;
+        expand_reg!(
+            sc; Implicit;
             "__eventFlag"      => Type::Bool(None),
             "__shouldContinue" => Type::Bool(None),
             "__shouldReport"   => Type::Bool(None),
@@ -425,10 +449,26 @@ impl Scope {
         self.tmp[id as usize].clone()
     }
 
-    pub(crate) fn new_perm(&mut self, name: String, t: Type) -> Reg {
+    pub(crate) fn new_report(&mut self, name: String, t: Type) -> Reg {
         let id = self.num_perm;
         self.num_perm += 1;
-        let r = Reg::Perm(id, t);
+        let r = Reg::Report(id, t);
+        self.named.insert(name, r.clone());
+        r
+    }
+
+    pub(crate) fn new_control(&mut self, name: String, t: Type) -> Reg {
+        let id = self.num_control;
+        self.num_control += 1;
+        let r = Reg::Control(id, t);
+        self.named.insert(name, r.clone());
+        r
+    }
+    
+    pub(crate) fn new_local(&mut self, name: String, t: Type) -> Reg {
+        let id = self.num_local;
+        self.num_local += 1;
+        let r = Reg::Local(id, t);
         self.named.insert(name, r.clone());
         r
     }
@@ -439,12 +479,20 @@ impl Scope {
             .get_mut(name)
             .ok_or_else(|| Error::from(format!("Unknown {:?}", name)))
             .and_then(|old_reg| match *old_reg {
-                Reg::Perm(idx, Type::Name(_)) => {
-                    *old_reg = Reg::Perm(idx, t.clone());
+                Reg::Report(idx, Type::Name(_)) => {
+                    *old_reg = Reg::Report(idx, t.clone());
+                    Ok(old_reg.clone())
+                }
+                Reg::Local(idx, Type::Name(_)) => {
+                    *old_reg = Reg::Local(idx, t.clone());
+                    Ok(old_reg.clone())
+                }
+                Reg::Control(idx, Type::Name(_)) => {
+                    *old_reg = Reg::Control(idx, t.clone());
                     Ok(old_reg.clone())
                 }
                 _ => Err(Error::from(format!(
-                    "update_type: only Perm(_, Type::None) allowed: {:?}",
+                    "update_type: only Report,Local,Control allowed: {:?}",
                     old_reg
                 ))),
             })
@@ -471,13 +519,10 @@ impl Iterator for ScopeDefInstrIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (name, reg) = self.v.next()?;
-            if !name.as_str().starts_with("Report.") {
-                continue;
-            }
-
+            let (_, reg) = self.v.next()?;
             match reg {
-                Reg::Perm(_, Type::Num(Some(n))) => {
+                Reg::Report(_, Type::Num(Some(n))) |
+                Reg::Control(_, Type::Num(Some(n))) => {
                     return Some(Instr {
                         res: reg.clone(),
                         op: Op::Def,
@@ -485,7 +530,8 @@ impl Iterator for ScopeDefInstrIter {
                         right: Reg::ImmNum(n),
                     })
                 }
-                Reg::Perm(_, Type::Bool(Some(b))) => {
+                Reg::Report(_, Type::Bool(Some(b))) |
+                Reg::Control(_, Type::Bool(Some(b))) => {
                     return Some(Instr {
                         res: reg.clone(),
                         op: Op::Def,
@@ -493,8 +539,7 @@ impl Iterator for ScopeDefInstrIter {
                         right: Reg::ImmBool(b),
                     })
                 }
-                Reg::Perm(_, _) => continue, // implicit bool register
-                _ => unreachable!(),
+                _ => continue,
             }
         }
     }
@@ -526,7 +571,7 @@ mod tests {
     #[test]
     fn primitives() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
         )";
@@ -535,38 +580,37 @@ mod tests {
 
         // check that the registers are where they're supposed to be so we can just get from scope after this test
         // primitive
-        assert_eq!(sc.get("Ack.bytes_acked"       ).unwrap().clone(), Reg::Const(0, Type::Num(None)));
-        assert_eq!(sc.get("Ack.bytes_misordered"  ).unwrap().clone(), Reg::Const(1, Type::Num(None)));
-        assert_eq!(sc.get("Ack.ecn_bytes"         ).unwrap().clone(), Reg::Const(2, Type::Num(None)));
-        assert_eq!(sc.get("Ack.ecn_packets"       ).unwrap().clone(), Reg::Const(3, Type::Num(None)));
-        assert_eq!(sc.get("Ack.lost_pkts_sample"  ).unwrap().clone(), Reg::Const(4, Type::Num(None)));
-        assert_eq!(sc.get("Ack.now"               ).unwrap().clone(), Reg::Const(5, Type::Num(None)));
-        assert_eq!(sc.get("Ack.packets_acked"     ).unwrap().clone(), Reg::Const(6, Type::Num(None)));
-        assert_eq!(sc.get("Ack.packets_misordered").unwrap().clone(), Reg::Const(7, Type::Num(None)));
-        assert_eq!(sc.get("Flow.bytes_in_flight"  ).unwrap().clone(), Reg::Const(8, Type::Num(None)));
-        assert_eq!(sc.get("Flow.bytes_pending"    ).unwrap().clone(), Reg::Const(9, Type::Num(None)));
-        assert_eq!(sc.get("Flow.packets_in_flight").unwrap().clone(), Reg::Const(10, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rate_incoming"    ).unwrap().clone(), Reg::Const(11, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Const(12, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Const(13, Type::Num(None)));
-        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Const(14, Type::Bool(None)));
+        assert_eq!(sc.get("Ack.bytes_acked"       ).unwrap().clone(), Reg::Primitive(0, Type::Num(None)));
+        assert_eq!(sc.get("Ack.bytes_misordered"  ).unwrap().clone(), Reg::Primitive(1, Type::Num(None)));
+        assert_eq!(sc.get("Ack.ecn_bytes"         ).unwrap().clone(), Reg::Primitive(2, Type::Num(None)));
+        assert_eq!(sc.get("Ack.ecn_packets"       ).unwrap().clone(), Reg::Primitive(3, Type::Num(None)));
+        assert_eq!(sc.get("Ack.lost_pkts_sample"  ).unwrap().clone(), Reg::Primitive(4, Type::Num(None)));
+        assert_eq!(sc.get("Ack.now"               ).unwrap().clone(), Reg::Primitive(5, Type::Num(None)));
+        assert_eq!(sc.get("Ack.packets_acked"     ).unwrap().clone(), Reg::Primitive(6, Type::Num(None)));
+        assert_eq!(sc.get("Ack.packets_misordered").unwrap().clone(), Reg::Primitive(7, Type::Num(None)));
+        assert_eq!(sc.get("Flow.bytes_in_flight"  ).unwrap().clone(), Reg::Primitive(8, Type::Num(None)));
+        assert_eq!(sc.get("Flow.bytes_pending"    ).unwrap().clone(), Reg::Primitive(9, Type::Num(None)));
+        assert_eq!(sc.get("Flow.packets_in_flight").unwrap().clone(), Reg::Primitive(10, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rate_incoming"    ).unwrap().clone(), Reg::Primitive(11, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Primitive(12, Type::Num(None)));
+        assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Primitive(13, Type::Num(None)));
+        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Primitive(14, Type::Bool(None)));
 
-        // implicit
-        assert_eq!(sc.get("__eventFlag"     ).unwrap().clone(), Reg::Perm(0, Type::Bool(None)));
-        assert_eq!(sc.get("__shouldContinue").unwrap().clone(), Reg::Perm(1, Type::Bool(None)));
-        assert_eq!(sc.get("__shouldReport"  ).unwrap().clone(), Reg::Perm(2, Type::Bool(None)));
-        assert_eq!(sc.get("Ns"            ).unwrap().clone(), Reg::Perm(3, Type::Num(None)));
-        assert_eq!(sc.get("Cwnd"          ).unwrap().clone(), Reg::Perm(4, Type::Num(None)));
-        assert_eq!(sc.get("Rate"          ).unwrap().clone(), Reg::Perm(5, Type::Num(None)));
+        assert_eq!(sc.get("__eventFlag"     ).unwrap().clone(), Reg::Implicit(0, Type::Bool(None)));
+        assert_eq!(sc.get("__shouldContinue").unwrap().clone(), Reg::Implicit(1, Type::Bool(None)));
+        assert_eq!(sc.get("__shouldReport"  ).unwrap().clone(), Reg::Implicit(2, Type::Bool(None)));
+        assert_eq!(sc.get("Ns"              ).unwrap().clone(), Reg::Implicit(3, Type::Num(None)));
+        assert_eq!(sc.get("Cwnd"            ).unwrap().clone(), Reg::Implicit(4, Type::Num(None)));
+        assert_eq!(sc.get("Rate"            ).unwrap().clone(), Reg::Implicit(5, Type::Num(None)));
 
         // state
-        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Perm(6, Type::Num(Some(0))));
+        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Report(0, Type::Num(Some(0))));
     }
 
     #[test]
     fn reg() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
         )
@@ -611,7 +655,7 @@ mod tests {
     #[test]
     fn underscored_var() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
         )
@@ -622,7 +666,7 @@ mod tests {
         
         // check for underscored state variable
         let foo2 = b"
-        (def (foo_bar 0))
+        (def (Report.foo_bar 0))
         (when true
             (bind Report.foo_bar 4)
         )
@@ -642,26 +686,14 @@ mod tests {
         )
         ";
 
-        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
-        let b = Bin::compile_prog(&p, &mut sc).unwrap();
-        
-        // check for underscored state variable
-        let foo2 = b"
-        (def (Report.foo 0))
-        (when true
-            (bind Report.foo 4)
-        )
-        ";
-        
-        let (p2, mut sc2) = Prog::new_with_scope(foo2).unwrap();
-        let b2 = Bin::compile_prog(&p2, &mut sc2).unwrap();
-        assert_eq!(b2, b);
+        let err = Prog::new_with_scope(foo).unwrap_err();
+        println!("{:?}", err);
     }
 
     #[test]
     fn ewma() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when true
             (bind Report.foo (ewma 2 Flow.rate_outgoing))
         )
@@ -708,7 +740,7 @@ mod tests {
     #[test]
     fn infinity_if() {
         let foo = b"
-        (def (foo +infinity))
+        (def (Report.foo +infinity))
         (when true
             (bind Report.foo (if (< Flow.rtt_sample_us Report.foo) Flow.rtt_sample_us))
         )
@@ -756,11 +788,64 @@ mod tests {
             }
         );
     }
+    
+    #[test]
+    fn control_def() {
+        let foo = b"
+        (def (Control.foo +infinity))
+        (when (< Flow.rtt_sample_us Control.foo)
+            (bind Control.foo Flow.rtt_sample_us)
+            (report)
+        )
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let foo_reg = sc.get("Control.foo").unwrap().clone();
+
+        assert_eq!(
+            b,
+            Bin{
+                events: vec![Event{
+                    flag_idx: 1,
+                    num_flag_instrs: 1,
+                    body_idx: 2,
+                    num_body_instrs: 2,
+                }],
+                instrs: vec![
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Def,
+                        left: foo_reg.clone(),
+                        right: Reg::ImmNum(u64::max_value()),
+                    },
+                    Instr {
+                        res: sc.get("__eventFlag").unwrap().clone(),
+                        op: Op::Lt,
+                        left: sc.get("Flow.rtt_sample_us").unwrap().clone(),
+                        right: foo_reg.clone(),
+                    },
+                    Instr {
+                        res: foo_reg.clone(),
+                        op: Op::Bind,
+                        left: foo_reg.clone(),
+                        right: sc.get("Flow.rtt_sample_us").unwrap().clone(),
+                    },
+                    Instr {
+                        res: sc.get("__shouldReport").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("__shouldReport").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                ]
+            }
+        );
+    }
 
     #[test]
     fn intermediate() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when true
             (bind bar 3)
             (bind Report.foo (+ 2 bar))
@@ -819,7 +904,7 @@ mod tests {
     #[test]
     fn prog_reset_tmps() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when (> (+ 1 2) 3)
             (bind Report.foo (+ (+ 1 2) 3))
             (bind Report.foo (+ (+ 4 5) 6))
@@ -902,7 +987,7 @@ mod tests {
     #[test]
     fn multiple_events() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
         )
@@ -971,7 +1056,7 @@ mod tests {
     #[test]
     fn commands() {
         let foo = b"
-        (def (foo 0))
+        (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
             (fallthrough)

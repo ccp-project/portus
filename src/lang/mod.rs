@@ -80,7 +80,7 @@ mod tests {
     #[bench]
     fn bench_1_line_compileonly(b: &mut Bencher) {
         let fold = "
-            (def (foo 0))
+            (def (Report.foo 0))
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
             )
@@ -91,7 +91,7 @@ mod tests {
     #[bench]
     fn bench_1_line(b: &mut Bencher) {
         let fold = "
-            (def (foo 0))
+            (def (Report.foo 0))
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
             )
@@ -102,7 +102,7 @@ mod tests {
     #[bench]
     fn bench_2_line(b: &mut Bencher) {
         let fold = "
-            (def (foo 0) (bar 0))
+            (def (Report.foo 0) (Report.bar 0))
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
                 (:= Report.bar (+ Report.bar Ack.bytes_misordered))
@@ -114,7 +114,7 @@ mod tests {
     #[bench]
     fn bench_ewma(b: &mut Bencher) {
         let fold = "
-            (def (foo 0) (bar 0))
+            (def (Report.foo 0) (Report.bar 0))
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
                 (:= Report.bar (ewma 2 Flow.rate_outgoing))
@@ -126,7 +126,7 @@ mod tests {
     #[bench]
     fn bench_if(b: &mut Bencher) {
         let fold = "
-            (def (foo 0) (bar false))
+            (def (Report.foo 0) (Report.bar false))
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
                 (bind Report.bar (!if Report.bar (> Ack.lost_pkts_sample 0)))
@@ -138,7 +138,7 @@ mod tests {
     #[bench]
     fn bench_3_line(b: &mut Bencher) {
         let fold = "
-            (def (foo 0) (bar 0) (baz 0))
+            (def (Report.foo 0) (Report.bar 0) (Control.baz 0))
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
                 (:= Report.bar (+ Report.bar Ack.bytes_misordered))

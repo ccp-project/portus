@@ -74,8 +74,11 @@ impl<T: Ipc> Datapath<T> {
                         format!("Unknown field: {:?}", reg_name)
                     ))
                     .and_then(|reg| match *reg {
-                        ref r@Reg::Perm(_, _) => {
+                        ref r@Reg::Control(_, _) => {
                             Ok((r.clone(), u64::from(new_value)))
+                        }
+                        Reg::Implicit(idx, ref t) if idx == 4 || idx == 5 => {
+                            Ok((Reg::Implicit(idx, t.clone()), u64::from(new_value)))
                         }
                         _ => Err(Error(
                             format!("Cannot update field: {:?}", reg_name),
@@ -103,7 +106,7 @@ pub struct Report {
 impl Report {
     pub fn get_field(&self, field: &str, sc: &Scope) -> Option<u64> {
         sc.get(field).and_then(|r| match *r {
-            Reg::Perm(idx, _) => {
+            Reg::Report(idx, _) => {
                 if idx as usize >= self.fields.len() {
                     return None;
                 }
