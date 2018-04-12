@@ -38,21 +38,24 @@ impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct Datapath<T: Ipc>(BackendSender<T>);
+pub struct Datapath<T: Ipc>{
+    sock_id: u32,
+    sender: BackendSender<T>,
+}
 
 use lang::{Reg, Scope};
 impl<T: Ipc> Datapath<T> {
-    pub fn install(&self, sock_id: u32, src: &[u8]) -> Result<Scope> {
+    pub fn install(&self, src: &[u8]) -> Result<Scope> {
         let (bin, sc) = lang::compile(src)?;
         let msg = serialize::install::Msg {
-            sid: sock_id,
+            sid: self.sock_id,
             num_events: bin.events.len() as u32,
             num_instrs: bin.instrs.len() as u32,
             instrs: bin,
         };
 
         let buf = serialize::serialize(&msg)?;
-        self.0.send_msg(&buf[..])?;
+        self.sender.send_msg(&buf[..])?;
         Ok(sc)
     }
 }
@@ -164,7 +167,10 @@ where
                     });
 
                     let alg = U::create(
-                        Datapath(backend.clone()),
+                        Datapath{
+                            sock_id: c.sid, 
+                            sender: backend.clone()
+                        },
                         cfg.clone(),
                         DatapathInfo {
                             sock_id: c.sid,
