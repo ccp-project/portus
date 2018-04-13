@@ -15,7 +15,7 @@ use ccp_generic_cong_avoid::GenericCongAvoid;
 fn make_args() -> Result<(ccp_generic_cong_avoid::GenericCongAvoidConfig, String), std::num::ParseIntError> {
     let ss_thresh_default = format!("{}", ccp_generic_cong_avoid::DEFAULT_SS_THRESH);
     let matches = clap::App::new("CCP Cubic")
-        .version("0.1.0")
+        .version("0.2.0")
         .author("Akshay Narayan <akshayn@mit.edu>")
         .about("Implementation of Cubic Congestion Control")
         .arg(Arg::with_name("ipc")
@@ -34,12 +34,6 @@ fn make_args() -> Result<(ccp_generic_cong_avoid::GenericCongAvoidConfig, String
         .arg(Arg::with_name("ss_in_fold")
              .long("ss_in_fold")
              .help("Implement slow start in a fold function"))
-        .arg(Arg::with_name("ss_in_pattern")
-             .long("ss_in_pattern")
-             .help("Implement slow start in a send pattern"))
-        .group(clap::ArgGroup::with_name("slow_start")
-               .args(&["ss_in_fold", "ss_in_pattern"])
-               .required(false))
         .arg(Arg::with_name("report_per_ack")
              .long("per_ack")
              .help("Specifies that the datapath should send a measurement upon every ACK"))
@@ -73,7 +67,7 @@ fn make_args() -> Result<(ccp_generic_cong_avoid::GenericCongAvoidConfig, String
             } else {
                 ccp_generic_cong_avoid::GenericCongAvoidConfigReport::Rtt
             },
-            ss: if matches.is_present("ss_in_fold") {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Fold} else if matches.is_present("ss_in_pattern") {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Pattern} else {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Ccp},
+            ss: if matches.is_present("ss_in_fold") {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Datapath} else {ccp_generic_cong_avoid::GenericCongAvoidConfigSS::Ccp},
             use_compensation: matches.is_present("compensate_update"),
         },
         String::from(matches.value_of("ipc").unwrap()),

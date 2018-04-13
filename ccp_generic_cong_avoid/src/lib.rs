@@ -2,11 +2,9 @@ extern crate clap;
 extern crate time;
 #[macro_use]
 extern crate slog;
-#[macro_use]
 extern crate portus;
 
 use portus::{CongAlg, Config, Datapath, DatapathInfo, Report};
-use portus::pattern;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 
@@ -29,7 +27,6 @@ pub struct GenericCongAvoid<T: Ipc, A: GenericCongAvoidAlg> {
     control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
     sc: Option<Scope>,
-    sock_id: u32,
     ss_thresh: u32,
     in_startup: bool,
     mss: u32,
@@ -42,21 +39,20 @@ pub struct GenericCongAvoid<T: Ipc, A: GenericCongAvoidAlg> {
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fff_ffff;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum GenericCongAvoidConfigReport {
     Ack,
     Rtt,
     Interval(time::Duration),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum GenericCongAvoidConfigSS {
-    Fold,
-    Pattern,
+    Datapath,
     Ccp,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct GenericCongAvoidConfig {
     pub ss_thresh: u32,
     pub init_cwnd: u32,
@@ -87,107 +83,130 @@ pub struct GenericCongAvoidMeasurements {
 }
 
 impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
-    fn send_pattern(&self) {
-        match self.control_channel.send_pattern(
-            self.sock_id,
-            match self.report_option {
-                GenericCongAvoidConfigReport::Ack => make_pattern!(
-                    pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
-                    pattern::Event::WaitDuration(time::Duration::milliseconds(100)) 
-                ),
-                GenericCongAvoidConfigReport::Rtt => make_pattern!(
-                    pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
-                    pattern::Event::WaitRtts(1.0) => 
-                    pattern::Event::Report
-                ),
-                GenericCongAvoidConfigReport::Interval(dur) => make_pattern!(
-                    pattern::Event::SetCwndAbs(self.alg.curr_cwnd()) => 
-                    pattern::Event::WaitDuration(dur) => 
-                    pattern::Event::Report
-                ),
-            }
-        ) {
-            Ok(_) => (),
-            Err(e) => {
-                self.logger.as_ref().map(|log| {
-                    warn!(log, "send_pattern"; "err" => ?e);
-                });
-            }
-        }
+    /// Make no updates in the datapath, and send a report after an interval
+    fn install_datapath_interval(&self, interval: time::Duration) -> Option<Scope> {
+        self.control_channel.install(
+            format!("
+                (def 
+                    (Report.acked 0) 
+                    (Report.sacked 0) 
+                    (Report.loss 0) 
+                    (Report.timeout 0) 
+                    (Report.rtt 0)
+                    (Report.inflight 0)
+                )
+                (when true
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (fallthrough)
+                )
+                (when (|| Report.timeout (> Report.lost_pkts_sample 0))
+                    (report)
+                )
+                (when (> Ns {})
+                    (report)
+                )
+            ", interval.num_nanoseconds().unwrap()).as_bytes()
+        ).ok()
     }
 
-    fn send_pattern_ss(&self) {
-        self.control_channel.send_pattern(
-            self.sock_id,
-            make_pattern!(
-                pattern::Event::SetCwndAbs(self.ss_thresh) =>
-                pattern::Event::WaitRtts(1.0) =>
-                pattern::Event::SetRateRel(2.0)
-            ),
-        ).unwrap();
-    }
-
-    fn send_pattern_wait(&self) {
-        self.control_channel.send_pattern(
-            self.sock_id,
-            make_pattern!(
-                pattern::Event::WaitDuration(time::Duration::milliseconds(100)) //=> // 500ms
-                //pattern::Event::Report
-            ),
-        ).unwrap();
-    }
-
-    /// Don't update acked, since those acks are already accounted for in slow start
-    fn install_fold_ss(&self) -> Option<Scope> {
-        match self.control_channel.install_measurement(
-            self.sock_id,
+    /// Make no updates in the datapath, and send a report after each RTT
+    fn install_datapath_interval_rtt(&self) -> Option<Scope> {
+        self.control_channel.install(
             b"
-                (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
-                (bind Report.sacked (+ Report.sacked Ack.packets_misordered))
-                (bind Report.loss Ack.lost_pkts_sample)
-                (bind Report.timeout Flow.was_timeout)
-                (bind Report.inflight Flow.packets_in_flight)
-                (bind Report.rtt Flow.rtt_sample_us)
-                (bind Cwnd (+ Cwnd Ack.bytes_acked))
-                (bind isUrgent Flow.was_timeout)
-                (bind isUrgent (!if isUrgent (> Report.loss 0)))
-            "
-        ) {
-            Ok(s) => Some(s),
-            Err(_) => None,
-        }
+                (def 
+                    (Report.acked 0) 
+                    (Report.sacked 0) 
+                    (Report.loss 0) 
+                    (Report.timeout 0) 
+                    (Report.rtt 0)
+                    (Report.inflight 0)
+                )
+                (when true
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (fallthrough)
+                )
+                (when (|| Report.timeout (> Report.lost_pkts_sample 0))
+                    (report)
+                )
+                (when (> Ns Flow.rtt_sample_us)
+                    (report)
+                )
+            ",
+        ).ok()
     }
 
-    fn install_fold(&self) -> Option<Scope> {
-        match self.control_channel.install_measurement(
-            self.sock_id,
-            if let GenericCongAvoidConfigReport::Ack = self.report_option {
-                b"
-                    (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
-                    (bind Report.inflight Flow.packets_in_flight)
-                    (bind Report.rtt Flow.rtt_sample_us)
-                    (bind Report.acked (+ Report.acked Ack.bytes_acked))
-                    (bind Report.sacked (+ Report.sacked Ack.packets_misordered))
-                    (bind Report.loss Ack.lost_pkts_sample)
-                    (bind Report.timeout Flow.was_timeout)
-                    (bind isUrgent true)
-                "
-            } else {
-                b"
-                    (def (acked 0) (sacked 0) (loss 0) (timeout false) (rtt 0) (inflight 0))
-                    (bind Report.inflight Flow.packets_in_flight)
-                    (bind Report.rtt Flow.rtt_sample_us)
-                    (bind Report.acked (+ Report.acked Ack.bytes_acked))
-                    (bind Report.sacked (+ Report.sacked Ack.packets_misordered))
-                    (bind Report.loss Ack.lost_pkts_sample)
-                    (bind Report.timeout Flow.was_timeout)
-                    (bind isUrgent Report.timeout)
-                    (bind isUrgent (!if isUrgent (> Report.loss 0)))
-                "
-            }
-        ) {
-            Ok(s) => Some(s),
-            Err(_) => None,
+    /// Make no updates in the datapath, but send a report on every ack.
+    fn install_ack_update(&self) -> Option<Scope> {
+        self.control_channel.install(
+            b"
+                (def 
+                    (Report.acked 0) 
+                    (Report.sacked 0) 
+                    (Report.loss 0) 
+                    (Report.timeout 0) 
+                    (Report.rtt 0)
+                    (Report.inflight 0)
+                )
+                (when true
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (report)
+                )
+            ",
+        ).ok()
+    }
+
+    /// Don't update acked, since those acks are already accounted for in slow start.
+    /// Send a report once there is a drop or timeout.
+    fn install_ss_update(&self) -> Option<Scope> {
+        self.control_channel.install(
+            b"
+                (def 
+                    (Report.acked 0) 
+                    (Report.sacked 0) 
+                    (Report.loss 0) 
+                    (Report.timeout 0) 
+                    (Report.rtt 0)
+                    (Report.inflight 0)
+                )
+                (when true
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (:= Cwnd (+ Cwnd Ack.bytes_acked))
+                    (fallthrough)
+                )
+                (when (|| Report.timeout (> Report.lost_pkts_sample 0))
+                    (report)
+                )
+            "
+        ).ok()
+    }
+
+    fn update_cwnd(&self) {
+        if let Err(e) = self.control_channel
+            .update_field(&self.sc.as_ref().unwrap(), &[("Cwnd", self.alg.curr_cwnd())]) 
+        {
+            self.logger.as_ref().map(|log| {
+                warn!(log, "Cwnd update error";
+                      "err" => ?e,
+                );
+            });
         }
     }
 
@@ -243,8 +262,8 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 "ssthresh" => self.ss_thresh,
             );
         });
-
-        self.send_pattern();
+        
+        self.update_cwnd();
         return;
     }
 
@@ -261,7 +280,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 self.alg.reduction(m);
                 self.last_cwnd_reduction = time::now().to_timespec();
                 self.ss_thresh = self.alg.curr_cwnd();
-                self.send_pattern();
+                self.update_cwnd();
             }
 
             self.curr_cwnd_reduction += m.sacked + m.loss;
@@ -322,7 +341,6 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
             logger: cfg.logger,
             report_option: cfg.config.report,
             sc: None,
-            sock_id: info.sock_id,
             ss_thresh: cfg.config.ss_thresh,
             rtt: 0,
             in_startup: false,
@@ -334,19 +352,19 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
             alg: A::new(init_cwnd, info.mss),
         };
 
-        match cfg.config.ss {
-            GenericCongAvoidConfigSS::Fold => {
-                s.sc = s.install_fold_ss();
-                s.send_pattern_wait();
+        match (cfg.config.ss, cfg.config.report) {
+            (GenericCongAvoidConfigSS::Datapath, _) => {
+                s.sc = s.install_ss_update();
                 s.in_startup = true;
             }
-            GenericCongAvoidConfigSS::Pattern => {
-                s.sc = s.install_fold();
-                s.send_pattern_ss();
+            (GenericCongAvoidConfigSS::Ccp, GenericCongAvoidConfigReport::Ack) => {
+                s.sc = s.install_ack_update();
             }
-            GenericCongAvoidConfigSS::Ccp => {
-                s.sc = s.install_fold();
-                s.send_pattern();
+            (GenericCongAvoidConfigSS::Ccp, GenericCongAvoidConfigReport::Rtt) => {
+                s.sc = s.install_datapath_interval_rtt();
+            }
+            (GenericCongAvoidConfigSS::Ccp, GenericCongAvoidConfigReport::Interval(i)) => {
+                s.sc = s.install_datapath_interval(i);
             }
         }
 
@@ -358,7 +376,18 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
 
         if self.in_startup {
             // install new fold
-            self.sc = self.install_fold();
+            match self.report_option {
+                GenericCongAvoidConfigReport::Ack => {
+                    self.sc = self.install_ack_update();
+                }
+                GenericCongAvoidConfigReport::Rtt => {
+                    self.sc = self.install_datapath_interval_rtt();
+                }
+                GenericCongAvoidConfigReport::Interval(i) => {
+                    self.sc = self.install_datapath_interval(i);
+                }
+            }
+
             self.alg.set_cwnd(ms.inflight * self.mss);
             self.in_startup = false;
         }
@@ -381,7 +410,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
             return;
         }
 
-        self.send_pattern();
+        self.update_cwnd();
 
         self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; 
