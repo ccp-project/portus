@@ -32,3 +32,6 @@ generic:
 clean:
 	cargo clean
 	cd ccp_generic_cong_avoid && cargo clean
+
+integration-test:
+	python integration-tests/compare.py --replot reference-trace
