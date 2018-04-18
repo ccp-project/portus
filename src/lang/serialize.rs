@@ -89,6 +89,7 @@ impl IntoIterator for Instr {
 fn serialize_op(o: &Op) -> u8 {
     match *o {
         Op::Add      => 0,
+        Op::And      => unreachable!(),
         Op::Bind     => 1,
         Op::Def      => 2,
         Op::Div      => 3,
@@ -102,6 +103,7 @@ fn serialize_op(o: &Op) -> u8 {
         Op::Min      => 11,
         Op::Mul      => 12,
         Op::NotIf    => 13,
+        Op::Or       => unreachable!(),
         Op::Reset    => 14,
         Op::Sub      => 15,
     }

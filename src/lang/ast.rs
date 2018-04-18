@@ -11,6 +11,7 @@ pub enum Prim {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Op {
     Add, // (add a b) return a+b
+    And, // (and a b) return a && b
     Bind, // (bind a b) assign variable a to value b
     Div, // (div a b) return a/b (integer division)
     Equiv, // (eq a b) return a == b
@@ -20,6 +21,7 @@ pub enum Op {
     MaxWrap, // (max a b) return max(a,b) with integer wraparound
     Min, // (min a b) return min(a,b)
     Mul, // (mul a b) return a * b
+    Or,  // (or a b) return a || b
     Sub, // (sub a b) return a - b
 
     // SPECIAL: takes no arguments
@@ -56,8 +58,8 @@ use std::str;
 named!(
     op<Result<Op>>,
     alt!(
-        alt!(tag!("+") | tag!("add") | 
-             tag!("&&") | tag!("and"))  => { |_| Ok(Op::Add) }     |
+        alt!(tag!("+") | tag!("add"))   => { |_| Ok(Op::Add) }     |
+        alt!(tag!("&&") | tag!("and"))  => { |_| Ok(Op::And) }     |
         alt!(tag!(":=") | tag!("bind")) => { |_| Ok(Op::Bind) }    |
         tag!("if")                      => { |_| Ok(Op::If) }      |
         alt!(tag!("/") | tag!("div"))   => { |_| Ok(Op::Div) }     |
@@ -68,8 +70,8 @@ named!(
         tag!("wrapped_max")             => { |_| Ok(Op::MaxWrap) } |
         tag!("max")                     => { |_| Ok(Op::Max) }     |
         tag!("min")                     => { |_| Ok(Op::Min) }     |
-        alt!(tag!("*") | tag!("mul") |
-             tag!("||") | tag!("or"))   => { |_| Ok(Op::Mul) }     |
+        alt!(tag!("*") | tag!("mul"))   => { |_| Ok(Op::Mul) }     |
+        alt!(tag!("||") | tag!("or"))   => { |_| Ok(Op::Or) }      |
         tag!("!if")                     => { |_| Ok(Op::NotIf) }   |
         alt!(tag!("-") | tag!("sub"))   => { |_| Ok(Op::Sub) }     |
         atom => { |f: Result<Expr>| Err(Error::from(format!("unexpected token {:?}", f))) }
@@ -319,16 +321,16 @@ mod tests {
 
     #[test]
     fn bool_ops() {
-        let foo = b"(&& 10 20)";
+        let foo = b"(&& true false)";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
             e,
             vec![
                 Expr::Sexp(
-                    Op::Add,
-                    Box::new(Expr::Atom(Prim::Num(10))),
-                    Box::new(Expr::Atom(Prim::Num(20)))
+                    Op::And,
+                    Box::new(Expr::Atom(Prim::Bool(true))),
+                    Box::new(Expr::Atom(Prim::Bool(false))),
                 ),
             ]
         );
@@ -340,7 +342,7 @@ mod tests {
             e,
             vec![
                 Expr::Sexp(
-                    Op::Mul,
+                    Op::Or,
                     Box::new(Expr::Atom(Prim::Num(10))),
                     Box::new(Expr::Atom(Prim::Num(20)))
                 ),

@@ -217,6 +217,31 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
 
                     Ok((instrs, res))
                 }
+                Op::And | Op::Or => {
+                    // left and right should have type num
+                    match left.get_type() {
+                        Ok(Type::Bool(_)) => (),
+                        x => return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x))),
+                    }
+                    match right.get_type() {
+                        Ok(Type::Bool(_)) => (),
+                        x => return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x))),
+                    }
+
+                    let res = scope.new_tmp(Type::Bool(None));
+                    instrs.push(Instr {
+                        res: res.clone(),
+                        op: match *o {
+                            Op::And => Op::Mul,
+                            Op::Or  => Op::Add,
+                            _       => unreachable!(),
+                        },
+                        left,
+                        right,
+                    });
+
+                    Ok((instrs, res))
+                }
                 Op::Equiv | Op::Gt | Op::Lt => {
                     // left and right should have type num
                     match left.get_type() {
@@ -981,6 +1006,106 @@ mod tests {
                     },
                 ]
             }
+        );
+    }
+
+    #[test]
+    fn bool_ops() {
+        let foo =  b" 
+		(def (Report.acked 0) (Control.state 0))
+		(when true
+			(:= Report.acked (+ Report.acked Ack.bytes_acked))
+			(fallthrough)
+		)
+		(when (&& (> Ns 3000000) (== Control.state 0))
+			(:= Control.state 1)
+			(report)
+		)
+		";
+        
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let evflag_reg = sc.get("__eventFlag").unwrap().clone();
+        let continue_reg = sc.get("__shouldContinue").unwrap().clone();
+        let acked_reg = sc.get("Report.acked").unwrap().clone();
+        let state_reg = sc.get("Control.state").unwrap().clone();
+
+        assert_eq!(
+            b,
+            Bin{ 
+                events: vec![
+                    Event { flag_idx: 2, num_flag_instrs: 1, body_idx: 3, num_body_instrs: 3 }, 
+                    Event { flag_idx: 6, num_flag_instrs: 3, body_idx: 9, num_body_instrs: 2 }
+                ], 
+                instrs: vec![
+                    Instr { 
+                        res: state_reg.clone(), 
+                        op: Op::Def, 
+                        left: state_reg.clone(), 
+                        right: Reg::ImmNum(0),
+                    }, 
+                    Instr { 
+                        res: acked_reg.clone(),
+                        op: Op::Def, 
+                        left: acked_reg.clone(),
+                        right: Reg::ImmNum(0),
+                    }, 
+                    Instr { 
+                        res: evflag_reg.clone(),
+                        op: Op::Bind,
+                        left: evflag_reg.clone(),
+                        right: Reg::ImmBool(true),
+                    }, 
+                    Instr { 
+                        res: Reg::Tmp(0, Type::Num(None)),
+                        op: Op::Add,
+                        left: acked_reg.clone(),
+                        right: sc.get("Ack.bytes_acked").unwrap().clone(),
+                    }, 
+                    Instr { 
+                        res: acked_reg.clone(),
+                        op: Op::Bind,
+                        left: acked_reg.clone(),
+                        right: Reg::Tmp(0, Type::Num(None)),
+                    }, 
+                    Instr { 
+                        res: continue_reg.clone(),
+                        op: Op::Bind,
+                        left: continue_reg.clone(),
+                        right: Reg::ImmBool(true),
+                    }, 
+                    Instr { 
+                        res: Reg::Tmp(0, Type::Bool(None)),
+                        op: Op::Gt,
+                        left: sc.get("Ns").unwrap().clone(),
+                        right: Reg::ImmNum(3000000) 
+                    }, 
+                    Instr { 
+                        res: Reg::Tmp(1, Type::Bool(None)),
+                        op: Op::Equiv,
+                        left: state_reg.clone(),
+                        right: Reg::ImmNum(0) 
+                    }, 
+                    Instr { 
+                        res: evflag_reg.clone(),
+                        op: Op::Mul,
+                        left: Reg::Tmp(0, Type::Bool(None)),
+                        right: Reg::Tmp(1, Type::Bool(None)) 
+                    }, 
+                    Instr { 
+                        res: state_reg.clone(),
+                        op: Op::Bind,
+                        left: state_reg.clone(),
+                        right: Reg::ImmNum(1) 
+                    }, 
+                    Instr { 
+                        res: sc.get("__shouldReport").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("__shouldReport").unwrap().clone(),
+                        right: Reg::ImmBool(true) 
+                    },
+                ],
+            },
         );
     }
     
