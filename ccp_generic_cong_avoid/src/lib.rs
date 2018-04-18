@@ -203,7 +203,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
 
     fn update_cwnd(&self) {
         if let Err(e) = self.control_channel
-            .update_field(&self.sc.as_ref().unwrap(), &[("Cwnd", self.alg.curr_cwnd())]) 
+            .update_field(self.sc.as_ref().unwrap(), &[("Cwnd", self.alg.curr_cwnd())]) 
         {
             self.logger.as_ref().map(|log| {
                 warn!(log, "Cwnd update error";
