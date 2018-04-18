@@ -103,7 +103,7 @@ named!(
 );
 
 impl Prog {
-    pub(crate) fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
+    pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
         use nom::{IResult, Needed};
         let body = match defs(source) {

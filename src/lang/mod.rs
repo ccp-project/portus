@@ -52,8 +52,7 @@ mod serialize;
 pub use self::datapath::Bin;
 pub use self::datapath::Reg;
 pub use self::datapath::Scope;
-
-use self::prog::Prog;
+pub use self::prog::Prog;
 
 /// `compile()` uses 3 passes to yield Instrs.
 ///
