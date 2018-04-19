@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use super::{Error, Result};
 use super::ast::{Expr, Op, Prim};
 use super::prog::Prog;
@@ -75,6 +74,15 @@ pub struct Instr {
 pub struct Bin {
     pub events: Vec<Event>,
     pub instrs: Vec<Instr>,
+}
+
+impl IntoIterator for Bin {
+    type Item = Instr;
+    type IntoIter = ::std::vec::IntoIter<Instr>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.instrs.into_iter()
+    }
 }
 
 impl Bin {
@@ -360,9 +368,37 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct RegFile(pub(crate) Vec<(String, Reg)>);
+
+impl RegFile {
+    fn new() -> Self {
+        RegFile(vec![])
+    }
+
+    fn insert(&mut self, name: String, r: Reg) {
+        if let Some((idx, _)) = self.0.iter()
+            .enumerate()
+            .skip_while(|&(_, &(ref s, _))| *s < name)
+            .next() {
+            self.0.insert(idx, (name, r));
+        } else {
+            self.0.push((name, r));
+        }
+    }
+
+    fn get<'a>(&'a self, name: &str) -> Option<&'a Reg> {
+        self.0.iter().find(|&&(ref s, _)| s == name).map(|&(_, ref r)| r)
+    }
+
+    fn get_mut<'a>(&'a mut self, name: &str) -> Option<&'a mut Reg> {
+        self.0.iter_mut().find(|&&mut (ref s, _)| s == name).map(|&mut(_, ref mut r)| r)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Scope {
-    pub(crate) named: HashMap<String, Reg>,
+    pub(crate) named: RegFile,
     pub(crate) num_control: u8,
     pub(crate) num_local: u8,
     pub(crate) num_perm: u8,
@@ -414,7 +450,7 @@ impl Scope {
     /// All datapaths shall recognize these Names.
     pub(crate) fn new() -> Self {
         let mut sc = Scope {
-            named: HashMap::new(),
+            named: RegFile::new(),
             num_control: 0,
             num_local: 0,
             num_perm: 0,
@@ -460,7 +496,7 @@ impl Scope {
     }
 
     pub fn has(&self, name: &str) -> bool {
-        self.named.contains_key(name)
+        self.named.get(name).is_some()
     }
 
     pub fn get(&self, name: &str) -> Option<&Reg> {
@@ -530,13 +566,7 @@ impl Scope {
 }
 
 pub struct ScopeDefInstrIter {
-    v: ::std::collections::hash_map::IntoIter<String, Reg>,
-}
-
-impl ScopeDefInstrIter {
-    fn new(it: ::std::collections::hash_map::IntoIter<String, Reg>) -> Self {
-        ScopeDefInstrIter { v: it }
-    }
+    pub v: ::std::vec::IntoIter<(String, Reg)>,
 }
 
 impl Iterator for ScopeDefInstrIter {
@@ -575,16 +605,7 @@ impl IntoIterator for Scope {
     type IntoIter = ScopeDefInstrIter;
 
     fn into_iter(self) -> ScopeDefInstrIter {
-        ScopeDefInstrIter::new(self.named.into_iter())
-    }
-}
-
-impl IntoIterator for Bin {
-    type Item = Instr;
-    type IntoIter = ::std::vec::IntoIter<Instr>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.instrs.into_iter()
+        ScopeDefInstrIter{ v: self.named.0.into_iter() }
     }
 }
 

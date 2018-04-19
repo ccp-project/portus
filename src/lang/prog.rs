@@ -366,6 +366,11 @@ mod tests {
         }
     }
 
+    impl PartialEq for ::lang::datapath::RegFile {
+        fn eq(&self, other: &Self) -> bool {
+            self.0.iter().zip(other.0.iter()).all(|(x, y)| x == y)
+        }
+    }
 
     impl PartialEq for Scope {
         fn eq(&self, other: &Self) -> bool {
