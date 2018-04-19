@@ -4,14 +4,14 @@ use std::io::{self, Read};
 use portus::{lang, serialize};
 
 /// It is sometimes helpful to deconstruct a datapath program.
-/// dump_fold is a helper tool for doing so. It accepts datapath 
+/// `dump_fold` is a helper tool for doing so. It accepts datapath 
 /// program source from stdin, and outputs to stdout:
 /// 0. An echo of the input program.
 /// 1. The AST representation of that program
 /// 2. The compiled instructions
 /// 3. The serialized binary which will be sent to the datapath
 ///
-/// On compilation failure, dump_fold will panic with the compilation error.
+/// On compilation failure, `dump_fold` will panic with the compilation error.
 fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
