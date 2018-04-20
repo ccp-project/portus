@@ -1,4 +1,3 @@
-use std;
 use std::io::prelude::*;
 use Result;
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};
@@ -16,14 +15,13 @@ pub struct Msg {
     pub src_port: u32,
     pub dst_ip: u32,
     pub dst_port: u32,
-    pub cong_alg: String,
 }
 
 impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u32, u32) {
         (
             CREATE,
-            HDR_LENGTH + 6 * 4 + self.cong_alg.len() as u32,
+            HDR_LENGTH + 6 * 4,
             self.sid,
         )
     }
@@ -45,16 +43,12 @@ impl AsRawMsg for Msg {
         Ok(())
     }
 
-    fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
-        w.write_all(self.cong_alg.clone().as_bytes())?;
+    fn get_bytes<W: Write>(&self, _: &mut W) -> Result<()> {
         Ok(())
     }
 
     fn from_raw_msg(msg: RawMsg) -> Result<Self> {
         let u32s = unsafe { msg.get_u32s() }?;
-        let b = msg.get_bytes()?;
-        let s = std::str::from_utf8(b)?;
-        let alg = String::from(s);
         Ok(Msg {
             sid: msg.sid,
             init_cwnd: u32s[0],
@@ -63,7 +57,6 @@ impl AsRawMsg for Msg {
             src_port: u32s[3],
             dst_ip: u32s[4],
             dst_port: u32s[5],
-            cong_alg: alg,
         })
     }
 }
@@ -92,7 +85,6 @@ mod tests {
             src_port: 4242,
             dst_ip: 0,
             dst_port: 4242,
-            cong_alg: String::from("test"),
         }
     );
 

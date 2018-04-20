@@ -83,7 +83,6 @@ impl<'a> RawMsg<'a> {
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
             measure::MEASURE | update_field::UPDATE_FIELD => Ok(&self.bytes[4..(self.len as usize - HDR_LENGTH as usize)]),
-            create::CREATE => Ok(&self.bytes[(4 * 6)..(self.len as usize - HDR_LENGTH as usize)]),
             _ => Ok(self.bytes),
         }
     }
