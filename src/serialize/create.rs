@@ -71,20 +71,11 @@ impl AsRawMsg for Msg {
 #[cfg(test)]
 mod tests {
     macro_rules! check_create_msg {
-        ($id: ident, $sid:expr, $cwnd:expr, $mss:expr, $sip:expr, $sport:expr, $dip:expr, $dport:expr, $alg:expr) => (
+        ($id: ident, $msg: expr) => (
             check_msg!(
                 $id, 
                 super::Msg,
-                super::Msg{
-                    sid: $sid,
-                    init_cwnd: $cwnd,
-                    mss: $mss,
-                    src_ip: $sip,
-                    src_port: $sport,
-                    dst_ip: $dip,
-                    dst_port: $dport,
-                    cong_alg: String::from($alg),
-                },
+                $msg,
                 ::serialize::Msg::Cr(crm),
                 crm
             );
@@ -93,14 +84,16 @@ mod tests {
 
     check_create_msg!(
         test_create_1,
-        15,
-        1448 * 10,
-        1448,
-        0,
-        4242,
-        0,
-        4242,
-        "nimbus"
+        super::Msg{
+            sid: 15,
+            init_cwnd: 1448 * 10,
+            mss: 1448,
+            src_ip: 0,
+            src_port: 4242,
+            dst_ip: 0,
+            dst_port: 4242,
+            cong_alg: String::from("test"),
+        }
     );
 
     extern crate test;

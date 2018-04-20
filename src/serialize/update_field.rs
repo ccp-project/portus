@@ -63,8 +63,8 @@ mod tests {
         assert_eq!(
             buf,
             vec![
-                3,                                        // UPDATE_FIELD
-                0xc,                                     // length = 0xc * 2 = 12 * 2 = 24 (23)
+                3, 0,                                     // UPDATE_FIELD
+                25, 0,                                    // length = 25
                 1, 0, 0, 0,                               // sock_id = 1
                 1, 0, 0, 0,                               // num_fields = 1
                 2, 4, 0, 0, 0, 0x2a, 0, 0, 0, 0, 0, 0, 0, // Reg::Implicit(4) <- 42

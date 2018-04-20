@@ -71,8 +71,8 @@ mod tests {
         assert_eq!(
             buf,
             vec![
-                2,                                              // INSTALL
-                0x21,                                           // length = 0x21 * 2 = 33 * 2 = 66
+                2, 0,                                           // INSTALL
+                68, 0,                                          // length = 68
                 1, 0, 0, 0,                                     // sock_id = 1
                 1, 0, 0, 0,                                     // num_events = 1
                 3, 0, 0, 0,                                     // num_instrs = 3

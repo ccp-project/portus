@@ -7,12 +7,20 @@ use super::Result;
 
 use bytes::{ByteOrder, LittleEndian};
 
+fn u16_to_u8s(buf: &mut [u8], num: u16) {
+    LittleEndian::write_u16(buf, num);
+}
+
 pub(crate) fn u32_to_u8s(buf: &mut [u8], num: u32) {
     LittleEndian::write_u32(buf, num);
 }
 
 pub(crate) fn u64_to_u8s(buf: &mut [u8], num: u64) {
     LittleEndian::write_u64(buf, num);
+}
+
+fn u16_from_u8s(buf: &[u8]) -> u16 {
+    LittleEndian::read_u16(buf)
 }
 
 pub(crate) fn u32_from_u8s(buf: &[u8]) -> u32 {
@@ -23,34 +31,30 @@ pub(crate) fn u64_from_u8s(buf: &[u8]) -> u64 {
     LittleEndian::read_u64(buf)
 }
 
-/// (`type`, `len >> 2`, `socket_id`) header
+/// (`type`, `len`, `socket_id`) header
 /// -----------------------------------
 /// | Msg Type | Len (B)  | Uint32    |
-/// | (1 B)    | (1 B)    | (32 bits) |
+/// | (2 B)    | (2 B)    | (32 bits) |
 /// -----------------------------------
-/// total: 6 Bytes
+/// total: 8 Bytes
 ///
-pub const HDR_LENGTH: u32 = 6;
+pub const HDR_LENGTH: u32 = 8;
 fn serialize_header(typ: u8, len: u32, sid: u32) -> Vec<u8> {
-    let mut hdr = [0u8; 6];
-    hdr[0] = typ;
-    if len % 2 == 1 {
-        hdr[1] = (len >> 1) as u8 + 1;
-    } else {
-        hdr[1] = (len >> 1) as u8;
-    }
-    u32_to_u8s(&mut hdr[2..], sid);
+    let mut hdr = [0u8; 8];
+    u16_to_u8s(&mut hdr[0..2], u16::from(typ));
+    u16_to_u8s(&mut hdr[2..4], len as u16);
+    u32_to_u8s(&mut hdr[4..], sid);
     hdr.to_vec()
 }
 
 fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u32, u32)> {
-    let mut hdr = [0u8; 6];
+    let mut hdr = [0u8; 8];
     buf.read_exact(&mut hdr)?;
-    let typ = hdr[0];
-    let len = (u32::from(hdr[1])) << 1;
-    let sid = u32_from_u8s(&hdr[2..]);
+    let typ = u16_from_u8s(&hdr[0..2]);
+    let len = u16_from_u8s(&hdr[2..4]);
+    let sid = u32_from_u8s(&hdr[4..]);
 
-    Ok((typ, len, sid))
+    Ok((typ as u8, u32::from(len), sid))
 }
 
 #[derive(Clone)]
@@ -78,8 +82,8 @@ impl<'a> RawMsg<'a> {
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
-            measure::MEASURE | update_field::UPDATE_FIELD => Ok(&self.bytes[4..(self.len as usize - 6)]),
-            create::CREATE => Ok(&self.bytes[(4 * 6)..(self.len as usize - 6)]),
+            measure::MEASURE | update_field::UPDATE_FIELD => Ok(&self.bytes[4..(self.len as usize - HDR_LENGTH as usize)]),
+            create::CREATE => Ok(&self.bytes[(4 * 6)..(self.len as usize - HDR_LENGTH as usize)]),
             _ => Ok(self.bytes),
         }
     }
@@ -194,6 +198,14 @@ mod tests {
     use super::Msg;
 
     #[test]
+    fn test_from_u16() {
+        let mut buf = [0u8; 2];
+        let x: u16 = 2;
+        super::u16_to_u8s(&mut buf, x);
+        assert_eq!(buf, [0x2, 0x0]);
+    }
+
+    #[test]
     fn test_from_u32() {
         let mut buf = [0u8; 4];
         let x: u32 = 42;
@@ -211,6 +223,13 @@ mod tests {
         let x: u64 = 42424242;
         super::u64_to_u8s(&mut buf, x);
         assert_eq!(buf, [0xB2, 0x57, 0x87, 0x02, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_to_u16() {
+        let buf = vec![0x3, 0];
+        let x = super::u16_from_u8s(&buf[..]);
+        assert_eq!(x, 3);
     }
 
     #[test]
