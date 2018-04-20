@@ -39,10 +39,6 @@ impl AsRawMsg for Msg {
         Ok(())
     }
 
-    fn get_u64s<W: Write>(&self, _: &mut W) -> Result<()> {
-        Ok(())
-    }
-
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
         let mut buf = [0u8; 8];
         for f in &self.fields {
@@ -62,4 +58,41 @@ impl AsRawMsg for Msg {
             fields: deserialize_fields(b)?,
         })
     }
+}
+
+#[cfg(test)]
+mod tests {
+    macro_rules! check_measure_msg {
+        ($id: ident, $sid:expr, $fields:expr) => (
+            check_msg!(
+                $id,
+                super::Msg,
+                super::Msg{
+                    sid: $sid,
+                    num_fields: $fields.len() as u8,
+                    fields: $fields,
+                },
+                ::serialize::Msg::Ms(mes),
+                mes
+                );
+            )
+    }
+
+    check_measure_msg!(
+        test_measure_1,
+        15,
+        vec![424242, 65535, 65530, 200000, 150000]
+    );
+    check_measure_msg!(
+        test_measure_2,
+        256,
+        vec![42424242, 65536, 65531, 100000, 50000]
+    );
+    check_measure_msg!(
+        test_measure_3,
+        32,
+        vec![
+        42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242
+        ]
+    );
 }

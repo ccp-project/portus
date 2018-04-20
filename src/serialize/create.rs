@@ -45,10 +45,6 @@ impl AsRawMsg for Msg {
         Ok(())
     }
 
-    fn get_u64s<W: Write>(&self, _: &mut W) -> Result<()> {
-        Ok(())
-    }
-
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
         w.write_all(self.cong_alg.clone().as_bytes())?;
         Ok(())
@@ -69,5 +65,49 @@ impl AsRawMsg for Msg {
             dst_port: u32s[5],
             cong_alg: alg,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    macro_rules! check_create_msg {
+        ($id: ident, $sid:expr, $cwnd:expr, $mss:expr, $sip:expr, $sport:expr, $dip:expr, $dport:expr, $alg:expr) => (
+            check_msg!(
+                $id, 
+                super::Msg,
+                super::Msg{
+                    sid: $sid,
+                    init_cwnd: $cwnd,
+                    mss: $mss,
+                    src_ip: $sip,
+                    src_port: $sport,
+                    dst_ip: $dip,
+                    dst_port: $dport,
+                    cong_alg: String::from($alg),
+                },
+                ::serialize::Msg::Cr(crm),
+                crm
+            );
+        )
+    }
+
+    check_create_msg!(
+        test_create_1,
+        15,
+        1448 * 10,
+        1448,
+        0,
+        4242,
+        0,
+        4242,
+        "nimbus"
+    );
+
+    extern crate test;
+    use self::test::Bencher;
+
+    #[bench]
+    fn bench_flip_create(b: &mut Bencher) {
+        b.iter(|| test_create_1())
     }
 }

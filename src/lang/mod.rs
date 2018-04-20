@@ -50,6 +50,7 @@ mod prog;
 mod serialize;
 
 pub use self::datapath::Bin;
+pub use self::datapath::Type;
 pub use self::datapath::Reg;
 pub use self::datapath::Scope;
 pub use self::prog::Prog;

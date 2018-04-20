@@ -112,6 +112,27 @@ pub trait AsRawMsg {
         Self: std::marker::Sized;
 }
 
+#[macro_use]
+mod test_helper {
+    /// Generates a test which serializes and deserializes a message 
+    /// and verifies the message is unchanged.
+    #[macro_export]
+    macro_rules! check_msg {
+        ($id: ident, $typ: ty, $m: expr, $got: pat, $x: ident) => (
+            #[test]
+            fn $id() {
+                let m = $m;
+                let buf: Vec<u8> = ::serialize::serialize::<$typ>(&m.clone()).expect("serialize");
+                let msg = ::serialize::Msg::from_buf(&buf[..]).expect("deserialize");
+                match msg {
+                    $got => assert_eq!($x, m),
+                    _ => panic!("wrong type for message"),
+                }
+            }
+        )
+    }
+}
+
 pub mod create;
 pub mod measure;
 pub mod install;
@@ -169,4 +190,67 @@ impl<'a> Msg<'a> {
 }
 
 #[cfg(test)]
-mod test;
+mod tests {
+    use super::Msg;
+
+    #[test]
+    fn test_from_u32() {
+        let mut buf = [0u8; 4];
+        let x: u32 = 42;
+        super::u32_to_u8s(&mut buf, x);
+        assert_eq!(buf, [0x2A, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_from_u64() {
+        let mut buf = [0u8; 8];
+        let x: u64 = 42;
+        super::u64_to_u8s(&mut buf, x);
+        assert_eq!(buf, [0x2A, 0, 0, 0, 0, 0, 0, 0]);
+
+        let x: u64 = 42424242;
+        super::u64_to_u8s(&mut buf, x);
+        assert_eq!(buf, [0xB2, 0x57, 0x87, 0x02, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_to_u32() {
+        let buf = vec![0x2A, 0, 0, 0];
+        let x = super::u32_from_u8s(&buf[..]);
+        assert_eq!(x, 42);
+
+        let buf = vec![0x42, 0, 0x42, 0];
+        let x = super::u32_from_u8s(&buf[..]);
+        assert_eq!(x, 4325442);
+    }
+
+    #[test]
+    fn test_to_u64_0() {
+        let buf = vec![0x42, 0, 0x42, 0, 0, 0, 0, 0];
+        let x = super::u64_from_u8s(&buf[..]);
+        assert_eq!(x, 4325442);
+    }
+
+    #[test]
+    fn test_to_u64_1() {
+        let buf = vec![0, 0x42, 0, 0x42, 0, 0x42, 0, 0x42];
+        let x = super::u64_from_u8s(&buf[..]);
+        assert_eq!(x, 4755873775377990144);
+    }
+
+    #[test]
+    fn test_other_msg() {
+        use super::testmsg;
+        use super::AsRawMsg;
+        let m = testmsg::Msg(String::from("testing"));
+        let buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m.clone()).expect("serialize");
+        let msg = Msg::from_buf(&buf[..]).expect("deserialize");
+        match msg {
+            Msg::Other(raw) => {
+                let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
+                assert_eq!(m, got);
+            }
+            _ => panic!("wrong type for message"),
+        }
+    }
+}
