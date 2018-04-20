@@ -30,10 +30,6 @@ impl AsRawMsg for Msg {
         Ok(())
     }
 
-    fn get_u64s<W: Write>(&self, _: &mut W) -> Result<()> {
-        Ok(())
-    }
-
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
         let mut buf = [0u8; 8];
         for f in &self.fields {
@@ -48,5 +44,31 @@ impl AsRawMsg for Msg {
 
     fn from_raw_msg(_msg: RawMsg) -> Result<Self> {
         unimplemented!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lang::Reg;
+
+    #[test]
+    fn serialize_update_msg() {
+        let m = super::Msg{
+            sid: 1,
+            num_fields: 1,
+            fields: vec![(Reg::Implicit(4, ::lang::Type::Num(None)), 42)],
+        };
+
+        let buf: Vec<u8> = ::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
+        assert_eq!(
+            buf,
+            vec![
+                3,                                        // UPDATE_FIELD
+                0xc,                                     // length = 0xc * 2 = 12 * 2 = 24 (23)
+                1, 0, 0, 0,                               // sock_id = 1
+                1, 0, 0, 0,                               // num_fields = 1
+                2, 4, 0, 0, 0, 0x2a, 0, 0, 0, 0, 0, 0, 0, // Reg::Implicit(4) <- 42
+            ],
+        );
     }
 }

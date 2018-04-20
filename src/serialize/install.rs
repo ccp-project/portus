@@ -19,7 +19,7 @@ impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u32, u32) {
         (
             INSTALL,
-            HDR_LENGTH + 8 + (self.num_events * 4 + self.num_instrs * 10),
+            HDR_LENGTH + 8 + (self.num_events * 4 + self.num_instrs * 16),
             self.sid,
         )
     }
@@ -33,10 +33,6 @@ impl AsRawMsg for Msg {
         Ok(())
     }
 
-    fn get_u64s<W: Write>(&self, _: &mut W) -> Result<()> {
-        Ok(())
-    }
-
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
         let buf = self.instrs.serialize()?;
         w.write_all(&buf[..])?;
@@ -46,5 +42,45 @@ impl AsRawMsg for Msg {
     // at least for now, portus doesn't have to worry about deserializing this
     fn from_raw_msg(_msg: RawMsg) -> Result<Self> {
         unimplemented!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lang::{Bin, Prog};
+
+    #[test]
+    fn serialize_install_msg() {
+        let foo = b"
+        (def (Report.foo 0))
+        (when true
+            (bind Report.foo 4)
+        )
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let m = super::Msg{
+            sid: 1,
+            num_events: 1,
+            num_instrs: 3,
+            instrs: b
+        };
+
+        let buf: Vec<u8> = ::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
+        assert_eq!(
+            buf,
+            vec![
+                2,                                              // INSTALL
+                0x21,                                           // length = 0x21 * 2 = 33 * 2 = 66
+                1, 0, 0, 0,                                     // sock_id = 1
+                1, 0, 0, 0,                                     // num_events = 1
+                3, 0, 0, 0,                                     // num_instrs = 3
+                1, 1, 2, 1,                                     // event { flag-idx=1, num-flag=1, body-idx=2, num-body=1 }
+                2, 5, 0, 0, 0, 0, 5, 0, 0, 0, 0, 1, 0, 0, 0, 0, // (def (Report.foo 0))
+                1, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 1, 0, 0, 0, // (when true
+                1, 5, 0, 0, 0, 0, 5, 0, 0, 0, 0, 1, 4, 0, 0, 0, //     (bind Report.foo 4))
+            ],
+        );
     }
 }
