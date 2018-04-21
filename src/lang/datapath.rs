@@ -368,7 +368,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct RegFile(pub(crate) Vec<(String, Reg)>);
 
 impl RegFile {
@@ -396,7 +396,7 @@ impl RegFile {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct Scope {
     pub(crate) named: RegFile,
     pub(crate) num_control: u8,

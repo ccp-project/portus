@@ -29,7 +29,7 @@ pub struct GenericCongAvoid<T: Ipc, A: GenericCongAvoidAlg> {
 	use_compensation: bool,
     control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
-    sc: Option<Scope>,
+    sc: Scope,
     ss_thresh: u32,
     in_startup: bool,
     mss: u32,
@@ -87,7 +87,7 @@ pub struct GenericCongAvoidMeasurements {
 
 impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     /// Make no updates in the datapath, and send a report after an interval
-    fn install_datapath_interval(&self, interval: time::Duration) -> Option<Scope> {
+    fn install_datapath_interval(&self, interval: time::Duration) -> Scope {
         self.control_channel.install(
             format!("
                 (def 
@@ -114,11 +114,11 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (report)
                 )
             ", interval.num_nanoseconds().unwrap()).as_bytes()
-        ).ok()
+        ).unwrap()
     }
 
     /// Make no updates in the datapath, and send a report after each RTT
-    fn install_datapath_interval_rtt(&self) -> Option<Scope> {
+    fn install_datapath_interval_rtt(&self) -> Scope {
         self.control_channel.install(
             b"
                 (def 
@@ -145,11 +145,11 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (report)
                 )
             ",
-        ).ok()
+        ).unwrap()
     }
 
     /// Make no updates in the datapath, but send a report on every ack.
-    fn install_ack_update(&self) -> Option<Scope> {
+    fn install_ack_update(&self) -> Scope {
         self.control_channel.install(
             b"
                 (def 
@@ -170,12 +170,12 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (report)
                 )
             ",
-        ).ok()
+        ).unwrap()
     }
 
     /// Don't update acked, since those acks are already accounted for in slow start.
     /// Send a report once there is a drop or timeout.
-    fn install_ss_update(&self) -> Option<Scope> {
+    fn install_ss_update(&self) -> Scope {
         self.control_channel.install(
             b"
                 (def 
@@ -200,12 +200,12 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (report)
                 )
             "
-        ).ok()
+        ).unwrap()
     }
 
     fn update_cwnd(&self) {
         if let Err(e) = self.control_channel
-            .update_field(self.sc.as_ref().unwrap(), &[("Cwnd", self.alg.curr_cwnd())]) 
+            .update_field(&self.sc, &[("Cwnd", self.alg.curr_cwnd())]) 
         {
             self.logger.as_ref().map(|log| {
                 warn!(log, "Cwnd update error";
@@ -216,7 +216,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     }
 
     fn get_fields(&mut self, m: &Report) -> GenericCongAvoidMeasurements {
-        let sc = self.sc.as_ref().expect("scope should be initialized");
+        let sc = &self.sc;
         let ack = m.get_field(&String::from("Report.acked"), sc).expect(
             "expected acked field in returned measurement",
         ) as u32;
@@ -345,7 +345,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
             control_channel: control,
             logger: cfg.logger,
             report_option: cfg.config.report,
-            sc: None,
+            sc: Default::default(),
             ss_thresh: cfg.config.ss_thresh,
             rtt: 0,
             in_startup: false,
