@@ -12,14 +12,6 @@ impl serialize::AsRawMsg for TestMsg {
         (0xff, serialize::HDR_LENGTH + self.0.len() as u32, 0)
     }
 
-    fn get_u32s<W: Write>(&self, _: &mut W) -> super::Result<()> {
-        Ok(())
-    }
-
-    fn get_u64s<W: Write>(&self, _: &mut W) -> super::Result<()> {
-        Ok(())
-    }
-
     fn get_bytes<W: Write>(&self, w: &mut W) -> super::Result<()> {
         w.write_all(self.0.as_bytes())?;
         Ok(())

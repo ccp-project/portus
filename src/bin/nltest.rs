@@ -67,7 +67,7 @@ fn test(log: &slog::Logger) {
         debug!(listen_log, "listen");
         tx.send(true).expect("sync");
         let msg = b.next().expect("get message from iterator");
-        let got: String = std::str::from_utf8(&msg[..])
+        let got: String = std::str::from_utf8(&msg[..14])
             .expect("parse message to str")
             .chars()
             .take_while(|b| *b != '\0')
