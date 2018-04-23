@@ -9,7 +9,7 @@ except:
     sys.exit("error: could not parse {} as integer experiment length".format(sys.argv[1]))
 output_dir = sys.argv[2]
 
-subprocess.Popen("iperf -c $MAHIMAHI_BASE -p 5001 -i 1 -Z ccp -t {length}"
+subprocess.Popen("iperf -c $MAHIMAHI_BASE -p 4242 -i 1 -Z ccp -t {length}"
                  " > {out}/send.out 2>&1".format(
     length=exp_length,
     out=output_dir

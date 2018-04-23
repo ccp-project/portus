@@ -24,9 +24,11 @@ mpl.rcParams['axes.labelsize'] = 14
 
 ################################################################################
 # The following variables must be set in order to run the integration test
-CCP_KERNEL_PATH = path.join(os.getenv('HOME'), 'ccp-kernel')
-PORTUS_PATH     = path.join(os.getenv('HOME'), 'portus-master')
+CCP_KERNEL_PATH = None
+CCP_KERNEL_PATH = os.getenv('CCP_KERNEL_PATH') or CCP_KERNEL_PATH
+PORTUS_PATH     = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir))
 TEST_DIR        = path.join(PORTUS_PATH, "integration-tests")
+LINK_DIR        = path.join(TEST_DIR, "link-traces")
 ################################################################################
 supported_datapaths = ['kernel']
 length = 60
@@ -44,7 +46,7 @@ class Scenario(object):
         self.num = scenario_num
 
     def __str__(self):
-        return "Scenario #{}: {}, {}Mbps, {}ms RTT, {}BDP buffer".format(
+        return "Scenario #{}: {}, {}bps, {}ms RTT, {}BDP buffer".format(
             self.num,
             self.alg,
             self.bw,
@@ -101,16 +103,34 @@ def get_current_hash(gitdir):
             "git -C {} rev-parse HEAD".format(gitdir),
             shell=True).strip()[:6]
 
-def mm_shell(bw, rtt, bdp, log_dir, prog):
-    cmd = ("mm-link --cbr --both=\"droptail,bdp={bdp}\" --uplink-log=\"{log_dir}/uplink.log\" "
-    "{bw}M {bw}M mm-delay {rtt} {prog}").format(
-        bw=bw,
-        rtt=rtt,
-        bdp=bdp,
+def enable_ip_forwarding():
+    ret = subprocess.check_output("cat /proc/sys/net/ipv4/ip_forward",shell=True)
+    ret = ret.strip().replace(" ","").lower()
+    if ret != "1":
+        ret = subprocess.check_output("exec sudo sysctl -w net.ipv4.ip_forward=1",shell=True)
+        ret = ret.strip().lower()
+        if ret != "net.ipv4.ip_forward = 1":
+            sys.exit("error: unable to enable ip_forwarding, which is required "
+                     "to run mahimahi.\ntry: sudo sysctl -w net.ipv4.ip_forward=1")
+
+
+def mm_shell(link_trace, bw, one_way, bdp, log_dir, prog):
+    bdp_bytes = (((bw * 1000000.0) / 8.0) * ((one_way * 2.0) / 1000.0))
+    
+    cmd = ("mm-link --uplink-log=\"{log_dir}/uplink.log\" "
+           "--uplink-queue=\"droptail\" "
+           "--downlink-queue=\"droptail\" "
+           "--uplink-queue-args=\"bytes={bdp}\" "
+           "--downlink-queue-args=\"bytes={bdp}\" "
+           "{link_trace} {link_trace} "
+           "mm-delay {one_way} {prog}").format(
+        link_trace = link_trace,
+        one_way=one_way,
+        bdp=int(bdp_bytes * bdp),
         log_dir=log_dir,
         prog=prog
     )
-    print cmd
+    print "(mahimahi: {})".format(cmd)
     return subprocess.Popen("exec " + cmd, shell=True)
 
 def pkill(procnames):
@@ -143,7 +163,7 @@ def start_portus(alg, ipc, output_dir):
         sys.exit("unknown algorithm '{alg}'".format(alg=alg))
 
     path = path_fmt.format(portus=PORTUS_PATH, alg=alg)
-    print path
+    print "(portus: {})".format(path)
     return (
         subprocess.Popen(("exec sudo {path}"
         " --ipc {ipc} > {out}/portus.out 2>&1").format(
@@ -170,8 +190,8 @@ def start_tcpprobe(output_dir):
 def prepare_tcpprobe():
     if not os.path.isfile('/proc/net/tcpprobe'):
         print "info: tcpprobe not found, loading..."
-        subprocess.Popen("exec sudo modprobe tcp_probe port=5001").wait()
-        subprocess.Popen("exec sudo chmod 444 /proc/net/tcpprobe").wait()
+        subprocess.Popen("exec sudo modprobe tcp_probe port=4242", shell=True).wait()
+        subprocess.Popen("exec sudo chmod 444 /proc/net/tcpprobe", shell=True).wait()
         if os.path.isfile('/proc/net/tcpprobe'):
             print "info: tcpprobe loaded successfully!"
         else:
@@ -190,7 +210,7 @@ def read_tcpprobe(fname):
             yield tuple([float(sp[c]) for c in fields])
 
 def parse_mm_log(fname, bin_size):
-    proc = subprocess.Popen("exec mm-graph --fake {} {}".format(fname, bin_size),
+    proc = subprocess.Popen("exec {}/mm-graph --fake {} {}".format(TEST_DIR, fname, bin_size),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True)
@@ -222,13 +242,13 @@ def find_test_scenarios(parent_dir):
     scenario_num = 1
     for d in os.listdir(parent_dir):
         if os.path.isdir(path.join(parent_dir, d)):
-            ret = re.match("([a-zA-Z]+)\.([0-9]+)m\.([0-9]+)ms\.([0-9]+)bdp", d)
+            ret = re.match("([a-zA-Z]+)\.([0-9kmKM]+)\.([0-9]+)ms\.([0-9]+)bdp", d)
             if ret:
                 alg, bw, rtt, bdp = ret.groups()
             else:
                 sys.exit("error: invalid reference scenario directory "
                 "format, expected {{algorithm}}.{{bw}}m.{{rtt}}ms.{{bdp}}bdp")
-            bw, rtt, bdp = int(bw), int(rtt), int(bdp)
+            rtt, bdp = int(rtt), int(bdp)
 
             scenario = Scenario(alg, bw, rtt, bdp, scenario_num)
             scenes[d] = scenario
@@ -237,12 +257,19 @@ def find_test_scenarios(parent_dir):
 
 
 def run_scenario(scenario, ipc, parent_dir):
+    link_trace = os.path.join(LINK_DIR, scenario.bw.lower() + ".mahi")
+    if not os.path.isfile(link_trace):
+        sys.exit("""error: file not found: {link_trace}
+
+In order to run a test at {bw}, you must create a corresponding trace file in
+{link_dir}""".format(bw=scenario.bw, link_dir=LINK_DIR, link_trace=link_trace))
 
     portus_proc = start_portus(scenario.alg, ipc, parent_dir)
-    recv_proc = start_iperf_server(5001, parent_dir)
+    recv_proc = start_iperf_server(4242, parent_dir)
     probe_proc = start_tcpprobe(parent_dir)
 
-    mm_proc = mm_shell(scenario.bw, int(scenario.rtt / 2), scenario.bdp, parent_dir,
+    bw = int(scenario.bw[:-1])
+    mm_proc = mm_shell(link_trace, bw, int(scenario.rtt / 2), scenario.bdp, parent_dir,
         "python {}/compare-inner.py {} {}".format(
             TEST_DIR,
             length,
@@ -286,9 +313,17 @@ if __name__ == "__main__":
     if not args.datapath in supported_datapaths:
         sys.exit("error: {} datapath not yet supported.".format(args.datapath))
 
-    datapath_module = "ccp-kernel"
-    ipc = "netlink"
     # TODO add others later
+    if args.datapath == "kernel":
+        datapath_module = "ccp-kernel"
+        ipc = "netlink"
+        if CCP_KERNEL_PATH is None:
+            sys.exit("The kernel datapath requires the ccp-kernel repo. Please use"
+            " the full *absolute* path to either\n(1) Update CCP_KERNEL_PATH at"
+            " the top of ./integration-test/compare.py -or-\n(2) Set the"
+            " CCP_KERNEL_PATH environment variable (e.g. export"
+            " CCP_KERNEL_PATH=...)")
+
 
     if not args.allow_dirty:
         #if not working_directory_clean(CCP_KERNEL_PATH):
@@ -312,13 +347,21 @@ if __name__ == "__main__":
             portus_commit = get_current_hash(PORTUS_PATH)
 
     prepare_tcpprobe()
+    enable_ip_forwarding()
 
     to_compare = {}
     colors = {}
     should_plot = False
     ref_dir = path.join(TEST_DIR, 'reference')
 
+
     if args.mode == 'reference-trace':
+        if not os.path.isdir(ref_dir):
+            sys.exit("error: directory not found: ./integration-tests/reference.\n"
+            "Reference-trace mode expects a directory of reference traces at "
+            "this location to compare against. New traces can be created with"
+            " 'new-reference' mode.")
+
         print "comparing (portus@{}, {}@{}) to reference traces".format(
             portus_commit,
             datapath_module,
@@ -327,9 +370,14 @@ if __name__ == "__main__":
         should_plot = True
         ref_scenarios = find_test_scenarios(ref_dir)
         n_scenarios_found = len(ref_scenarios.keys())
+
+        if n_scenarios_found < 1:
+            sys.exit("error: ./integration-tests/reference is empty. Must have "
+            "at least one reference trace to compare.")
+
         for d, scenario in sorted(ref_scenarios.iteritems(), key=lambda (k,v): v.num):
 
-            print ("\nTest Scenario #{}/{}: {}, {}Mbps, {}ms RTT, {} BDP buffer "
+            print ("\nTest Scenario #{}/{}: {}, {}bps, {}ms RTT, {} BDP buffer "
             "buffer ({} seconds)").format(scenario.num, n_scenarios_found, scenario.alg,
                     scenario.bw, scenario.rtt, scenario.bdp, length)
 
@@ -365,12 +413,24 @@ if __name__ == "__main__":
         print "compare commits code with " + str(args.commits)
         should_plot = True
     elif args.mode == 'new-reference':
-        print "creating new reference traces"
+        if not os.path.isdir(ref_dir):
+            sys.exit("""error: directory not found: ./integration-tests/reference/.
+
+new-reference mode expects a directory at this location containing
+sub-directories of the format {{alg}}.{{mbps}}m.{{rtt}}ms.{{bdp}}bdp, which
+specify the link conditions for testing a given algorithm. For example, to
+create a trace of reno over a 12Mbps link, with 100ms RTT and 1BDP droptail
+buffer, create ./integration-tests/reference/reno.12m.100ms.1bdp.""")
 
         ref_scenarios = find_test_scenarios(ref_dir)
+        n_scenarios_found = len(ref_scenarios.keys())
+        if n_scenarios_found < 1:
+            sys.exit("error: ./integration-tests/reference is empty. Must "
+            "specify at least one scenario to create a reference.")
+
         for d, scenario in ref_scenarios.iteritems():
 
-            print ("\nFound scenario: {}, {}Mbps, {}ms RTT, {}BDP buffer ").format(
+            print ("\nFound scenario: {}, {}bps, {}ms RTT, {}BDP buffer ").format(
                     scenario.alg, scenario.bw, scenario.rtt, scenario.bdp)
 
             resp = ask_yes_or_no("Would you like to re-run this reference trace?")
