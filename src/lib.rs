@@ -40,14 +40,24 @@ impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub trait DatapathTrait {
+    fn install(&self, src: &[u8]) -> Result<Scope>;
+    fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
+    fn get_sock_id(&self) -> u32;
+}
+
 pub struct Datapath<T: Ipc>{
     sock_id: u32,
     sender: BackendSender<T>,
 }
 
 use lang::{Reg, Scope};
-impl<T: Ipc> Datapath<T> {
-    pub fn install(&self, src: &[u8]) -> Result<Scope> {
+impl<T: Ipc> DatapathTrait for Datapath<T> {
+    fn get_sock_id(&self) -> u32 {
+        return self.sock_id;
+    }
+    
+    fn install(&self, src: &[u8]) -> Result<Scope> {
         let (bin, sc) = lang::compile(src)?;
         let msg = serialize::install::Msg {
             sid: self.sock_id,
@@ -62,7 +72,7 @@ impl<T: Ipc> Datapath<T> {
     }
 
     /// pass a Scope and (Reg name, new_value) pairs
-    pub fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()> {
+    fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()> {
         let fields : Vec<(Reg, u64)> = update.iter().map(
             |&(reg_name, new_value)| {
                 if reg_name.starts_with("__") {
