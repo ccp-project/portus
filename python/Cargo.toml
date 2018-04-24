@@ -1,0 +1,25 @@
+[package]
+name = "pyportus"
+version = "0.2.0"
+authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
+
+[dependencies]
+bytes = "0.4.5"
+clap = "2.29"
+portus = { path = ".." }
+slog = { version = "2" }
+slog-async = "2"
+slog-term = "2"
+time = "0.1"
+
+[dependencies.pyo3]
+version = "0.2"
+features = ["extension-module"]
+default-features = false
+
+[features]
+bench = []
+
+[lib]
+name = "pyportus"
+crate-type = ["cdylib"]
