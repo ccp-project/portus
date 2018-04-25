@@ -2,6 +2,7 @@ use std::rc::{Rc, Weak};
 
 use super::Error;
 use super::Result;
+use std::sync::{Arc, atomic};
 
 #[cfg(all(target_os = "linux"))]
 pub mod netlink;
@@ -26,6 +27,20 @@ pub enum ListenMode {
     Nonblocking,
 }
 
+/// Backend builder contains the objects
+/// needed to build a new backend.
+pub struct BackendBuilder<T: Ipc> {
+    pub sock: T,
+    pub mode: ListenMode,
+}
+
+impl<T: Ipc> BackendBuilder<T> {
+    pub fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Backend<T> {
+        Backend::new(self.sock, self.mode, atomic_bool)
+    }
+}
+
+
 pub struct BackendSender<T: Ipc>(Weak<T>);
 
 impl<T: Ipc> BackendSender<T> {
@@ -44,34 +59,46 @@ impl<T: Ipc> Clone for BackendSender<T> {
 
 /// Backend will yield incoming IPC messages forever.
 /// It owns the socket; senders hold weak references.
+/// The atomic bool is a way to stop iterating.
 pub struct Backend<T: Ipc> {
     sock: Rc<T>,
     rcv_buf: Vec<u8>,
     listen_mode: ListenMode,
+    continue_listening: Arc<atomic::AtomicBool>,
 }
 
 impl<T: Ipc> Backend<T> {
     /// Pass in a T: Ipc, the Ipc substrate to use.
     /// Return a Backend on which to call send_msg
     /// and listen
-    pub fn new(sock: T, mode: ListenMode) -> Backend<T> {
+    pub fn new(sock: T, mode: ListenMode, atomic_bool: Arc<atomic::AtomicBool>) -> Backend<T> {
         Backend{
             sock: Rc::new(sock),
             rcv_buf: vec![0u8; 1024],
             listen_mode: mode,
+            continue_listening: atomic_bool,
         }
     }
 
     pub fn sender(&self) -> BackendSender<T> {
         BackendSender(Rc::downgrade(&self.sock))
     }
+
+    pub fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
+        Arc::clone(&(self.continue_listening))
+    }
 }
+
 
 impl<T: Ipc> Iterator for Backend<T> {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
+            // if continue_loop has been set to false, stop iterating
+            if !self.continue_listening.load(atomic::Ordering::SeqCst) {
+                return None;
+            }
             let buf = match self.listen_mode {
                 ListenMode::Blocking => 
                     match self.sock.recv(&mut self.rcv_buf) {

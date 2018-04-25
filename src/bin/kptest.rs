@@ -7,6 +7,7 @@ extern crate portus;
 use portus::test_helper::TestMsg;
 use portus::serialize::AsRawMsg;
 use slog::Drain;
+use std::sync::{Arc, atomic};
 
 #[cfg(all(target_os = "linux"))] // kp is linux-only
 fn test(log: &slog::Logger) {
@@ -59,7 +60,7 @@ fn test(log: &slog::Logger) {
 
     { // make this scope so that b is dropped (and the socket closed), so the unload works
         let mut b = portus::ipc::kp::Socket::new(ListenMode::Blocking)
-            .map(|sk| Backend::new(sk, ListenMode::Blocking))
+            .map(|sk| Backend::new(sk, ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true))))
             .expect("ipc initialization");
         let sender = b.sender();
 

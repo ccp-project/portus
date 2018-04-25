@@ -2,6 +2,7 @@ use std;
 use std::thread;
 use super::ipc;
 use super::serialize;
+use std::sync::{Arc, atomic};
 
 #[test]
 fn test_ser_over_ipc() {
@@ -9,7 +10,7 @@ fn test_ser_over_ipc() {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
-        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking);
+        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
         tx.send(true).expect("ready chan send");
         let mut msg = b1.next().expect("receive message"); // Vec<u8>
 
@@ -32,7 +33,7 @@ fn test_ser_over_ipc() {
     let sk2 = sk.clone();
     let c2 = thread::spawn(move || {
         rx.recv().expect("ready chan rcv");
-        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking);
+        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
 
         // serialize a message
         let m = serialize::measure::Msg {
@@ -60,7 +61,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     thread::spawn(move || {
-        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking);
+        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
         loop {
             tx.send(true).expect("ready chan send");
             let mut msg = b1.next().expect("receive message"); // Vec<u8>
@@ -88,7 +89,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
 
     let sk2 = sk.clone();
     thread::spawn(move || {
-        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking);
+        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
         let m = serialize::measure::Msg {
             sid: 42,
             num_fields: 1,

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic};
 use super::Ipc;
 
 #[derive(Clone)]
@@ -48,14 +48,14 @@ fn test_unix() {
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
         let sk2 = super::unix::Socket::new("out", "in").expect("init socket");
-        let b2 = super::Backend::new(sk2, super::ListenMode::Blocking);
+        let b2 = super::Backend::new(sk2, super::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
         b2.sender().send_msg("hello, world".as_bytes()).expect(
             "send message",
         );
     });
         
     let sk1 = super::unix::Socket::new("in", "out").expect("init socket");
-    let mut b1 = super::Backend::new(sk1, super::ListenMode::Blocking);
+    let mut b1 = super::Backend::new(sk1, super::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
     tx.send(true).expect("chan send");
     let msg = b1.next().expect("receive message"); // Vec<u8>
     let got = std::str::from_utf8(&msg[..]).expect("parse message to str");

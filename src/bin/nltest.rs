@@ -7,6 +7,7 @@ extern crate portus;
 use portus::test_helper::TestMsg;
 use portus::serialize::AsRawMsg;
 use slog::Drain;
+use std::sync::{Arc, atomic};
 
 /// If ccp.ko is loaded, return false.
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
@@ -61,7 +62,7 @@ fn test(log: &slog::Logger) {
     let listen_log = log.clone();
     let c1 = thread::spawn(move || {
         let mut b = portus::ipc::netlink::Socket::new()
-            .map(|sk| Backend::new(sk, ListenMode::Blocking))
+            .map(|sk| Backend::new(sk, ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true))))
             .expect("ipc initialization");
         let sender = b.sender();
         debug!(listen_log, "listen");

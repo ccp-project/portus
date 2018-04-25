@@ -2,7 +2,7 @@ use clap;
 use clap::Arg;
 use {DEFAULT_SS_THRESH, GenericCongAvoid, GenericCongAvoidAlg, GenericCongAvoidConfig, GenericCongAvoidConfigSS, GenericCongAvoidConfigReport};
 use portus;
-use portus::ipc::{Backend, ListenMode};
+use portus::ipc::{BackendBuilder, ListenMode};
 use slog;
 use std;
 use time;
@@ -69,34 +69,36 @@ pub fn make_args(name: &str) -> Result<(GenericCongAvoidConfig, String), std::nu
     ))
 }
 
-pub fn start<T: GenericCongAvoidAlg>(ipc: &str, log: slog::Logger, cfg: GenericCongAvoidConfig) {
+pub fn start<T: GenericCongAvoidAlg>(ipc: &str, log: slog::Logger, cfg: GenericCongAvoidConfig)
+where T: 'static
+{
     match ipc {
         "unix" => {
             use portus::ipc::unix::Socket;
             let b = Socket::new("in", "out")
-                .map(|sk| Backend::new(sk, ListenMode::Blocking))
+                .map(|sk| BackendBuilder {sock: sk,  mode: ListenMode::Blocking})
                 .expect("ipc initialization");
-            portus::start::<_, GenericCongAvoid<_, T>>(
+            portus::run::<_, GenericCongAvoid<_, T>>(
                 b,
                 &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 }
-            );
+            ).unwrap();
         }
         #[cfg(all(target_os = "linux"))]
         "netlink" => {
             use portus::ipc::netlink::Socket;
             let b = Socket::new()
-                .map(|sk| Backend::new(sk, ListenMode::Blocking))
+                .map(|sk| BackendBuilder {sock: sk,  mode: ListenMode::Blocking})
                 .expect("ipc initialization");
-            portus::start::<_, GenericCongAvoid<_, T>>(
+            portus::run::<_, GenericCongAvoid<_, T>>(
                 b,
                 &portus::Config {
                     logger: Some(log),
                     config: cfg,
                 }
-            );
+            ).unwrap();
         }
         _ => unreachable!(),
     }

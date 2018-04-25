@@ -10,6 +10,7 @@ use bytes::{ByteOrder, LittleEndian};
 use clap::Arg;
 use portus::ipc::{Backend, BackendSender, Ipc, ListenMode};
 use time::Duration;
+use std::sync::{Arc, atomic};
 
 struct TimeMsg(time::Timespec);
 
@@ -97,7 +98,7 @@ fn netlink(iter: u32, lmode: ListenMode) -> Vec<Duration> {
     // listen
     let c1 = thread::spawn(move || {
         let mut nl = portus::ipc::netlink::Socket::new()
-            .map(|sk| Backend::new(sk, lmode))
+            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true))))
             .expect("nl ipc initialization");
         tx.send(vec![]).expect("ok to insmod");
         let msg = nl.next().expect("receive message");
@@ -161,7 +162,7 @@ fn kp(iter: u32, lmode: ListenMode) -> Vec<Duration> {
 
     let c1 = thread::spawn(move || {
         let kp = portus::ipc::kp::Socket::new(lmode)
-            .map(|sk| Backend::new(sk, lmode))
+            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true))))
             .expect("kp ipc initialization");
         tx.send(bench(&kp.sender(), kp, iter)).expect("report rtts");
     });
@@ -187,7 +188,7 @@ fn unix(iter: u32, lmode: ListenMode) -> Vec<Duration> {
     // listen
     let c1 = thread::spawn(move || {
         let unix = portus::ipc::unix::Socket::new("in", "out")
-            .map(|sk| Backend::new(sk, lmode))
+            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true))))
             .expect("unix ipc initialization");
         ready_rx.recv().expect("sync");
         tx.send(bench(&unix.sender(), unix, iter)).expect(

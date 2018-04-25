@@ -24,10 +24,12 @@ pub mod algs;
 use std::collections::HashMap;
 
 use ipc::Ipc;
-use ipc::{Backend, BackendSender};
+use ipc::{BackendSender, BackendBuilder};
 use serialize::Msg;
+use std::sync::{Arc, atomic};
+use std::thread;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Error(pub String);
 
 impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
@@ -129,11 +131,22 @@ pub trait CongAlg<T: Ipc> {
 pub struct Config<I, U: ?Sized>
 where
     I: Ipc,
-    U: CongAlg<I>,
+    U: CongAlg<I> + 'static,
 {
     pub logger: Option<slog::Logger>,
     pub config: U::Config,
 }
+
+unsafe impl<I, U: ?Sized> Sync for Config<I, U>
+where
+    I: Ipc,
+    U: CongAlg<I> + 'static{}
+
+
+unsafe impl<I, U: ?Sized> Send for Config<I, U>
+where
+    I: Ipc,
+    U: CongAlg<I> {}
 
 // Cannot #[derive(Clone)] on Config because the compiler does not realize
 // we are not using I or U, only U::Config.
@@ -141,7 +154,7 @@ where
 impl<I, U> Clone for Config<I, U>
 where
     I: Ipc,
-    U: CongAlg<I>,
+    U: CongAlg<I> + 'static,
 {
     fn clone(&self) -> Self {
         Config {
@@ -162,25 +175,90 @@ pub struct DatapathInfo {
     pub dst_port: u32,
 }
 
+#[derive(Debug)]
+pub struct CCPHandle {
+    pub continue_listening: Arc<atomic::AtomicBool>,
+    pub join_handle: thread::JoinHandle<Result<()>>,
+}
+
+impl CCPHandle {
+    /// sets the Arc<AtomicBool> to be false, so running function can return
+    pub fn kill(&self) {
+       self.continue_listening.store(false, atomic::Ordering::SeqCst);
+    }
+
+    /// handles errors from the run_inner processs that was just launched
+    /// TODO: join_handle.join() returns an Err instead of Ok, because
+    /// some function panicked, this function should return an error
+    /// with the same string from the panic.
+    pub fn wait(self) -> Result<()> {
+        match self.join_handle.join() {
+            Ok(r) => r,
+            Err(_) => Err(Error(String::from("Call to run_inner panicked"))),
+        }
+    }
+}
+
 /// Main execution loop of ccp for the static pipeline use case.
-/// Blocks "forever".
-/// In this use case, an algorithm implementation is a binary which
-/// 1. Initializes an ipc backend (depending on datapath)
-/// 2. Calls `start()`, passing the `Backend b` and a `Config` with optional
-/// logger and command line argument structure.
-///
-/// `start()`:
-/// 1. listens for messages from the datapath
-/// 2. call the appropriate message in `U: impl CongAlg`
-///
-/// `start()` will never return (`-> !`). It will panic if:
-/// 1. It receives an `install` control message (only a datapath should receive these)
-/// 2. The IPC channel fails.
-pub fn start<I, U>(b: Backend<I>, cfg: &Config<I, U>) -> !
+/// The run method blocks 'forever' - and only returns if something caused execution to fail.
+/// Callers must construct a backend builder, and a config to pass into run_inner.
+/// The call to run_inner should never return unless there was an error.
+/// Takes a reference to a config
+pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: &Config<I, U>) -> Result<!>
 where
     I: Ipc,
     U: CongAlg<I>,
 {
+    // call run_inner
+    match run_inner(backend_builder, cfg, Arc::new(atomic::AtomicBool::new(true))) {
+        Ok(_) => unreachable!(),
+        Err(e) => Err(e),
+    }
+}
+
+/// Spawns a ccp process, and returns a CCPHandle object.
+/// The caller can call kill on the CCPHandle.
+/// This causes the backend built from the backend builder to set
+/// a flag to false and stop iterating.
+/// Takes a config (not reference)
+pub fn spawn<I, U>(backend_builder: BackendBuilder<I>, cfg: Config<I, U>) -> CCPHandle
+where
+    I: Ipc,
+    U: CongAlg<I>,
+{
+    let stop_signal = Arc::new(atomic::AtomicBool::new(true));
+    CCPHandle {
+        continue_listening: stop_signal.clone(),
+        join_handle: thread::spawn(move || {
+            run_inner(backend_builder, &cfg, stop_signal.clone())
+        }),
+    }
+}
+
+/// Main execution inner loop of ccp.
+/// Blocks "forever", or until the iterator stops iterating.
+/// In this use case, an algorithm implementation is a binary which
+/// 1. Initializes an ipc backendbuilder (depending on the datapath).
+/// 2. Calls `run()`, or `spawn() `passing the `BackendBuilder b` and a `Config` with optional
+/// logger and command line argument structure.
+/// Run() or spawn() create arc<AtomicBool> objects,
+/// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
+/// boolean to kill the thread.
+///
+/// `run_inner()`:
+/// 1. listens for messages from the datapath
+/// 2. call the appropriate message in `U: impl CongAlg`
+/// The function can return for two reasons: an error, or the iterator returned None.
+/// The latter should only happen for spawn(), and not for run().
+/// It returns any error, either from:
+/// 1. the IPC channel failing
+/// 2. Receiving an install control message (only the datapath should receive these).
+fn run_inner<I, U>(backend_builder: BackendBuilder<I>, cfg: &Config<I, U>, continue_listening: Arc<atomic::AtomicBool>)  -> Result<()>
+where
+    I: Ipc,
+    U: CongAlg<I>,
+{
+    let b = backend_builder.build(continue_listening.clone());
     let mut flows = HashMap::<u32, U>::new();
     let backend = b.sender();
     for m in b {
@@ -239,18 +317,19 @@ where
                     }
                 }
                 Msg::Ins(_) => {
-                    panic!(
-                        "The start() listener should never receive an install \
-                        message, since it is on the CCP side."
-                    )
+                    return Err(Error(String::from("The start() listener should never receive an install \
+                        message, since it is on the CCP side.")));
                 }
                 _ => continue,
             }
         }
     }
-
-    panic!("The IPC receive channel closed.");
+    // if the thread has been killed, return that as error
+    if !continue_listening.load(atomic::Ordering::SeqCst) {
+        Ok(())
+    } else {
+        Err(Error(String::from("The IPC channel has closed.")))
+    }
 }
-
 #[cfg(test)]
 mod test;
