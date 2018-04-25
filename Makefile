@@ -11,6 +11,7 @@ ifeq ($(OS), Linux)
 	sudo ./target/debug/kptest
 else
 endif
+	make libccp-integration
 
 lint:
 	cargo +nightly clippy
@@ -32,6 +33,12 @@ generic:
 clean:
 	cargo clean
 	cd ccp_generic_cong_avoid && cargo clean
+	cd ccp_integration_test && cargo clean
 
 integration-test:
 	python integration-tests/compare.py reference-trace
+
+libccp-integration:
+	cd ccp_integration_test && cargo build
+	cd ccp_integration_test/libccp && make clean && make integration-test
+	export LD_LIBRARY_PATH=ccp_integration_test/libccp && ccp_integration_test/target/debug/integration_test ccp_integration_test/libccp/integration-test

@@ -1,0 +1,12 @@
+[package]
+name = "ccp_integration_test"
+version = "0.0.1"
+authors = ["Deepti Raghavan <deeptir@mit.edu>"]
+
+[dependencies]
+clap="2.29"
+portus = { path = ".." }
+slog = {version = "2"}
+slog-async = "2"
+slog-term = "2"
+time="0.1"

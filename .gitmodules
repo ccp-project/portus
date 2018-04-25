@@ -1,0 +1,3 @@
+[submodule "ccp_integration_test/libccp"]
+	path = ccp_integration_test/libccp
+	url = git@github.mit.edu:nebula/libccp.git
