@@ -110,7 +110,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 (when (|| Report.timeout (> Report.loss 0))
                     (report)
                 )
-                (when (> Ns {})
+                (when (> Micros {})
                     (report)
                 )
             ", interval.num_nanoseconds().unwrap()).as_bytes()
@@ -141,7 +141,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 (when (|| Report.timeout (> Report.loss 0))
                     (report)
                 )
-                (when (> Ns Flow.rtt_sample_us)
+                (when (> Micros Flow.rtt_sample_us)
                     (report)
                 )
             ",

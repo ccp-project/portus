@@ -487,7 +487,7 @@ impl Scope {
             "__eventFlag"      => Type::Bool(None),
             "__shouldContinue" => Type::Bool(None),
             "__shouldReport"   => Type::Bool(None),
-            "Ns"             => Type::Num(None),
+            "Micros"           => Type::Num(None),
             "Cwnd"           => Type::Num(None),
             "Rate"           => Type::Num(None)
         );
@@ -645,7 +645,7 @@ mod tests {
         assert_eq!(sc.get("__eventFlag"     ).unwrap().clone(), Reg::Implicit(0, Type::Bool(None)));
         assert_eq!(sc.get("__shouldContinue").unwrap().clone(), Reg::Implicit(1, Type::Bool(None)));
         assert_eq!(sc.get("__shouldReport"  ).unwrap().clone(), Reg::Implicit(2, Type::Bool(None)));
-        assert_eq!(sc.get("Ns"              ).unwrap().clone(), Reg::Implicit(3, Type::Num(None)));
+        assert_eq!(sc.get("Micros"          ).unwrap().clone(), Reg::Implicit(3, Type::Num(None)));
         assert_eq!(sc.get("Cwnd"            ).unwrap().clone(), Reg::Implicit(4, Type::Num(None)));
         assert_eq!(sc.get("Rate"            ).unwrap().clone(), Reg::Implicit(5, Type::Num(None)));
 
@@ -1038,7 +1038,7 @@ mod tests {
 			(:= Report.acked (+ Report.acked Ack.bytes_acked))
 			(fallthrough)
 		)
-		(when (&& (> Ns 3000000) (== Control.state 0))
+		(when (&& (> Micros 3000000) (== Control.state 0))
 			(:= Control.state 1)
 			(report)
 		)
@@ -1098,7 +1098,7 @@ mod tests {
                     Instr { 
                         res: Reg::Tmp(0, Type::Bool(None)),
                         op: Op::Gt,
-                        left: sc.get("Ns").unwrap().clone(),
+                        left: sc.get("Micros").unwrap().clone(),
                         right: Reg::ImmNum(3000000) 
                     }, 
                     Instr { 
@@ -1207,7 +1207,7 @@ mod tests {
             (bind Report.foo 4)
             (fallthrough)
         )
-        (when (> Ns 3000)
+        (when (> Micros 3000)
             (bind Report.foo 5)
             (report)
             (reset)
@@ -1262,7 +1262,7 @@ mod tests {
                     Instr {
                         res: sc.get("__eventFlag").unwrap().clone(),
                         op: Op::Gt,
-                        left: sc.get("Ns").unwrap().clone(),
+                        left: sc.get("Micros").unwrap().clone(),
                         right: Reg::ImmNum(3000),
                     },
                     Instr {
