@@ -37,11 +37,16 @@ pub fn make_args(name: &str) -> Result<(GenericCongAvoidConfig, String), std::nu
              .short("i")
              .takes_value(true))
         .group(clap::ArgGroup::with_name("interval")
-               .args(&["report_per_ack", "report_per_interval"])
-               .required(false))
+             .args(&["report_per_ack", "report_per_interval"])
+             .required(false))
         .arg(Arg::with_name("compensate_update")
              .long("compensate_update")
-             .help("Scale the congestion window update to compensate for reporting delay"))
+             .help("Scale the congestion window update during slow start to compensate for reporting delay"))
+        .arg(Arg::with_name("deficit_timeout")
+             .long("deficit_timeout")
+             .default_value("0")
+             .help("Number of RTTs to wait after a loss event to allow further CWND reductions. \
+                   Default 0 means CWND deficit counting is enforced strictly with no timeout."))
         .get_matches();
 
     Ok((
@@ -64,6 +69,7 @@ pub fn make_args(name: &str) -> Result<(GenericCongAvoidConfig, String), std::nu
             },
             ss: if matches.is_present("ss_in_fold") {GenericCongAvoidConfigSS::Datapath} else {GenericCongAvoidConfigSS::Ccp},
             use_compensation: matches.is_present("compensate_update"),
+            deficit_timeout: u32::from_str_radix(matches.value_of("deficit_timeout").unwrap(), 10)?,
         },
         String::from(matches.value_of("ipc").unwrap()),
     ))

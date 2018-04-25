@@ -26,7 +26,8 @@ pub trait GenericCongAvoidAlg {
 
 pub struct GenericCongAvoid<T: Ipc, A: GenericCongAvoidAlg> {
     report_option: GenericCongAvoidConfigReport,
-	use_compensation: bool,
+    use_compensation: bool,
+    deficit_timeout: u32,
     control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
     sc: Scope,
@@ -62,6 +63,7 @@ pub struct GenericCongAvoidConfig {
     pub report: GenericCongAvoidConfigReport,
     pub ss: GenericCongAvoidConfigSS,
     pub use_compensation: bool,
+    pub deficit_timeout: u32,
 }
 
 impl Default for GenericCongAvoidConfig {
@@ -72,6 +74,7 @@ impl Default for GenericCongAvoidConfig {
             report: GenericCongAvoidConfigReport::Rtt,
             ss: GenericCongAvoidConfigSS::Ccp,
             use_compensation: false,
+            deficit_timeout: 0,
         }
     }
 }
@@ -278,7 +281,10 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
 
     fn maybe_reduce_cwnd(&mut self, m: &GenericCongAvoidMeasurements) {
         if m.loss > 0 || m.sacked > 0 {
-            if time::now().to_timespec() - self.last_cwnd_reduction > time::Duration::microseconds((f64::from(self.rtt) * 2.0) as i64) {
+            if self.deficit_timeout > 0 &&
+                ((time::now().to_timespec() - self.last_cwnd_reduction) >
+                    time::Duration::microseconds((f64::from(self.rtt) * self.deficit_timeout as f64) as i64)
+                ) {
                 self.curr_cwnd_reduction = 0;
             }
 
@@ -355,6 +361,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
             in_startup: false,
             mss: info.mss,
 		    use_compensation: cfg.config.use_compensation,
+            deficit_timeout: cfg.config.deficit_timeout,
             init_cwnd,
             curr_cwnd_reduction: 0,
             last_cwnd_reduction: time::now().to_timespec() - time::Duration::milliseconds(500),
