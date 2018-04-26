@@ -9,3 +9,5 @@ Cargo.lock
 *.tmp*
 *.mod.c
 *.rustfmt
+*.so
+integration_tests/libccp_integration/integration-test

@@ -8,7 +8,7 @@ endif
 LDFLAGS = -shared  # linking flags
 RM = rm -f  # rm command
 LIB_NAME = ccp
-TARGET_LIB = libccp/lib${LIB_NAME}.so # target lib
+TARGET_LIB = lib${LIB_NAME}.so # target lib
 
 
 INTEGRATE_TARGET = integration-test

@@ -42,4 +42,4 @@ integration-test:
 libccp-integration:
 	cd integration_tests/libccp_integration && cargo build
 	cd integration_tests/libccp_integration && make clean && make
-	export LD_LIBRARY_PATH=integration_tests/libccp_integration/libccp && integration_tests/libccp_integration/target/debug/integration_test integration_tests/libccp_integration/integration-test
+	export LD_LIBRARY_PATH=integration_tests/libccp_integration && integration_tests/libccp_integration/target/debug/integration_test integration_tests/libccp_integration/integration-test
