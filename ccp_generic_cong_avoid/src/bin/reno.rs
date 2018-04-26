@@ -19,6 +19,7 @@ fn main() {
         "algorithm" => "Reno",
         "ipc" => ipc.clone(),
         "reports" => ?cfg.report,
+        "slow_start_mode" => ?cfg.ss,
     );
 
     ccp_generic_cong_avoid::start::<Reno>(ipc.as_str(), log, cfg);

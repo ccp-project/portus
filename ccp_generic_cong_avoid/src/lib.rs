@@ -419,10 +419,10 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
 
         self.logger.as_ref().map(|log| {
             debug!(log, "got ack"; 
-                "acked(pkts)" => ms.acked / self.mss, 
+                "acked(pkts)" => ms.acked / self.mss,
                 "curr_cwnd (pkts)" => self.alg.curr_cwnd() / self.mss,
-                "inflight (pkts)" => ms.inflight, 
-                "loss" => ms.loss, 
+                "inflight (pkts)" => ms.inflight,
+                "loss" => ms.loss,
                 "ssthresh" => self.ss_thresh,
                 "rtt" => ms.rtt,
             );
