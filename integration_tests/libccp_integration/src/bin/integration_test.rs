@@ -1,18 +1,18 @@
 #[macro_use]
 extern crate slog;
-extern crate ccp_integration_test;
+extern crate libccp_integration_test;
 extern crate portus;
 
-use ccp_integration_test::IntegrationTest;
+use libccp_integration_test::IntegrationTest;
 use std::process::{Command, Stdio};
 use portus::ipc::{BackendBuilder, ListenMode};
 use std::{thread,time};
 use std::sync::mpsc;
 use std::env;
 
-fn make_args(tx: mpsc::Sender<String>) -> Result<(ccp_integration_test::IntegrationTestConfig), String> {
+fn make_args(tx: mpsc::Sender<String>) -> Result<(libccp_integration_test::IntegrationTestConfig), String> {
 	Ok(
-		ccp_integration_test::IntegrationTestConfig {
+		libccp_integration_test::IntegrationTestConfig {
 		    sender: tx, // used for the algorithm to send a signal whent the tests are over
 		}
     )
