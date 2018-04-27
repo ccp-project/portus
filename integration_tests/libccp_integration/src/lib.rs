@@ -4,7 +4,7 @@ extern crate time;
 extern crate slog;
 extern crate portus;
 
-use portus::{CongAlg, Config, Datapath, DatapathInfo, Report};
+use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 use std::time::{Duration, SystemTime};
