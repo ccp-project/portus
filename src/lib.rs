@@ -1,5 +1,6 @@
 #![feature(box_patterns)]
 #![feature(test)]
+#![feature(never_type)]
 
 extern crate bytes;
 extern crate clap;
