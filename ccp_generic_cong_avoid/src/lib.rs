@@ -118,7 +118,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (report)
                     (reset)
                 )
-            ", interval.num_nanoseconds().unwrap()).as_bytes()
+            ", interval.num_microseconds().unwrap()).as_bytes()
         ).unwrap()
     }
 
