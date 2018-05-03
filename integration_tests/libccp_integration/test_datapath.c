@@ -2,11 +2,13 @@
 #include "stdio.h"
 #include "libccp/serialize.h"
 #include <sys/socket.h>
-#include <sys/unistd.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <sys/un.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <string.h>
+
 /*
  * Mock datapath for integration tests with userspace CCP in portus.
  * Sets up IPC using unix sockets to /tmp/ccp/0/{in,out}
@@ -139,14 +141,14 @@ void listen_for_messages(int recv_sock) {
         int bytes_rcvd = recvfrom(recv_sock, recvBuf, BIGGEST_MSG_SIZE, 0, NULL, NULL);
         if (bytes_rcvd > 0) { 
             ok = ccp_read_msg((char*)recvBuf, bytes_rcvd);
-	    if (ok < 0) {
-		printf("Error reading msg from ccp\n");
-	    }
+            if (ok < 0) {
+                printf("Error reading msg from ccp\n");
+            }
         } else {
             fill_in_primitives(52, ccp_conn);
             ccp_invoke(ccp_conn);
-	    sleep(SLEEP_TIME); // sleep for 1 ms
-	}
+            sleep(SLEEP_TIME); // sleep for 1 ms
+        }
     } 
     return;
 }
@@ -176,7 +178,11 @@ int setup_listening_thread() {
     recv_sockaddr.sun_family = AF_UNIX;
     strcpy(recv_sockaddr.sun_path, FROM_CCP_SOCKET);
     unlink(recv_sockaddr.sun_path);
+#ifdef __APPLE__
+    path_len = SUN_LEN(&recv_sockaddr);
+#else
     path_len = strlen(recv_sockaddr.sun_path) + sizeof(recv_sockaddr.sun_family);
+#endif
     
     if ((bind(recv_sock, (struct sockaddr*)(&recv_sockaddr), path_len)) < 0) {
         printf("Issue binding to listening socket\n");
@@ -201,13 +207,18 @@ void setup_send_socket() {
 
     send_sockaddr.sun_family = AF_UNIX;
     strcpy(send_sockaddr.sun_path, TO_CCP_SOCKET);
+
+#ifdef __APPLE__    
+    path_len = SUN_LEN(&send_sockaddr);
+#else
     path_len = strlen(send_sockaddr.sun_path) + sizeof(send_sockaddr.sun_family);
+#endif 
+
     if ( (err = (connect(send_sock, (struct sockaddr*)(&send_sockaddr), path_len))) < 0) {
         perror("connect failed. Error");
         exit(-1);
     }
     unlink(send_sockaddr.sun_path);
-    printf("setup send\n");
 }
 
 void setup_ccp_datapath(struct ccp_datapath* dp) {

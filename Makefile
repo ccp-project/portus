@@ -27,7 +27,7 @@ bench: cargo_bench ipc_latency
 algs: generic
 
 generic:
-	cd ccp_generic_cong_avoid && cargo build
+	cd ccp_generic_cong_avoid && cargo +nightly build
 	cd ccp_generic_cong_avoid && cargo +nightly clippy
 
 clean:
@@ -40,6 +40,9 @@ integration-test:
 	python integration_tests/algorithms/compare.py reference-trace
 
 libccp-integration:
-	cd integration_tests/libccp_integration && cargo build
-	cd integration_tests/libccp_integration && make clean && make
-	export LD_LIBRARY_PATH=integration_tests/libccp_integration && integration_tests/libccp_integration/target/debug/integration_test integration_tests/libccp_integration/integration-test
+ifeq ($(OS), Linux)
+	cd integration_tests/libccp_integration && make clean && make && export LD_LIBRARY_PATH=$(shell pwd) && ./target/debug/test_ccp ./test_datapath
+endif
+ifeq ($(OS), Darwin)
+	cd integration_tests/libccp_integration && make clean && make && export DYLD_LIBRARY_PATH=$(shell pwd) && ./target/debug/test_ccp ./test_datapath
+endif

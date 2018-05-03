@@ -8,20 +8,22 @@ endif
 LDFLAGS = -shared  # linking flags
 RM = rm -f  # rm command
 LIB_NAME = ccp
-TARGET_LIB = lib${LIB_NAME}.so # target lib
+LIBCCP = lib${LIB_NAME}.so # target lib
 
 
-INTEGRATE_TARGET = integration-test
+TEST_DATAPATH = test_datapath
 SRCS = libccp/ccp.c libccp/machine.c libccp/serialize.c libccp/ccp_priv.c # source files
 OBJS = $(SRCS:.c=.o)
 
-INTEGRATE_SRCS= integration_test.c
+TEST_CCP = ./target/debug/test_ccp
+
+INTEGRATE_SRCS= test_datapath.c
 INTEGRATE_OBS = $(INTEGRATE_SRCS:.c=.o)
 
 .PHONY: all
-all: ${TARGET_LIB} integration-test
+all: ${LIBCCP} ${TEST_DATAPATH} ${TEST_CCP}
 
-$(TARGET_LIB): $(OBJS)
+$(LIBCCP): $(OBJS)
 	$(CC) ${LDFLAGS} -o $@ $^
 
 $(SRCS:.c=.d):%.d:%.c
@@ -29,11 +31,15 @@ $(SRCS:.c=.d):%.d:%.c
 
 include $(SRCS:.c=.d)
 
-$(INTEGRATE_TARGET): ${TARGET_LIB} ${INTEGRATE_OBJS}
-	$(CC) ${CFLAGS} ${INTEGRATE_SRCS} -L . -l ${LIB_NAME} -o ${INTEGRATE_TARGET}
+$(TEST_DATAPATH): ${LIBCCP} ${INTEGRATE_SRCS}
+	$(CC) ${CFLAGS} ${INTEGRATE_SRCS} -L . -l ${LIB_NAME} -o ${TEST_DATAPATH}
+
+.PHONY: $(TEST_CCP)
+$(TEST_CCP):
+	cargo +nightly build
 
 .PHONY: clean
 clean:
-	-${RM} ${TARGET_LIB} ${OBJS} $(SRCS:.c=.d) ${INTEGRATE_TARGET}
+	-${RM} ${LIBCCP} ${OBJS} $(SRCS:.c=.d) ${TEST_DATAPATH}
 	-${RM} -r *.dSYM
 
