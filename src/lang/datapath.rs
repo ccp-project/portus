@@ -396,7 +396,7 @@ impl RegFile {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Scope {
     pub(crate) named: RegFile,
     pub(crate) num_control: u8,
@@ -448,7 +448,7 @@ impl Scope {
     /// Define variables always accessible in the datapath,
     /// in the context of the most recent packet.
     /// All datapaths shall recognize these Names.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let mut sc = Scope {
             named: RegFile::new(),
             num_control: 0,
@@ -562,6 +562,12 @@ impl Scope {
 
     pub(crate) fn clear_tmps(&mut self) {
         self.tmp.clear()
+    }
+}
+
+impl Default for Scope {
+    fn default() -> Self {
+        Scope::new()
     }
 }
 
