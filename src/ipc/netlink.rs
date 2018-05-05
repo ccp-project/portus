@@ -84,25 +84,29 @@ impl Socket {
 
 const NLMSG_HDRSIZE: usize = 0x10;
 impl super::Ipc for Socket {
-    fn recv<'a>(&self, buf: &'a mut [u8]) -> Result<&'a [u8]> {
-        let res = socket::recvmsg::<()>(
+    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
+        let mut nl_buf = [0u8; 1024];
+        let end = socket::recvmsg::<()>(
             self.0,
-            &[nix::sys::uio::IoVec::from_mut_slice(&mut buf[..])],
+            &[nix::sys::uio::IoVec::from_mut_slice(&mut nl_buf[..])],
             None,
             nix::sys::socket::MsgFlags::empty(),
         ).map(|r| r.bytes)
             .map_err(Error::from)?;
-        Ok(&buf[NLMSG_HDRSIZE..res])
+        buf[..(end - NLMSG_HDRSIZE)].copy_from_slice(&nl_buf[NLMSG_HDRSIZE..end]);
+        Ok(end - NLMSG_HDRSIZE)
     }
     
-    fn recv_nonblocking<'a>(&self, buf: &'a mut [u8]) -> Option<&'a [u8]> {
-        let res = socket::recvmsg::<()>(
+    fn recv_nonblocking(&self, buf: &mut [u8]) -> Option<usize> {
+        let mut nl_buf = [0u8; 1024];
+        let end = socket::recvmsg::<()>(
             self.0,
-            &[nix::sys::uio::IoVec::from_mut_slice(&mut buf[..])],
+            &[nix::sys::uio::IoVec::from_mut_slice(&mut nl_buf[..])],
             None,
             nix::sys::socket::MSG_DONTWAIT,
         ).map(|r| r.bytes).ok()?;
-        Some(&buf[NLMSG_HDRSIZE..res])
+        buf[..(end - NLMSG_HDRSIZE)].copy_from_slice(&nl_buf[NLMSG_HDRSIZE..end]);
+        Some(end - NLMSG_HDRSIZE)
     }
 
     // netlink header format (RFC 3549)

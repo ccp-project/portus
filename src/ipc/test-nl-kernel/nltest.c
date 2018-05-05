@@ -38,7 +38,7 @@ void nl_recv_msg(struct sk_buff *skb) {
 
     res = nl_send_msg(0, nlmsg_data(nlh), hdr.Len);
     if (res < 0) {
-        pr_info("echo send failed: %d\n", res);
+        pr_info("nltest: echo send failed: %d\n", res);
     }
 }
 
@@ -54,7 +54,7 @@ int nl_send_msg(unsigned long data, char *payload, size_t msg_size) {
         GFP_NOWAIT             // @flags: the type of memory to allocate.
     );
     if (!skb_out) {
-        printk(KERN_ERR "Failed to allocate new skb\n");
+        printk(KERN_ERR "nltest: Failed to allocate new skb\n");
         return -20;
     }
 
@@ -79,8 +79,22 @@ int nl_send_msg(unsigned long data, char *payload, size_t msg_size) {
     return res;
 }
 
+static int nl_send_init_msg(void) {
+    char *msg = "hello, netlink";
+    struct CcpMsgHeader hdr = {
+        .Type = 0xff,
+        .Len = 24,
+        .SocketId = 0,
+    };
+    char buf[23];
+
+    memcpy(&buf, &hdr, sizeof(struct CcpMsgHeader));
+    memcpy(&buf[8], msg, 15);
+
+    return nl_send_msg(0, (char*)&buf, 23);
+}
+
 static int __init nl_init(void) {
-    char *msg;
     int res;
     struct netlink_kernel_cfg cfg = {
            .input = nl_recv_msg,
@@ -88,12 +102,12 @@ static int __init nl_init(void) {
     
     nl_sk = netlink_kernel_create(&init_net, NETLINK_USERSOCK, &cfg);
     if (!nl_sk) {
-        printk(KERN_ALERT "Error creating socket.\n");
+        printk(KERN_ALERT "nltest: Error creating socket.\n");
         return -10;
     }
 
-    msg = "hello, netlink";
-    res = nl_send_msg(0, msg, sizeof(char) * 15);
+    printk(KERN_INFO "nltest: Sending initial message");
+    res = nl_send_init_msg();
     if (res < 0) {
         pr_info("send err: %d\n", res);
     }

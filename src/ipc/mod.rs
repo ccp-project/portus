@@ -13,10 +13,10 @@ pub mod kp;
 pub trait Ipc: 'static + Sync + Send {
     /// Blocking send
     fn send(&self, msg: &[u8]) -> Result<()>;
-    /// Blocking listen. Return value is a slice into the provided buffer. Should not allocate.
-    fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]>;
-    /// Non-blocking listen. Return value is a slice into the provided buffer. Should not allocate.
-    fn recv_nonblocking<'a>(&self, msg: &'a mut [u8]) -> Option<&'a [u8]>;
+    /// Blocking listen. Return value is how many bytes were read. Should not allocate.
+    fn recv(&self, msg: &mut [u8]) -> Result<usize>;
+    /// Non-blocking listen. Return value is how many bytes were read. Should not allocate.
+    fn recv_nonblocking(&self, msg: &mut [u8]) -> Option<usize>;
     /// Close the underlying sockets
     fn close(&self) -> Result<()>;
 }
@@ -35,11 +35,10 @@ pub struct BackendBuilder<T: Ipc> {
 }
 
 impl<T: Ipc> BackendBuilder<T> {
-    pub fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Backend<T> {
-        Backend::new(self.sock, self.mode, atomic_bool)
+    pub fn build<'a>(self, atomic_bool: Arc<atomic::AtomicBool>, receive_buf: &'a mut [u8]) -> Backend<'a, T> {
+        Backend::new(self.sock, self.mode, atomic_bool, receive_buf)
     }
 }
-
 
 pub struct BackendSender<T: Ipc>(Weak<T>);
 
@@ -60,23 +59,33 @@ impl<T: Ipc> Clone for BackendSender<T> {
 /// Backend will yield incoming IPC messages forever.
 /// It owns the socket; senders hold weak references.
 /// The atomic bool is a way to stop iterating.
-pub struct Backend<T: Ipc> {
+pub struct Backend<'a, T: Ipc> {
     sock: Rc<T>,
-    rcv_buf: Vec<u8>,
     listen_mode: ListenMode,
     continue_listening: Arc<atomic::AtomicBool>,
+    receive_buf: &'a mut [u8],
+    tot_read: usize,
+    read_until: usize,
 }
 
-impl<T: Ipc> Backend<T> {
+use ::serialize::Msg;
+impl<'a, T: Ipc> Backend<'a, T> {
     /// Pass in a T: Ipc, the Ipc substrate to use.
     /// Return a Backend on which to call send_msg
     /// and listen
-    pub fn new(sock: T, mode: ListenMode, atomic_bool: Arc<atomic::AtomicBool>) -> Backend<T> {
+    pub fn new(
+        sock: T, 
+        listen_mode: ListenMode, 
+        continue_listening: Arc<atomic::AtomicBool>, 
+        receive_buf: &'a mut [u8],
+    ) -> Backend<'a, T> {
         Backend{
             sock: Rc::new(sock),
-            rcv_buf: vec![0u8; 1024],
-            listen_mode: mode,
-            continue_listening: atomic_bool,
+            listen_mode,
+            continue_listening,
+            receive_buf,
+            tot_read: 0,
+            read_until: 0,
         }
     }
 
@@ -87,41 +96,57 @@ impl<T: Ipc> Backend<T> {
     pub fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
         Arc::clone(&(self.continue_listening))
     }
-}
 
+    pub fn next<'b>(&'b mut self) -> Option<Msg<'b>> {
+        // if we have leftover buffer from the last read, parse another message.
+        if self.read_until < self.tot_read {
+            let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
+            self.read_until += consumed;
+            return Some(msg);
+        } else {
+            self.tot_read = self.get_next_read().ok()?;
+            self.read_until = 0;
+            let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
+            self.read_until += consumed;
 
-impl<T: Ipc> Iterator for Backend<T> {
-    type Item = Vec<u8>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+            return Some(msg);
+        }
+    }
+    
+    /// calls ipc repeatedly to read one or more messages.
+    /// Returns a slice into self.receive_buf covering the read data
+    fn get_next_read<'i>(&mut self) -> Result<usize> {
         loop {
             // if continue_loop has been set to false, stop iterating
             if !self.continue_listening.load(atomic::Ordering::SeqCst) {
-                return None;
+                return Err(Error(String::from("Done")));
             }
-            let buf = match self.listen_mode {
-                ListenMode::Blocking => 
-                    match self.sock.recv(&mut self.rcv_buf) {
+
+            let read = match self.listen_mode {
+                ListenMode::Blocking => {
+                    match self.sock.recv(self.receive_buf) {
                         Ok(l) => l,
-                        Err(_) => continue,
-                    },
-                ListenMode::Nonblocking => 
-                    match self.sock.recv_nonblocking(&mut self.rcv_buf) {
+                        _ => continue,
+                    }
+                }
+                ListenMode::Nonblocking => {
+                    match self.sock.recv_nonblocking(self.receive_buf) {
                         Some(l) => l,
-                        None => continue,
-                    },
+                        _ => continue,
+                    }
+                }
             };
 
-            if buf.is_empty() {
+            if read == 0 {
                 continue;
             }
 
-            return Some(buf.to_vec());
+            return Ok(read);
         }
     }
 }
 
-impl<T: Ipc> Drop for Backend<T> {
+impl<'a, T: Ipc> Drop for Backend<'a, T> {
     fn drop(&mut self) {
         self.sock.close().unwrap_or_else(|e| println!("{:?}", e))
     }

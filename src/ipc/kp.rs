@@ -34,7 +34,7 @@ impl Socket {
         })
     }
 
-    pub fn __recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
+    pub fn __recv(&self, msg:&mut [u8]) -> Result<usize> {
         let pollfd = nix::poll::PollFd::new(self.fd.as_raw_fd(), nix::poll::POLLIN);
         let ok = nix::poll::poll(&mut [pollfd], 1000)?;
         if ok < 0 {
@@ -42,7 +42,7 @@ impl Socket {
         }
 
         let len = nix::unistd::read(self.fd.as_raw_fd(), msg).map_err(Error::from)?;
-        Ok(&msg[..len])
+        Ok(len)
     }
 }
 
@@ -53,7 +53,7 @@ impl super::Ipc for Socket {
             .map_err(Error::from)
     }
 
-    fn recv<'a>(&self, msg:&'a mut [u8]) -> Result<&'a [u8]> {
+    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
         if let ListenMode::Nonblocking = self.mode {
             panic!("Blocking call on nonblocking file");
         }
@@ -61,7 +61,7 @@ impl super::Ipc for Socket {
         self.__recv(msg)
     }
 
-    fn recv_nonblocking<'a>(&self, msg:&'a mut [u8]) -> Option<&'a [u8]> {
+    fn recv_nonblocking(&self, msg:&mut [u8]) -> Option<usize> {
         if let ListenMode::Blocking = self.mode {
             panic!("Nonblocking call on blocking file");
         }

@@ -59,8 +59,9 @@ fn test(log: &slog::Logger) {
     let listen_log = log.clone();
 
     { // make this scope so that b is dropped (and the socket closed), so the unload works
+        let mut buf = [0u8; 1024];
         let mut b = portus::ipc::kp::Socket::new(ListenMode::Blocking)
-            .map(|sk| Backend::new(sk, ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true))))
+            .map(|sk| Backend::new(sk, ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
             .expect("ipc initialization");
         let sender = b.sender();
 
@@ -70,9 +71,8 @@ fn test(log: &slog::Logger) {
         let buf = portus::serialize::serialize(&msg).expect("serialize");
         sender.send_msg(&buf[..]).expect("send response");
 
-        let echo = b.next().expect("get message from iterator");
         if let portus::serialize::Msg::Other(raw) =
-            portus::serialize::Msg::from_buf(&echo[..]).expect("parse error") 
+            b.next().expect("get message from iterator")
         {
             let got = TestMsg::from_raw_msg(raw).expect("get from raw");
             assert_eq!(got, test);

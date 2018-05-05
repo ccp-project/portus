@@ -4,7 +4,7 @@ use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};
 
 pub(crate) const CREATE: u8 = 0;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct Msg {

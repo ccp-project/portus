@@ -10,18 +10,17 @@ fn test_ser_over_ipc() {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
-        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
+        let mut buf = [0u8; 1024];
+        let mut b1 = ipc::Backend::new(
+            sk1, 
+            ipc::ListenMode::Blocking, 
+            Arc::new(atomic::AtomicBool::new(true)), 
+            &mut buf[..],
+        );
         tx.send(true).expect("ready chan send");
-        let mut msg = b1.next().expect("receive message"); // Vec<u8>
-
-        // deserialize the message
-        if msg.len() <= 6 {
-            panic!("msg too small: {:?}", msg);
-        }
-
-        let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
+        let msg = b1.next().expect("receive message");
         assert_eq!(
-            got,
+            msg,
             serialize::Msg::Ms(serialize::measure::Msg {
                 sid: 42,
                 num_fields: 1,
@@ -33,7 +32,13 @@ fn test_ser_over_ipc() {
     let sk2 = sk.clone();
     let c2 = thread::spawn(move || {
         rx.recv().expect("ready chan rcv");
-        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
+        let mut buf = [0u8; 1024];
+        let b2 = ipc::Backend::new(
+            sk2, 
+            ipc::ListenMode::Blocking, 
+            Arc::new(atomic::AtomicBool::new(true)), 
+            &mut buf[..],
+        );
 
         // serialize a message
         let m = serialize::measure::Msg {
@@ -61,19 +66,18 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     thread::spawn(move || {
-        let mut b1 = ipc::Backend::new(sk1, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
+        let mut buf = [0u8; 1024];
+        let mut b1 = ipc::Backend::new(
+            sk1, 
+            ipc::ListenMode::Blocking, 
+            Arc::new(atomic::AtomicBool::new(true)), 
+            &mut buf[..],
+        );
         loop {
             tx.send(true).expect("ready chan send");
-            let mut msg = b1.next().expect("receive message"); // Vec<u8>
-
-            // deserialize the message
-            if msg.len() <= 6 {
-                panic!("msg too small: {:?}", msg);
-            }
-
-            let got = serialize::Msg::from_buf(&mut msg[..]).expect("deserialize");
+            let msg = b1.next().expect("receive message");
             assert_eq!(
-                got,
+                msg,
                 serialize::Msg::Ms(serialize::measure::Msg {
                     sid: 42,
                     num_fields: 1,
@@ -89,7 +93,13 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
 
     let sk2 = sk.clone();
     thread::spawn(move || {
-        let b2 = ipc::Backend::new(sk2, ipc::ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)));
+        let mut buf = [0u8; 1024];
+        let b2 = ipc::Backend::new(
+            sk2, 
+            ipc::ListenMode::Blocking, 
+            Arc::new(atomic::AtomicBool::new(true)), 
+            &mut buf[..],
+        );
         let m = serialize::measure::Msg {
             sid: 42,
             num_fields: 1,

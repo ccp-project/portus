@@ -269,70 +269,70 @@ where
     I: Ipc,
     U: CongAlg<I>,
 {
-    let b = backend_builder.build(continue_listening.clone());
+    let mut receive_buf = [0u8; 1024];
+    let mut  b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
     let mut flows = HashMap::<u32, U>::new();
     let backend = b.sender();
-    for m in b {
-        if let Ok(msg) = Msg::from_buf(&m[..]) {
-            match msg {
-                Msg::Cr(c) => {
-                    if flows.remove(&c.sid).is_some() {
-                        cfg.logger.as_ref().map(|log| {
-                            debug!(log, "re-creating already created flow"; "sid" => c.sid);
-                        });
-                    }
-
+    while let Some(msg) = b.next() {
+        match msg {
+            Msg::Cr(c) => {
+                if flows.remove(&c.sid).is_some() {
                     cfg.logger.as_ref().map(|log| {
-                        debug!(log, "creating new flow"; 
-                               "sid" => c.sid, 
-                               "init_cwnd" => c.init_cwnd,
-                               "mss"  =>  c.mss,
-                               "src_ip"  =>  c.src_ip,
-                               "src_port"  =>  c.src_port,
-                               "dst_ip"  =>  c.dst_ip,
-                               "dst_port"  =>  c.dst_port,
-                        );
+                        debug!(log, "re-creating already created flow"; "sid" => c.sid);
                     });
+                }
 
-                    let alg = U::create(
-                        Datapath{
-                            sock_id: c.sid, 
-                            sender: backend.clone()
-                        },
-                        cfg.clone(),
-                        DatapathInfo {
-                            sock_id: c.sid,
-                            init_cwnd: c.init_cwnd,
-                            mss: c.mss,
-                            src_ip: c.src_ip,
-                            src_port: c.src_port,
-                            dst_ip: c.dst_ip,
-                            dst_port: c.dst_port,
-                        },
+                cfg.logger.as_ref().map(|log| {
+                    debug!(log, "creating new flow"; 
+                           "sid" => c.sid, 
+                           "init_cwnd" => c.init_cwnd,
+                           "mss"  =>  c.mss,
+                           "src_ip"  =>  c.src_ip,
+                           "src_port"  =>  c.src_port,
+                           "dst_ip"  =>  c.dst_ip,
+                           "dst_port"  =>  c.dst_port,
                     );
-                    flows.insert(c.sid, alg);
-                }
-                Msg::Ms(m) => {
-                    if flows.contains_key(&m.sid) {
-                        if m.num_fields == 0 {
-                            let mut alg = flows.remove(&m.sid).unwrap();
-                            alg.close();
-                        } else {
-                            let alg = flows.get_mut(&m.sid).unwrap();
-                            alg.on_report(m.sid, Report { fields: m.fields })
-                        }
-                    } else {
-                        cfg.logger.as_ref().map(|log| {
-                            debug!(log, "measurement for unknown flow"; "sid" => m.sid);
-                        });
-                    }
-                }
-                Msg::Ins(_) => {
-                    return Err(Error(String::from("The start() listener should never receive an install \
-                        message, since it is on the CCP side.")));
-                }
-                _ => continue,
+                });
+
+                let alg = U::create(
+                    Datapath{
+                        sock_id: c.sid, 
+                        sender: backend.clone()
+                    },
+                    cfg.clone(),
+                    DatapathInfo {
+                        sock_id: c.sid,
+                        init_cwnd: c.init_cwnd,
+                        mss: c.mss,
+                        src_ip: c.src_ip,
+                        src_port: c.src_port,
+                        dst_ip: c.dst_ip,
+                        dst_port: c.dst_port,
+                    },
+                );
+                flows.insert(c.sid, alg);
             }
+            Msg::Ms(m) => {
+                if flows.contains_key(&m.sid) {
+                    if m.num_fields == 0 {
+                        let mut alg = flows.remove(&m.sid).unwrap();
+                        alg.close();
+                    } else {
+                        let alg = flows.get_mut(&m.sid).unwrap();
+                        alg.on_report(m.sid, Report { fields: m.fields })
+                    }
+                } else {
+                    cfg.logger.as_ref().map(|log| {
+                        debug!(log, "measurement for unknown flow"; "sid" => m.sid);
+                    });
+                }
+            }
+            Msg::Ins(_) => {
+                unimplemented!()
+                //return Err(Error(String::from("The start() listener should never receive an install \
+                //    message, since it is on the CCP side.")));
+            }
+            _ => continue,
         }
     }
     // if the thread has been killed, return that as error

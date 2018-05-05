@@ -15,15 +15,14 @@ macro_rules! translate_result {
 
 pub struct Socket {
     sk: UnixDatagram,
-    dest : String
-
+    dest : String,
 }
 
 impl Socket {
     // Only the CCP process is allowed to use id = 0.
     // For all other datapaths, they should use a known unique identifier
     // such as the port number.
-    pub fn new(bind_to : &str, send_to : &str) -> Result<Self> {
+    pub fn new(bind_to: &str, send_to: &str) -> Result<Self> {
         let bind_to_addr = unix_addr!(bind_to.to_string());
         let send_to_addr = unix_addr!(send_to.to_string());
         // create dir if not already exists
@@ -47,7 +46,6 @@ impl Socket {
             dest: send_to_addr
         })
     }
-
 }
 
 impl super::Ipc for Socket {
@@ -56,15 +54,15 @@ impl super::Ipc for Socket {
     }
 
     // return the number of bytes read if successful.
-    fn recv<'a>(&self, msg: &'a mut [u8]) -> Result<&'a [u8]> {
+    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
         let sz = self.sk.recv(msg).map_err(Error::from)?;
-        Ok(&msg[..sz])
+        Ok(sz)
     }
     
-    fn recv_nonblocking<'a>(&self, msg: &'a mut [u8]) -> Option<&'a [u8]> {
+    fn recv_nonblocking(&self, msg: &mut [u8]) -> Option<usize> {
         self.sk.set_nonblocking(true).ok()?;
         let sz = self.sk.recv(msg).ok()?;
-        Some(&msg[..sz])
+        Some(sz)
     }
 
     fn close(&self) -> Result<()> {

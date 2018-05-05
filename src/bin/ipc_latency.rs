@@ -57,9 +57,8 @@ fn bench<T: Ipc>(
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
 
-            let echo = l.next().expect("receive echo");
             if let portus::serialize::Msg::Other(raw) =
-                portus::serialize::Msg::from_buf(&echo[..]).expect("parse error")
+                l.next().expect("receive echo")
             {
                 let then = TimeMsg::from_raw_msg(raw).expect("get time from raw");
                 time::get_time() - then.0
@@ -97,14 +96,11 @@ fn netlink(iter: u32, lmode: ListenMode) -> Vec<Duration> {
 
     // listen
     let c1 = thread::spawn(move || {
-        let mut nl = portus::ipc::netlink::Socket::new()
-            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true))))
+        let mut buf = [0u8; 1024];
+        let nl = portus::ipc::netlink::Socket::new()
+            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
             .expect("nl ipc initialization");
         tx.send(vec![]).expect("ok to insmod");
-        let msg = nl.next().expect("receive message");
-        let got = std::str::from_utf8(&msg[..]).expect("parse message to str");
-        assert_eq!(got, "hello, netlink\0\0"); // word aligned
-
         tx.send(bench(&nl.sender(), nl, iter)).expect("report rtts");
     });
 
@@ -161,8 +157,9 @@ fn kp(iter: u32, lmode: ListenMode) -> Vec<Duration> {
         .expect("load failed");
 
     let c1 = thread::spawn(move || {
+        let mut receive_buf = [0u8; 1024];
         let kp = portus::ipc::kp::Socket::new(lmode)
-            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true))))
+            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true)), &mut receive_buf[..]))
             .expect("kp ipc initialization");
         tx.send(bench(&kp.sender(), kp, iter)).expect("report rtts");
     });
@@ -187,8 +184,9 @@ fn unix(iter: u32, lmode: ListenMode) -> Vec<Duration> {
 
     // listen
     let c1 = thread::spawn(move || {
+        let mut receive_buf = [0u8; 1024];
         let unix = portus::ipc::unix::Socket::new("in", "out")
-            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true))))
+            .map(|sk| Backend::new(sk, lmode, Arc::new(atomic::AtomicBool::new(true)), &mut receive_buf[..]))
             .expect("unix ipc initialization");
         ready_rx.recv().expect("sync");
         tx.send(bench(&unix.sender(), unix, iter)).expect(
@@ -204,7 +202,7 @@ fn unix(iter: u32, lmode: ListenMode) -> Vec<Duration> {
         ready_tx.send(true).expect("sync");
         for _ in 0..iter {
             let rcv = sk.recv(&mut buf[..]).expect("recv");
-            sk.send(rcv).expect("echo");
+            sk.send(&buf[..rcv]).expect("echo");
         }
     });
 

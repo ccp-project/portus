@@ -126,7 +126,7 @@ mod test_helper {
             fn $id() {
                 let m = $m;
                 let buf: Vec<u8> = ::serialize::serialize::<$typ>(&m.clone()).expect("serialize");
-                let msg = ::serialize::Msg::from_buf(&buf[..]).expect("deserialize");
+                let (msg, _) = ::serialize::Msg::from_buf(&buf[..]).expect("deserialize");
                 match msg {
                     $got => assert_eq!($x, m),
                     _ => panic!("wrong type for message"),
@@ -154,12 +154,16 @@ pub fn serialize<T: AsRawMsg>(m: &T) -> Result<Vec<u8>> {
 fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     let mut buf = Cursor::new(buf);
     let (typ, len, sid) = deserialize_header(&mut buf)?;
+    if len < 8 {
+        return Err(super::Error(format!("nonsensical len in header: ({}, {}, {})", typ, len, sid)));
+    }
+
     let i = buf.position();
     Ok(RawMsg {
         typ,
         len,
         sid,
-        bytes: &buf.into_inner()[i as usize..],
+        bytes: &buf.into_inner()[i as usize..(len as usize)],
     })
 }
 
@@ -187,8 +191,13 @@ impl<'a> Msg<'a> {
         }
     }
 
-    pub fn from_buf(buf: &[u8]) -> Result<Msg> {
-        deserialize(buf).and_then(Msg::from_raw_msg)
+    pub fn from_buf(buf: &[u8]) -> Result<(Msg, usize)> {
+        deserialize(buf)
+            .map(|m| {
+                let len = m.len;
+                (m, len as usize)
+            })
+            .and_then(|(m, l)| Ok((Msg::from_raw_msg(m)?, l)))
     }
 }
 
@@ -262,7 +271,7 @@ mod tests {
         use super::AsRawMsg;
         let m = testmsg::Msg(String::from("testing"));
         let buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m.clone()).expect("serialize");
-        let msg = Msg::from_buf(&buf[..]).expect("deserialize");
+        let (msg, _) = Msg::from_buf(&buf[..]).expect("deserialize");
         match msg {
             Msg::Other(raw) => {
                 let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
@@ -270,5 +279,36 @@ mod tests {
             }
             _ => panic!("wrong type for message"),
         }
+    }
+
+    #[test]
+    fn test_multi_msg() {
+        use super::testmsg;
+        use super::AsRawMsg;
+
+        let m1 = testmsg::Msg(String::from("foo"));
+        let m2 = testmsg::Msg(String::from("bar"));
+        let mut buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m1.clone()).expect("serialize");
+        buf.extend(super::serialize::<testmsg::Msg>(&m2.clone()).expect("serialize"));
+
+        let (msg, len1) = Msg::from_buf(&buf[..]).expect("deserialize");
+        match msg {
+            Msg::Other(raw) => {
+                let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
+                assert_eq!(m1, got);
+            }
+            _ => panic!("wrong type for message"),
+        }
+
+        let (msg, len2) = Msg::from_buf(&buf[len1..]).expect("deserialize");
+        match msg {
+            Msg::Other(raw) => {
+                let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
+                assert_eq!(m2, got);
+            }
+            _ => panic!("wrong type for message"),
+        }
+
+        assert_eq!(buf[len1+len2..].len(), 0);
     }
 }
