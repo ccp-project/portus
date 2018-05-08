@@ -18,8 +18,8 @@ pub fn make_logger() -> slog::Logger {
 #[cfg(all(target_os = "linux"))]
 pub fn ipc_valid(v: String) -> Result<(), String> {
     match v.as_str() {
-        "netlink" | "unix" => Ok(()),
-        _ => Err(format!("ipc must be one of (netlink|unix): {:?}", v)),
+        "netlink" | "unix" | "char" => Ok(()),
+        _ => Err(format!("ipc must be one of (netlink|unix|char): {:?}", v)),
     }
 }
 

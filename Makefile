@@ -40,7 +40,7 @@ integration-test:
 	python integration_tests/algorithms/compare.py reference-trace
 
 libccp-integration:
-	cd integration_tests/libccp_integration && cargo build
+	cd integration_tests/libccp_integration && cargo +nightly build
 	cd integration_tests/libccp_integration && make
 ifeq ($(OS), Linux)
 	cd integration_tests/libccp_integration && export LD_LIBRARY_PATH=$(shell pwd)/integration_tests/libccp_integration && ./target/debug/test_ccp ./test_datapath

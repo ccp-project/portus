@@ -106,6 +106,20 @@ where T: 'static
                 }
             ).unwrap();
         }
+        #[cfg(all(target_os = "linux"))]
+        "char" => {
+            use portus::ipc::kp::Socket;
+            let b = Socket::new(ListenMode::Nonblocking)
+                .map(|sk| BackendBuilder {sock: sk, mode: ListenMode::Nonblocking})
+                .expect("char initialization");
+            portus::run::<_, GenericCongAvoid<_, T>>(
+                b,
+                &portus::Config {
+                    logger: Some(log),
+                    config: cfg,
+                }
+            ).unwrap()
+        }
         _ => unreachable!(),
     }
 }
