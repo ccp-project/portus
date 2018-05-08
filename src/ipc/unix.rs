@@ -3,26 +3,24 @@ use std::os::unix::net::UnixDatagram;
 
 use super::Error;
 use super::Result;
+use std::marker::PhantomData;
 
 macro_rules! unix_addr {
     // TODO for now assumes just a single CCP (id=0)
     ($x:expr) => (format!("/tmp/ccp/0/{}", $x));
 }
 
-macro_rules! translate_result {
-    ($x:expr) => ($x.map(|_| ()).map_err(super::Error::from));
-}
-
-pub struct Socket {
+pub struct Socket<T> {
     sk: UnixDatagram,
-    dest : String,
+    dest: String,
+    _phantom: PhantomData<T>,
 }
 
-impl Socket {
+impl<T> Socket<T> {
     // Only the CCP process is allowed to use id = 0.
     // For all other datapaths, they should use a known unique identifier
     // such as the port number.
-    pub fn new(bind_to: &str, send_to: &str) -> Result<Self> {
+    fn __new(bind_to: &str, send_to: &str) -> Result<Self> {
         let bind_to_addr = unix_addr!(bind_to.to_string());
         let send_to_addr = unix_addr!(send_to.to_string());
         // create dir if not already exists
@@ -43,30 +41,41 @@ impl Socket {
 
         Ok(Socket {
             sk: sock,
-            dest: send_to_addr
+            dest: send_to_addr,
+            _phantom: PhantomData,
         })
     }
 }
 
-impl super::Ipc for Socket {
+impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     fn send(&self, msg: &[u8]) -> Result<()> {
-        translate_result!(self.sk.send_to(msg, self.dest.clone()))
+        self.sk.send_to(msg, self.dest.clone())
+            .map(|_| ())
+            .map_err(Error::from)
     }
 
-    // return the number of bytes read if successful.
     fn recv(&self, msg: &mut [u8]) -> Result<usize> {
-        let sz = self.sk.recv(msg).map_err(Error::from)?;
-        Ok(sz)
+        self.sk.recv(msg).map_err(Error::from)
     }
     
-    fn recv_nonblocking(&self, msg: &mut [u8]) -> Option<usize> {
-        self.sk.set_nonblocking(true).ok()?;
-        let sz = self.sk.recv(msg).ok()?;
-        Some(sz)
-    }
-
     fn close(&self) -> Result<()> {
         use std::net::Shutdown;
-        translate_result!(self.sk.shutdown(Shutdown::Both))
+        self.sk.shutdown(Shutdown::Both).map_err(Error::from)
+    }
+}
+
+use super::Blocking;
+impl Socket<Blocking> {
+    pub fn new(bind_to: &str, send_to: &str) -> Result<Self> {
+        Socket::__new(bind_to, send_to)
+    }
+}
+
+use super::Nonblocking;
+impl Socket<Nonblocking> {
+    pub fn new(bind_to: &str, send_to: &str) -> Result<Self> {
+        let sk = Socket::__new(bind_to, send_to)?;
+        sk.sk.set_nonblocking(true).map_err(Error::from)?;
+        Ok(sk)
     }
 }

@@ -5,7 +5,7 @@ extern crate portus;
 
 use libccp_integration_test::IntegrationTest;
 use std::process::{Command, Stdio};
-use portus::ipc::{BackendBuilder, ListenMode};
+use portus::ipc::{BackendBuilder, Blocking};
 use std::{thread,time};
 use std::sync::mpsc;
 use std::env;
@@ -26,11 +26,10 @@ fn start_ccp(log: slog::Logger, tx: mpsc::Sender<String>) -> portus::CCPHandle {
     
 	info!(log, "Start ccp integration test";);
 	use portus::ipc::unix::Socket;
-    let b = Socket::new("in", "out")
+    let b = Socket::<Blocking>::new("in", "out")
         .map(|sk| BackendBuilder {
             sock: sk,
-            mode: ListenMode::Blocking
-            })
+        })
         .expect("ipc initialization");
 	portus::spawn::<_, IntegrationTest<_>>(
 		b,

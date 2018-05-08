@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex, atomic};
-use super::Ipc;
+use super::{Blocking, Ipc};
 use ::test_helper::TestMsg;
 use ::serialize;
 use ::serialize::Msg;
@@ -30,10 +30,6 @@ impl Ipc for FakeIpc {
         Ok(w)
     }
 
-    fn recv_nonblocking(&self, msg: &mut [u8]) -> Option<usize> {
-        Some(self.recv(msg).unwrap())
-    }
-
     fn close(&self) -> Result<(), super::Error> {
         Ok(())
     }
@@ -50,11 +46,10 @@ fn test_unix() {
 
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
-        let sk2 = super::unix::Socket::new("out", "in").expect("init socket");
+        let sk2 = super::unix::Socket::<Blocking>::new("out", "in").expect("init socket");
         let mut buf = [0u8; 1024];
         let b2 = super::Backend::new(
             sk2, 
-            super::ListenMode::Blocking, 
             Arc::new(atomic::AtomicBool::new(true)), 
             &mut buf[..],
         );
@@ -65,11 +60,10 @@ fn test_unix() {
         );
     });
         
-    let sk1 = super::unix::Socket::new("in", "out").expect("init socket");
+    let sk1 = super::unix::Socket::<Blocking>::new("in", "out").expect("init socket");
     let mut buf = [0u8; 1024];
     let mut b1 = super::Backend::new(
         sk1, 
-        super::ListenMode::Blocking, 
         Arc::new(atomic::AtomicBool::new(true)), 
         &mut buf[..],
     );

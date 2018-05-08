@@ -2,7 +2,7 @@ use clap;
 use clap::Arg;
 use {DEFAULT_SS_THRESH, GenericCongAvoid, GenericCongAvoidAlg, GenericCongAvoidConfig, GenericCongAvoidConfigSS, GenericCongAvoidConfigReport};
 use portus;
-use portus::ipc::{BackendBuilder, ListenMode};
+use portus::ipc::{BackendBuilder, Blocking};
 use slog;
 use std;
 use time;
@@ -81,8 +81,8 @@ where T: 'static
     match ipc {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out")
-                .map(|sk| BackendBuilder {sock: sk,  mode: ListenMode::Blocking})
+            let b = Socket::<Blocking>::new("in", "out")
+                .map(|sk| BackendBuilder {sock: sk})
                 .expect("ipc initialization");
             portus::run::<_, GenericCongAvoid<_, T>>(
                 b,
@@ -95,8 +95,8 @@ where T: 'static
         #[cfg(all(target_os = "linux"))]
         "netlink" => {
             use portus::ipc::netlink::Socket;
-            let b = Socket::new()
-                .map(|sk| BackendBuilder {sock: sk,  mode: ListenMode::Blocking})
+            let b = Socket::<Blocking>::new()
+                .map(|sk| BackendBuilder {sock: sk})
                 .expect("ipc initialization");
             portus::run::<_, GenericCongAvoid<_, T>>(
                 b,

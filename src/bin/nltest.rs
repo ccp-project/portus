@@ -25,7 +25,7 @@ fn test_ccp_present(log: &slog::Logger) -> bool {
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
 fn test(log: &slog::Logger) {
     use std::process::Command;
-    use portus::ipc::{Backend, ListenMode};
+    use portus::ipc::{Backend, Blocking};
 
     if !test_ccp_present(log) {
         warn!(log, "ccp.ko loaded, aborting test");
@@ -62,8 +62,8 @@ fn test(log: &slog::Logger) {
     let listen_log = log.clone();
     let c1 = thread::spawn(move || {
         let mut buf = [0u8; 1024];
-        let mut b = portus::ipc::netlink::Socket::new()
-            .map(|sk| Backend::new(sk, ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
+        let mut b = portus::ipc::netlink::Socket::<Blocking>::new()
+            .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
             .expect("ipc initialization");
         let sender = b.sender();
         debug!(listen_log, "listen");

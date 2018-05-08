@@ -13,7 +13,6 @@ fn test_ser_over_ipc() {
         let mut buf = [0u8; 1024];
         let mut b1 = ipc::Backend::new(
             sk1, 
-            ipc::ListenMode::Blocking, 
             Arc::new(atomic::AtomicBool::new(true)), 
             &mut buf[..],
         );
@@ -35,7 +34,6 @@ fn test_ser_over_ipc() {
         let mut buf = [0u8; 1024];
         let b2 = ipc::Backend::new(
             sk2, 
-            ipc::ListenMode::Blocking, 
             Arc::new(atomic::AtomicBool::new(true)), 
             &mut buf[..],
         );
@@ -69,7 +67,6 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
         let mut buf = [0u8; 1024];
         let mut b1 = ipc::Backend::new(
             sk1, 
-            ipc::ListenMode::Blocking, 
             Arc::new(atomic::AtomicBool::new(true)), 
             &mut buf[..],
         );
@@ -96,7 +93,6 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
         let mut buf = [0u8; 1024];
         let b2 = ipc::Backend::new(
             sk2, 
-            ipc::ListenMode::Blocking, 
             Arc::new(atomic::AtomicBool::new(true)), 
             &mut buf[..],
         );

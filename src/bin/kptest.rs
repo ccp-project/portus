@@ -12,7 +12,7 @@ use std::sync::{Arc, atomic};
 #[cfg(all(target_os = "linux"))] // kp is linux-only
 fn test(log: &slog::Logger) {
     use std::process::Command;
-    use portus::ipc::{Backend, ListenMode};
+    use portus::ipc::{Backend, Blocking};
 
     debug!(log, "unload module");
     Command::new("sudo")
@@ -60,8 +60,8 @@ fn test(log: &slog::Logger) {
 
     { // make this scope so that b is dropped (and the socket closed), so the unload works
         let mut buf = [0u8; 1024];
-        let mut b = portus::ipc::kp::Socket::new(ListenMode::Blocking)
-            .map(|sk| Backend::new(sk, ListenMode::Blocking, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
+        let mut b = portus::ipc::kp::Socket::<Blocking>::new()
+            .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
             .expect("ipc initialization");
         let sender = b.sender();
 

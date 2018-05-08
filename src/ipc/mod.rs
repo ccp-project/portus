@@ -1,8 +1,8 @@
 use std::rc::{Rc, Weak};
+use std::sync::{Arc, atomic};
 
 use super::Error;
 use super::Result;
-use std::sync::{Arc, atomic};
 
 #[cfg(all(target_os = "linux"))]
 pub mod netlink;
@@ -15,28 +15,24 @@ pub trait Ipc: 'static + Sync + Send {
     fn send(&self, msg: &[u8]) -> Result<()>;
     /// Blocking listen. Return value is how many bytes were read. Should not allocate.
     fn recv(&self, msg: &mut [u8]) -> Result<usize>;
-    /// Non-blocking listen. Return value is how many bytes were read. Should not allocate.
-    fn recv_nonblocking(&self, msg: &mut [u8]) -> Option<usize>;
     /// Close the underlying sockets
     fn close(&self) -> Result<()>;
 }
 
-#[derive(Copy, Clone)]
-pub enum ListenMode {
-    Blocking,
-    Nonblocking,
-}
+/// Marker type specifying that the IPC socket should make blocking calls to the underlying socket
+pub struct Blocking;
+/// Marker type specifying that the IPC socket should make nonblocking calls to the underlying socket
+pub struct Nonblocking;
 
 /// Backend builder contains the objects
 /// needed to build a new backend.
 pub struct BackendBuilder<T: Ipc> {
     pub sock: T,
-    pub mode: ListenMode,
 }
 
 impl<T: Ipc> BackendBuilder<T> {
     pub fn build<'a>(self, atomic_bool: Arc<atomic::AtomicBool>, receive_buf: &'a mut [u8]) -> Backend<'a, T> {
-        Backend::new(self.sock, self.mode, atomic_bool, receive_buf)
+        Backend::new(self.sock, atomic_bool, receive_buf)
     }
 }
 
@@ -61,7 +57,6 @@ impl<T: Ipc> Clone for BackendSender<T> {
 /// The atomic bool is a way to stop iterating.
 pub struct Backend<'a, T: Ipc> {
     sock: Rc<T>,
-    listen_mode: ListenMode,
     continue_listening: Arc<atomic::AtomicBool>,
     receive_buf: &'a mut [u8],
     tot_read: usize,
@@ -75,13 +70,11 @@ impl<'a, T: Ipc> Backend<'a, T> {
     /// and listen
     pub fn new(
         sock: T, 
-        listen_mode: ListenMode, 
         continue_listening: Arc<atomic::AtomicBool>, 
         receive_buf: &'a mut [u8],
     ) -> Backend<'a, T> {
         Backend{
             sock: Rc::new(sock),
-            listen_mode,
             continue_listening,
             receive_buf,
             tot_read: 0,
@@ -122,19 +115,9 @@ impl<'a, T: Ipc> Backend<'a, T> {
                 return Err(Error(String::from("Done")));
             }
 
-            let read = match self.listen_mode {
-                ListenMode::Blocking => {
-                    match self.sock.recv(self.receive_buf) {
-                        Ok(l) => l,
-                        _ => continue,
-                    }
-                }
-                ListenMode::Nonblocking => {
-                    match self.sock.recv_nonblocking(self.receive_buf) {
-                        Some(l) => l,
-                        _ => continue,
-                    }
-                }
+            let read = match self.sock.recv(self.receive_buf) {
+                Ok(l) => l,
+                _ => continue,
             };
 
             if read == 0 {

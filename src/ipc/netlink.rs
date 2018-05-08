@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use super::Error;
 use super::Result;
 
@@ -6,12 +8,13 @@ use libc::c_int;
 extern crate nix;
 use nix::sys::socket;
 
-pub struct Socket(c_int);
+pub struct Socket<T>(c_int, PhantomData<T>);
 
 const NL_CFG_F_NONROOT_RECV: c_int = 1;
 const NL_CFG_F_NONROOT_SEND: c_int = (1 << 1);
+const NLMSG_HDRSIZE: usize = 0x10;
 
-impl Socket {
+impl<T> Socket<T> {
     fn __new() -> Result<Self> {
         let fd = if let Ok(fd) = socket::socket(
             nix::sys::socket::AddressFamily::Netlink,
@@ -35,7 +38,7 @@ impl Socket {
 
         socket::bind(fd, &nix::sys::socket::SockAddr::new_netlink(pid as u32, 0))?;
 
-        Ok(Socket(fd))
+        Ok(Socket(fd, PhantomData))
     }
 
     pub fn new() -> Result<Self> {
@@ -80,35 +83,20 @@ impl Socket {
 
         Ok(())
     }
-}
 
-const NLMSG_HDRSIZE: usize = 0x10;
-impl super::Ipc for Socket {
-    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
+    fn __recv(&self, buf: &mut [u8], flags: nix::sys::socket::MsgFlags) -> Result<usize> {
         let mut nl_buf = [0u8; 1024];
         let end = socket::recvmsg::<()>(
             self.0,
             &[nix::sys::uio::IoVec::from_mut_slice(&mut nl_buf[..])],
             None,
-            nix::sys::socket::MsgFlags::empty(),
+            flags,
         ).map(|r| r.bytes)
             .map_err(Error::from)?;
         buf[..(end - NLMSG_HDRSIZE)].copy_from_slice(&nl_buf[NLMSG_HDRSIZE..end]);
         Ok(end - NLMSG_HDRSIZE)
     }
     
-    fn recv_nonblocking(&self, buf: &mut [u8]) -> Option<usize> {
-        let mut nl_buf = [0u8; 1024];
-        let end = socket::recvmsg::<()>(
-            self.0,
-            &[nix::sys::uio::IoVec::from_mut_slice(&mut nl_buf[..])],
-            None,
-            nix::sys::socket::MSG_DONTWAIT,
-        ).map(|r| r.bytes).ok()?;
-        buf[..(end - NLMSG_HDRSIZE)].copy_from_slice(&nl_buf[NLMSG_HDRSIZE..end]);
-        Some(end - NLMSG_HDRSIZE)
-    }
-
     // netlink header format (RFC 3549)
     // 0               1               2               3
     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -121,7 +109,7 @@ impl super::Ipc for Socket {
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     // |                      Process ID (PID)                       |
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    fn send(&self, buf: &[u8]) -> Result<()> {
+    fn __send(&self, buf: &[u8]) -> Result<()> {
         let len = NLMSG_HDRSIZE + buf.len();
         let mut msg = Vec::<u8>::with_capacity(len);
         msg.resize(4, 0u8);
@@ -142,13 +130,44 @@ impl super::Ipc for Socket {
         ).map(|_| ())
             .map_err(Error::from)
     }
-
-    fn close(&self) -> Result<()> {
+    
+    fn __close(&self) -> Result<()> {
         let ok = unsafe { libc::close(self.0) as i32 };
         if ok < 0 {
             Err(Error(format!("could not close netlink socket: {}", ok)))
         } else {
             Ok(())
         }
+    }
+}
+
+
+use super::Blocking;
+impl super::Ipc for Socket<Blocking> {
+    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
+        self.__recv(buf, nix::sys::socket::MsgFlags::empty())
+    }
+
+    fn send(&self, buf: &[u8]) -> Result<()> {
+        self.__send(buf)
+    }
+
+    fn close(&self) -> Result<()> {
+        self.__close()
+    }
+}
+
+use super::Nonblocking;
+impl super::Ipc for Socket<Nonblocking> {
+    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
+        self.__recv(buf, nix::sys::socket::MSG_DONTWAIT)
+    }
+
+    fn send(&self, buf: &[u8]) -> Result<()> {
+        self.__send(buf)
+    }
+
+    fn close(&self) -> Result<()> {
+        self.__close()
     }
 }

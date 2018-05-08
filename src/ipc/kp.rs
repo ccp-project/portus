@@ -6,35 +6,40 @@ use std::fs::OpenOptions;
 use std::fs::File;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
+use std::marker::PhantomData;
 
 use super::Error;
 use super::Result;
-use super::ListenMode;
 
-pub struct Socket {
+pub struct Socket<T> {
     fd : File,
-    mode: ListenMode
+    _phantom: PhantomData<T>,
 }
 
-impl Socket {
-    pub fn new(mode: ListenMode) -> Result<Self> {
+impl<T> Socket<T> {
+    fn mk_opts() -> std::fs::OpenOptions {
         let mut options = OpenOptions::new();
         options.write(true).read(true);
-        match mode {
-            ListenMode::Blocking => { /* do nothing */ }
-            ListenMode::Nonblocking => {
-                options.custom_flags(libc::O_NONBLOCK);
-            }
-        };
+        options
+    }
 
+    fn open(options: std::fs::OpenOptions) -> Result<Self> {
         let file = options.open("/dev/ccpkp")?;
         Ok(Socket {
             fd : file,
-            mode,
+            _phantom: PhantomData,
         })
     }
+}
 
-    pub fn __recv(&self, msg:&mut [u8]) -> Result<usize> {
+impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
+    fn send(&self, buf:&[u8]) -> Result<()> {
+        nix::unistd::write(self.fd.as_raw_fd(), buf)
+            .map(|_| ())
+            .map_err(Error::from)
+    }
+
+    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
         let pollfd = nix::poll::PollFd::new(self.fd.as_raw_fd(), nix::poll::POLLIN);
         let ok = nix::poll::poll(&mut [pollfd], 1000)?;
         if ok < 0 {
@@ -44,32 +49,24 @@ impl Socket {
         let len = nix::unistd::read(self.fd.as_raw_fd(), msg).map_err(Error::from)?;
         Ok(len)
     }
-}
-
-impl super::Ipc for Socket {
-    fn send(&self, buf:&[u8]) -> Result<()> {
-        nix::unistd::write(self.fd.as_raw_fd(), buf)
-            .map(|_| ())
-            .map_err(Error::from)
-    }
-
-    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
-        if let ListenMode::Nonblocking = self.mode {
-            panic!("Blocking call on nonblocking file");
-        }
-
-        self.__recv(msg)
-    }
-
-    fn recv_nonblocking(&self, msg:&mut [u8]) -> Option<usize> {
-        if let ListenMode::Blocking = self.mode {
-            panic!("Nonblocking call on blocking file");
-        }
-
-        self.__recv(msg).ok()
-    }
 
     fn close(&self) -> Result<()> {
         Ok(())
+    }
+}
+
+use super::Blocking;
+impl Socket<Blocking> {
+    pub fn new() -> Result<Self> {
+        Self::open(Self::mk_opts())
+    }
+}
+
+use super::Nonblocking;
+impl Socket<Nonblocking> {
+    pub fn new() -> Result<Self> {
+        let mut options = Self::mk_opts();
+        options.custom_flags(libc::O_NONBLOCK);
+        Self::open(options)
     }
 }
