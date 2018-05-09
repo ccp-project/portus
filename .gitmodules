@@ -1,3 +1,6 @@
 [submodule "integration_tests/libccp_integration/libccp"]
 	path = integration_tests/libccp_integration/libccp
 	url = git@github.mit.edu:nebula/libccp.git
+[submodule "src/ipc/test-char-dev/ccp-kernel"]
+	path = src/ipc/test-char-dev/ccp-kernel
+	url = git@github.mit.edu:nebula/ccp-kernel.git

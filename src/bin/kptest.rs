@@ -14,10 +14,20 @@ fn test(log: &slog::Logger) {
     use std::process::Command;
     use portus::ipc::{Backend, Blocking};
 
+    debug!(log, "update ccp-kernel submodule");
+    Command::new("git")
+        .arg("submodule")
+        .arg("update")
+        .arg("--init")
+        .arg("--recursive")
+        .current_dir("./")
+        .output()
+        .expect("submodule update failed");
+
     debug!(log, "unload module");
     Command::new("sudo")
-        .arg("./ccpkp_unload")
-        .current_dir("./src/ipc/test-char-dev")
+        .arg("./ccp_kernel_unload")
+        .current_dir("./src/ipc/test-char-dev/ccp-kernel")
         .output()
         .expect("unload failed");
 
@@ -25,36 +35,33 @@ fn test(log: &slog::Logger) {
     debug!(log, "make clean");
     let mkcl = Command::new("make")
         .arg("clean")
-        .current_dir("./src/ipc/test-char-dev")
+        .current_dir("./src/ipc/test-char-dev/ccp-kernel")
         .output()
         .expect("make failed to start");
-    trace!(log, "make clean"; "output" => ?String::from_utf8_lossy(&mkcl.stdout));
+    trace!(log, "make clean ccp-kernel"; "output" => ?String::from_utf8_lossy(&mkcl.stdout));
 
     // compile kernel module
     debug!(log, "make");
     let mk = Command::new("make")
-        .current_dir("./src/ipc/test-char-dev")
+        .arg("ONE_PIPE=y")
+        .current_dir("./src/ipc/test-char-dev/ccp-kernel")
         .output()
         .expect("make failed to start");
-    trace!(log, "make"; "output" => ?String::from_utf8_lossy(&mk.stdout));
+    trace!(log, "make ccp-kernel"; "output" => ?String::from_utf8_lossy(&mk.stdout));
 
     debug!(log, "load module");
-    Command::new("sudo")
-        .arg("./ccpkp_load")
-        .current_dir("./src/ipc/test-char-dev")
+    let load = Command::new("sudo")
+        .arg("./ccp_kernel_load")
+        .arg("ipc=1")
+        .current_dir("./src/ipc/test-char-dev/ccp-kernel")
         .output()
         .expect("load failed");
-    
-    let output = Command::new("sudo")
-        .arg("python")
-        .arg("test.py")
-        .current_dir("./src/ipc/test-char-dev")
-        .output()
-        .expect("test failed");
-    if !output.status.success() {
-        panic!("{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    trace!(log, "./ccp_kernel_load"; "output" => ?String::from_utf8_lossy(&load.stdout));
+    let load_stderr = String::from_utf8_lossy(&load.stderr);
+    if load_stderr.len() > 0 {
+        println!("{}", load_stderr);
     }
-
+    
     // listen
     let listen_log = log.clone();
 
@@ -83,8 +90,8 @@ fn test(log: &slog::Logger) {
 
     debug!(log, "unload module");
     Command::new("sudo")
-        .arg("./ccpkp_unload")
-        .current_dir("./src/ipc/test-char-dev")
+        .arg("./ccp_kernel_unload")
+        .current_dir("./src/ipc/test-char-dev/ccp-kernel")
         .output()
         .expect("unload failed");
 
