@@ -104,8 +104,7 @@ fn serialize_op(o: &Op) -> u8 {
         Op::Mul      => 12,
         Op::NotIf    => 13,
         Op::Or       => unreachable!(),
-        Op::Reset    => 14,
-        Op::Sub      => 15,
+        Op::Sub      => 14,
     }
 }
 

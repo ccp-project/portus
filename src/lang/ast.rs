@@ -24,10 +24,6 @@ pub enum Op {
     Or,  // (or a b) return a || b
     Sub, // (sub a b) return a - b
 
-    // SPECIAL: takes no arguments
-    // directs the state machine to reset its internal time
-    Reset,
-
     // SPECIAL: cannot be called by user, only generated
     Def, // top of prog: (def (Foo 0) (Bar 100000000) ...)
 
@@ -44,7 +40,6 @@ pub enum Op {
 pub enum Command {
     Fallthrough, // Continue and evaluate the next `when` clause. desugars to `(:= shouldContinue true)`
     Report, // Send a report. desugars to `(bind shouldReport true)`
-    Reset, // Reset the control pattern time counter. Compiles to {Tmp(_) <- reset 0 0}.
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -167,8 +162,7 @@ named!(
         map!(
             alt!(
                 tag!("fallthrough") => { |_| Command::Fallthrough } |
-                tag!("report")      => { |_| Command::Report      } |
-                tag!("reset")       => { |_| Command::Reset       }
+                tag!("report")      => { |_| Command::Report      }
             ),
             |c| Ok(Expr::Cmd(c))
         ),
@@ -214,13 +208,6 @@ impl Expr {
                     Op::Bind,
                     Box::new(Expr::Atom(Prim::Name(String::from("__shouldReport")))),
                     Box::new(Expr::Atom(Prim::Bool(true))),
-                )
-            }
-            Expr::Cmd(Command::Reset) => {
-                *self = Expr::Sexp(
-                    Op::Reset,
-                    Box::new(Expr::Atom(Prim::Bool(false))),
-                    Box::new(Expr::Atom(Prim::Bool(false))),
                 )
             }
             Expr::Atom(_) => {},
@@ -496,7 +483,6 @@ mod tests {
     fn commands() {
         let foo = b"
             (report)
-            (reset)
             (fallthrough)
         ";
 
@@ -505,7 +491,6 @@ mod tests {
             e,
             vec![
                 Expr::Cmd(Command::Report),
-                Expr::Cmd(Command::Reset),
                 Expr::Cmd(Command::Fallthrough),
             ]
         );

@@ -304,19 +304,10 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                             "cannot bind stateful instruction to Reg::Tmp: {:?}",
                             right_expr,
                         ))),
-                        (&Reg::Implicit(idx, _), _) if idx != 3 => {
-                            instrs.push(Instr {
-                                res: left.clone(),
-                                op: *o,
-                                left: left.clone(),
-                                right,
-                            });
-
-                            Ok((instrs, left))
-                        }
-                        (&Reg::Control(_, _), _) |
-                        (&Reg::Local(_, _), _)   |
-                        (&Reg::Report(_, _), _)  |
+                        (&Reg::Implicit(_, _), _)  |
+                        (&Reg::Control(_, _), _)   |
+                        (&Reg::Local(_, _), _)     |
+                        (&Reg::Report(_, _, _), _) |
                         (&Reg::Tmp(_, _), _) => {
                             instrs.push(Instr {
                                 res: left.clone(),
@@ -350,17 +341,6 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     });
 
                     Ok((instrs, Reg::None))
-                }
-                Op::Reset => {
-                    let res = scope.new_tmp(Type::Bool(None));
-                    instrs.push(Instr {
-                        res: res.clone(),
-                        op: *o,
-                        left: Reg::ImmBool(false),
-                        right: Reg::ImmBool(false),
-                    });
-
-                    Ok((instrs, res))
                 }
                 Op::Def => unreachable!(),
             }
@@ -1216,7 +1196,7 @@ mod tests {
         (when (> Micros 3000)
             (bind Report.foo 5)
             (report)
-            (reset)
+            (:= Micros 0)
         )";
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
@@ -1284,10 +1264,10 @@ mod tests {
                         right: Reg::ImmBool(true),
                     },
                     Instr {
-                        res: Reg::Tmp(0, Type::Bool(None)),
-                        op: Op::Reset,
-                        left: Reg::ImmBool(false),
-                        right: Reg::ImmBool(false),
+                        res: sc.get("Micros").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("Micros").unwrap().clone(),
+                        right: Reg::ImmNum(0),
                     },
                 ]
             }
