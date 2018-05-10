@@ -13,3 +13,9 @@ slog = "2"
 slog-async = "2"
 slog-term = "2"
 time = "0.1"
+quote = "0.5"
+walkdir = "2"
+
+[dependencies.syn]
+version = "0.13"
+features = ["full", "visit", "fold", "extra-traits"]
