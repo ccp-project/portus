@@ -33,7 +33,7 @@ pub enum Reg {
     Implicit(u8, Type),
     Local(u8, Type),
     Primitive(u8, Type),
-    Report(u8, Type),
+    Report(u8, Type, bool),
     Tmp(u8, Type),
     None,
 }
@@ -48,7 +48,7 @@ impl Reg {
             Reg::Local(_, ref t)     |
             Reg::Primitive(_, ref t) | 
             Reg::Tmp(_, ref t)       | 
-            Reg::Report(_, ref t)    => Ok(t.clone()),
+            Reg::Report(_, ref t, _)    => Ok(t.clone()),
             Reg::None                => Ok(Type::None),
         }
     }
@@ -125,7 +125,7 @@ impl Bin {
 
                             Ok(instrs)
                         }
-                        Reg::Report(_, _) => unreachable!(),
+                        Reg::Report(_, _, _) => unreachable!(),
                         x => {
                             Err(Error::from(format!("Flag expression must result in bool: {:?}", x)))
                         }
@@ -283,7 +283,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left must be a mutable register
                     // and if right is a Reg::None, we have to replace it
                     match (&left, &right) {
-                        (&Reg::Report(_, _), &Reg::None) => {
+                        (&Reg::Report(_, _, _), &Reg::None) => {
                             let last_instr = instrs.last_mut().map(|last| {
                                 // Double-check that the instruction being replaced
                                 // actually is a Reg::None before we go replace it
@@ -490,10 +490,10 @@ impl Scope {
         self.tmp[id as usize].clone()
     }
 
-    pub(crate) fn new_report(&mut self, name: String, t: Type) -> Reg {
+    pub(crate) fn new_report(&mut self, is_volatile: bool, name: String, t: Type) -> Reg {
         let id = self.num_perm;
         self.num_perm += 1;
-        let r = Reg::Report(id, t);
+        let r = Reg::Report(id, t, is_volatile);
         self.named.insert(name, r.clone());
         r
     }
@@ -520,8 +520,8 @@ impl Scope {
             .get_mut(name)
             .ok_or_else(|| Error::from(format!("Unknown {:?}", name)))
             .and_then(|old_reg| match *old_reg {
-                Reg::Report(idx, Type::Name(_)) => {
-                    *old_reg = Reg::Report(idx, t.clone());
+                Reg::Report(idx, Type::Name(_), v) => {
+                    *old_reg = Reg::Report(idx, t.clone(), v);
                     Ok(old_reg.clone())
                 }
                 Reg::Local(idx, Type::Name(_)) => {
@@ -562,7 +562,7 @@ impl Iterator for ScopeDefInstrIter {
         loop {
             let (_, reg) = self.v.next()?;
             match reg {
-                Reg::Report(_, Type::Num(Some(n))) |
+                Reg::Report(_, Type::Num(Some(n)), _) |
                 Reg::Control(_, Type::Num(Some(n))) => {
                     return Some(Instr {
                         res: reg.clone(),
@@ -571,7 +571,7 @@ impl Iterator for ScopeDefInstrIter {
                         right: Reg::ImmNum(n),
                     })
                 }
-                Reg::Report(_, Type::Bool(Some(b))) |
+                Reg::Report(_, Type::Bool(Some(b)), _) |
                 Reg::Control(_, Type::Bool(Some(b))) => {
                     return Some(Instr {
                         res: reg.clone(),
@@ -603,7 +603,7 @@ mod tests {
     #[test]
     fn primitives() {
         let foo = b"
-        (def (Report.foo 0))
+        (def (Report (foo 0)))
         (when true
             (bind Report.foo 4)
         )";
@@ -636,7 +636,7 @@ mod tests {
         assert_eq!(sc.get("Rate"            ).unwrap().clone(), Reg::Implicit(5, Type::Num(None)));
 
         // state
-        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Report(0, Type::Num(Some(0))));
+        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Report(0, Type::Num(Some(0)), false));
     }
 
     #[test]
@@ -707,19 +707,6 @@ mod tests {
         let (p2, mut sc2) = Prog::new_with_scope(foo2).unwrap();
         let b2 = Bin::compile_prog(&p2, &mut sc2).unwrap();
         assert_eq!(b2, b);
-    }
-
-    #[test]
-    fn optional_prefix() {
-        let foo = b"
-        (def (foo 0))
-        (when true
-            (bind Report.foo 4)
-        )
-        ";
-
-        let err = Prog::new_with_scope(foo).unwrap_err();
-        println!("{:?}", err);
     }
 
     #[test]

@@ -160,13 +160,17 @@ impl IntoIterator for Reg {
                     Ok((4u8, u32::from(i)))
                 }
             }
-            Reg::Report(i, _) => {
+            Reg::Report(i, _, is_volatile) => {
                 if i > 15 {
                     Err(Error::from(
                         format!("Report Register index too big (max 15): {:?}", i),
                     ))
                 } else {
-                    Ok((5u8, u32::from(i)))
+                    // in libccp:
+                    // VOLATILE_REPORT_REG is type #5
+                    // NONVOLATILE_REPORT_REG is typ #6
+                    // so, here, we differentiate between variables marked by the volatile keyword.
+                    Ok((if is_volatile { 5u8 } else { 6u8 }, u32::from(i)))
                 }
             }
             Reg::Tmp(i, _) => {
@@ -175,7 +179,7 @@ impl IntoIterator for Reg {
                         format!("Tmp Register index too big (max 15): {:?}", i),
                     ))
                 } else {
-                    Ok((6u8, u32::from(i)))
+                    Ok((7u8, u32::from(i)))
                 }
             }
             Reg::None => unreachable!(),
@@ -214,9 +218,9 @@ mod tests {
             }],
             instrs: vec![
                 Instr {
-                    res: Reg::Report(6, Type::Num(Some(0))),
+                    res: Reg::Report(6, Type::Num(Some(0)), true),
                     op: Op::Def,
-                    left: Reg::Report(6, Type::Num(Some(0))),
+                    left: Reg::Report(6, Type::Num(Some(0)), true),
                     right: Reg::ImmNum(0),
                 },
                 Instr {
@@ -226,9 +230,9 @@ mod tests {
                     right: Reg::ImmBool(true),
                 },
                 Instr {
-                    res: Reg::Report(6, Type::Num(Some(0))),
+                    res: Reg::Report(6, Type::Num(Some(0)), true),
                     op: Op::Bind,
-                    left: Reg::Report(6, Type::Num(Some(0))),
+                    left: Reg::Report(6, Type::Num(Some(0)), true),
                     right: Reg::ImmNum(4),
                 },
             ]
@@ -264,7 +268,7 @@ mod tests {
         assert_eq!(
             v,
             vec![ 
-                0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0x3f, 0x01, 0xff, 0xff, 0xff, 0x3f, 
+                0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0x3f, 0x01, 0xff, 0xff, 0xff, 0x3f, 
             ]
         );
     }
@@ -273,9 +277,9 @@ mod tests {
     fn do_ser_def_max_imm() {
         // make a Bin to serialize
         let b = Instr {
-            res: Reg::Report(2, Type::Num(Some(u64::max_value()))),
+            res: Reg::Report(2, Type::Num(Some(u64::max_value())), true),
             op: Op::Def,
-            left: Reg::Report(2, Type::Num(Some(u64::max_value()))),
+            left: Reg::Report(2, Type::Num(Some(u64::max_value())), true),
             right: Reg::ImmNum(u64::max_value()),
         };
 

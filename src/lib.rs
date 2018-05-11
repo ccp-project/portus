@@ -119,7 +119,7 @@ pub struct Report {
 impl Report {
     pub fn get_field(&self, field: &str, sc: &Scope) -> Option<u64> {
         sc.get(field).and_then(|r| match *r {
-            Reg::Report(idx, _) => {
+            Reg::Report(idx, _, _) => {
                 if idx as usize >= self.fields.len() {
                     return None;
                 }

@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn serialize_install_msg() {
         let foo = b"
-        (def (Report.foo 0))
+        (def (Report (volatile foo 0)))
         (when true
             (bind Report.foo 4)
         )

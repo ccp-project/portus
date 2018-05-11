@@ -93,14 +93,14 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     fn install_datapath_interval(&self, interval: time::Duration) -> Scope {
         self.control_channel.install(
             format!("
-                (def 
-                    (Report.acked 0) 
-                    (Report.sacked 0) 
-                    (Report.loss 0) 
-                    (Report.timeout false) 
-                    (Report.rtt 0)
-                    (Report.inflight 0)
-                )
+                (def (Report
+                    (volatile acked 0) 
+                    (volatile sacked 0) 
+                    (volatile loss 0) 
+                    (volatile timeout false) 
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
                 (when true
                     (:= Report.inflight Flow.packets_in_flight)
                     (:= Report.rtt Flow.rtt_sample_us)
@@ -112,11 +112,11 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 )
                 (when (|| Report.timeout (> Report.loss 0))
                     (report)
-                    (reset)
+                    (:= Micros 0)
                 )
                 (when (> Micros {})
                     (report)
-                    (reset)
+                    (:= Micros 0)
                 )
             ", interval.num_microseconds().unwrap()).as_bytes()
         ).unwrap()
@@ -126,14 +126,14 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     fn install_datapath_interval_rtt(&self) -> Scope {
         self.control_channel.install(
             b"
-                (def 
-                    (Report.acked 0) 
-                    (Report.sacked 0) 
-                    (Report.loss 0) 
-                    (Report.timeout false) 
-                    (Report.rtt 0)
-                    (Report.inflight 0)
-                )
+                (def (Report
+                    (volatile acked 0) 
+                    (volatile sacked 0) 
+                    (volatile loss 0) 
+                    (volatile timeout false) 
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
                 (when true
                     (:= Report.inflight Flow.packets_in_flight)
                     (:= Report.rtt Flow.rtt_sample_us)
@@ -145,11 +145,11 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 )
                 (when (|| Report.timeout (> Report.loss 0))
                     (report)
-                    (reset)
+                    (:= Micros 0)
                 )
                 (when (> Micros Flow.rtt_sample_us)
                     (report)
-                    (reset)
+                    (:= Micros 0)
                 )
             ",
         ).unwrap()
@@ -159,14 +159,14 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     fn install_ack_update(&self) -> Scope {
         self.control_channel.install(
             b"
-                (def 
-                    (Report.acked 0) 
-                    (Report.sacked 0) 
-                    (Report.loss 0) 
-                    (Report.timeout false) 
-                    (Report.rtt 0)
-                    (Report.inflight 0)
-                )
+                (def (Report
+                    (volatile acked 0) 
+                    (volatile sacked 0) 
+                    (volatile loss 0) 
+                    (volatile timeout false) 
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
                 (when true
                     (:= Report.acked (+ Report.acked Ack.bytes_acked))
                     (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
@@ -185,14 +185,14 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     fn install_ss_update(&self) -> Scope {
         self.control_channel.install(
             b"
-                (def 
-                    (Report.acked 0) 
-                    (Report.sacked 0) 
-                    (Report.loss 0) 
-                    (Report.timeout false) 
-                    (Report.rtt 0)
-                    (Report.inflight 0)
-                )
+                (def (Report
+                    (volatile acked 0) 
+                    (volatile sacked 0) 
+                    (volatile loss 0) 
+                    (volatile timeout false) 
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
                 (when true
                     (:= Report.acked (+ Report.acked Ack.bytes_acked))
                     (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
