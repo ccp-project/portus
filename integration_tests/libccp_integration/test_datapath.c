@@ -1,13 +1,14 @@
-#include "libccp/ccp.h"
-#include "stdio.h"
-#include "libccp/serialize.h"
-#include <sys/socket.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <sys/un.h>
 #include <pthread.h>
-#include <sys/time.h>
+#include "stdio.h"
+#include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "libccp/ccp.h"
+#include "libccp/serialize.h"
 
 /*
  * Mock datapath for integration tests with userspace CCP in portus.
