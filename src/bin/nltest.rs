@@ -4,10 +4,7 @@ extern crate slog_term;
 extern crate slog_async;
 extern crate portus;
 
-use portus::test_helper::TestMsg;
-use portus::serialize::AsRawMsg;
 use slog::Drain;
-use std::sync::{Arc, atomic};
 
 /// If ccp.ko is loaded, return false.
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
@@ -26,6 +23,9 @@ fn test_ccp_present(log: &slog::Logger) -> bool {
 fn test(log: &slog::Logger) {
     use std::process::Command;
     use portus::ipc::{Backend, Blocking};
+    use portus::test_helper::TestMsg;
+    use portus::serialize::AsRawMsg;
+    use std::sync::{Arc, atomic};
 
     if !test_ccp_present(log) {
         warn!(log, "ccp.ko loaded, aborting test");

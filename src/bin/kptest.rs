@@ -4,15 +4,15 @@ extern crate slog_term;
 extern crate slog_async;
 extern crate portus;
 
-use portus::test_helper::TestMsg;
-use portus::serialize::AsRawMsg;
 use slog::Drain;
-use std::sync::{Arc, atomic};
 
 #[cfg(all(target_os = "linux"))] // kp is linux-only
 fn test(log: &slog::Logger) {
     use std::process::Command;
     use portus::ipc::{Backend, Blocking};
+    use portus::test_helper::TestMsg;
+    use portus::serialize::AsRawMsg;
+    use std::sync::{Arc, atomic};
 
     debug!(log, "update ccp-kernel submodule");
     Command::new("git")

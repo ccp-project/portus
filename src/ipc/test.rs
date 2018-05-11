@@ -1,8 +1,5 @@
-use std::sync::{Arc, Mutex, atomic};
-use super::{Blocking, Ipc};
-use ::test_helper::TestMsg;
-use ::serialize;
-use ::serialize::Msg;
+use std::sync::{Arc, Mutex};
+use super::Ipc;
 
 #[derive(Clone)]
 pub struct FakeIpc(Arc<Mutex<Vec<u8>>>);
@@ -41,6 +38,11 @@ impl Ipc for FakeIpc {
 fn test_unix() {
     use std;
     use std::thread;
+    use std::sync::atomic;
+    use ::test_helper::TestMsg;
+    use super::Blocking;
+    use ::serialize;
+    use ::serialize::Msg;
 
     let (tx, rx) = std::sync::mpsc::channel();
 
