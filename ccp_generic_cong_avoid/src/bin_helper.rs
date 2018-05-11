@@ -109,8 +109,8 @@ where T: 'static
         #[cfg(all(target_os = "linux"))]
         "char" => {
             use portus::ipc::kp::Socket;
-            let b = Socket::new(ListenMode::Nonblocking)
-                .map(|sk| BackendBuilder {sock: sk, mode: ListenMode::Nonblocking})
+            let b = Socket::<Blocking>::new()
+                .map(|sk| BackendBuilder {sock: sk})
                 .expect("char initialization");
             portus::run::<_, GenericCongAvoid<_, T>>(
                 b,
