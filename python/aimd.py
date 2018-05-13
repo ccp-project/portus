@@ -4,17 +4,12 @@ import portus
 class AIMD(portus.AlgBase):
     INIT_CWND = 10
 
-    def __init__(self, datapath, datapath_info):
-        self.datapath = datapath
-        self.datapath_info = datapath_info
-
+    def on_create(self):
         self.init_cwnd = float(self.datapath_info.mss * AIMD.INIT_CWND)
         self.cwnd = self.init_cwnd
-
         self.install_program()
 
     def install_program(self):
-        sys.stderr.write("Installing program...\n")
         self.datapath.install(
 	    """\
                 (def (Report

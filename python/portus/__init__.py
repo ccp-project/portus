@@ -6,14 +6,13 @@ import sys
 
 ### Class ### 
 method_signatures = {
-    '__init__' : ['self', 'datapath', 'datapath_info'],
+    'on_create' : ['self'],
     'on_report' : ['self', 'r']
 }
 class AlgBase:
     __metaclass__ = ABCMeta
     @abstractmethod
-    def __init__(self):
-        #raise NotImplementedError
+    def on_create(self):
         return NotImplemented
     @abstractmethod
     def on_report(self):

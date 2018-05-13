@@ -121,11 +121,29 @@ impl<T: Ipc> CongAlg<T> for PyAlg {
         let py_alg_inst = py_create_flow(
             cfg.config.py, 
             cfg.config.alg_class,
-            py_datapath,
-            py_info
         ).unwrap_or_else(|e| {
             e.print(py); panic!("Failed to instantiate python class")
         });
+
+        py_setattr(&py_alg_inst, py, "datapath", py_datapath).unwrap_or_else(|e| {
+        	e.print(py); panic!("Failed to set alg.dapath")
+        });
+        py_setattr(&py_alg_inst, py, "datapath_info", py_info).unwrap_or_else(|e| {
+        	e.print(py); panic!("Failed to set alg.datapath_info")
+        });
+
+        match py_alg_inst.call_method0(py, "on_create") {
+            Ok(_ret) => {}
+            Err(e) => {
+                e.print(py);
+                cfg.logger.as_ref().map(|log| {
+                    error!(log, "on_create() failed to complete";
+                       "sid" => info.sock_id,
+                   );
+                });
+            }
+        };
+
 
         Self {
             logger : cfg.logger,
@@ -391,8 +409,8 @@ fn py_connect(py:pyo3::Python<'static>, ipc:String, alg:&PyObjectRef, blocking:b
 use std::os::raw::c_int;
 // Creates an instance of cls and calls __init__(self, datapath, info)
 // Returns a pointer to the instance
-fn py_create_flow(py : Python, cls :*mut pyo3::ffi::PyTypeObject, datapath : Py<PyDatapath>, info : Py<DatapathInfo>) -> PyResult<PyObject> {
-    let args = PyTuple::new(py, &[datapath.into_object(py), info.into_object(py)]).into_ptr();
+fn py_create_flow(py : Python, cls :*mut pyo3::ffi::PyTypeObject) -> PyResult<PyObject> {
+    let args = PyTuple::empty(py).into_ptr(); 
     let kwargs = PyTuple::empty(py).into_ptr();
     unsafe {
         match (*cls).tp_new {
@@ -414,4 +432,20 @@ fn py_create_flow(py : Python, cls :*mut pyo3::ffi::PyTypeObject, datapath : Py<
             None => Ok(py.None())
         }
     }
+}
+
+pub fn py_setattr<N, V>(o : &PyObject, py : Python, attr_name : N, val : V) -> PyResult<()>
+	where N: ToBorrowedObject, V: ToBorrowedObject
+{
+	attr_name.with_borrowed_ptr(
+		py, move |attr_name|
+		val.with_borrowed_ptr(py, |val| unsafe {
+			let ret = pyo3::ffi::PyObject_SetAttr(o.as_ptr(), attr_name, val);
+			if ret != -1 {
+				Ok(())
+			} else {
+				Err(PyErr::fetch(py))
+			}
+		})
+	)
 }

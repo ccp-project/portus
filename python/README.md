@@ -45,18 +45,21 @@ import portus
 
 An algorithm in portus is represented by a Python class and an instance of this class represents a single TCP flow. A new instance is created *for each* flow. 
 
-This class must be a subclass of `portus.AlgBase` and implement the following two method signatures:
-* `__init__(self, datapath, datapath_info)` :
-  - `datapath` is a pointer to the datapath object that can be used to install
+This class must be a subclass of `portus.AlgBase` and must implement the two 
+following method signatures:
+* `on_create(self)` 
+* `on_report(self, r)` 
+  - `r` is a Report object containing all the fields defined in your datapath program, as well as the current `Cwnd` and `Rate`. Suppose your program defines just a single variable: `(def (acked 0))`, where `acked` adds up the total bytes acked since the last report. This value can be accessed as `r.acked`. Similarly, you can access the cwnd or rate as `r.Cwnd` and `r.Rate` (captialization important!).
+
+Each instantiation of the class will automatically have two fields inside self:
+  - `self.datapath` is a pointer to the datapath object that can be used to install
     new datapath programs. It has two available methods:
     1. `datapath.install( str )`, which takes a datapath program as a string. It compiles the program and installs it in the datapath. It does not return anything, though it may raise an exception if your program fails to compile.  
     2. `datapath.update_field(field, val)`, which takes a variable in the `Report` scope of your datapath program and sets the value to `val`. For example, to update just the cwnd, you could use `datapath.update_field("Cwnd", 10000)` (note: cwnd is denoted in bytes, not packets). 
-  - `datapath_info` is a struct containing fields about this particular flow from the datapath:
+  - `self.datapath_info` is a struct containing fields about this particular flow from the datapath (this could be used, for example, in `on_create` to set an initial cwnd based on the datapath's `mss`)
     * `sock_id`: unique id of this flow in the datapath
     * `init_cwnd`: the initial congestion window this flow will have until you set it
     * `src_ip`, `src_port`, `dst_ip`, `dst_port`: the ip address and port of the source and destination for the flow 
-* `on_report(self, r)` 
-  - `r` is a Report object containing all the fields defined in your datapath program, as well as the current `Cwnd` and `Rate`. Suppose your program defines just a single variable: `(def (acked 0))`, where `acked` adds up the total bytes acked since the last report. This value can be accessed as `r.acked`. Similarly, you can access the cwnd or rate as `r.Cwnd` and `r.Rate` (captialization important!).
 
 
 ### Datapath Programs
@@ -71,6 +74,9 @@ Datapath programs are used to (1) define *which* statistics to send back to your
     do_other_stuff ...
 )
 ```
+
+# NOTE: the following info is out of date as the datapath program API has been
+updated
 
 ##### 1. Report Variable Definitions
 
