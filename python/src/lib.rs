@@ -7,7 +7,8 @@ extern crate time;
 
 extern crate portus;
 use portus::{CongAlg, Config, Datapath, DatapathTrait, Report};
-use portus::ipc::{BackendBuilder, Ipc, ListenMode};
+use portus::ipc;
+use portus::ipc::{BackendBuilder, Ipc};
 use portus::lang::Scope;
 
 extern crate pyo3;
@@ -282,10 +283,7 @@ fn py_connect(py:pyo3::Python<'static>, ipc:String, alg:&PyObjectRef, blocking:b
     if let Err(e) = portus::algs::ipc_valid(ipc.clone()) {
         raise!(ValueError, e);
     };
-    let listen_mode = match blocking {
-        true  => ListenMode::Blocking,
-        false => ListenMode::Nonblocking,
-    };
+
     // Obtain pointer to class object that can be instantiated
     let alg:PyObject = alg.into();
     let alg_type:&PyType = match alg.extract(py) {
@@ -314,41 +312,79 @@ fn py_connect(py:pyo3::Python<'static>, ipc:String, alg:&PyObjectRef, blocking:b
         debug,
     };
 
-    match ipc.as_str() {
+    match blocking {
+	    true => match ipc.as_str() {
 
-        "unix" => {
-            use portus::ipc::unix::Socket;
-            let b = Socket::new("in", "out")
-                .map(|sk| BackendBuilder {sock: sk, mode: listen_mode })
-                .expect("create unix socket");
-            portus::run::<_, PyAlg>(
-                b,
-                &portus::Config {
-                    logger: Some(log),
-                    config: cfg, 
-                }
-            ).unwrap();
-        }
+	        "unix" => {
+	            use portus::ipc::unix::Socket;
+	            let b = Socket::<ipc::Blocking>::new("in", "out")
+	                .map(|sk| BackendBuilder {sock: sk})
+	                .expect("create unix socket");
+	            portus::run::<_, PyAlg>(
+	                b,
+	                &portus::Config {
+	                    logger: Some(log),
+	                    config: cfg, 
+	                }
+	            ).unwrap();
+	        }
 
-        #[cfg(all(target_os = "linux"))]
-        "netlink" => {
-            use portus::ipc::netlink::Socket;
-            let b = Socket::new()
-                .map(|sk| BackendBuilder {sock: sk, mode: listen_mode })
-                .expect("create netlink socket");
+	        #[cfg(all(target_os = "linux"))]
+	        "netlink" => {
+	            use portus::ipc::netlink::Socket;
+	            let b = Socket::<ipc::Blocking>::new()
+	                .map(|sk| BackendBuilder {sock: sk})
+	                .expect("create netlink socket");
 
-            portus::run::<_, PyAlg>(
-                b,
-                &portus::Config {
-                    logger: Some(log),
-                    config: cfg,
-                }
-            ).unwrap();
+	            portus::run::<_, PyAlg>(
+	                b,
+	                &portus::Config {
+	                    logger: Some(log),
+	                    config: cfg,
+	                }
+	            ).unwrap();
 
-        }
+	        }
 
-        _ => unreachable!()
+	        _ => unreachable!()
 
+	    }
+	    false => match ipc.as_str() {
+
+	        "unix" => {
+	            use portus::ipc::unix::Socket;
+	            let b = Socket::<ipc::Nonblocking>::new("in", "out")
+	                .map(|sk| BackendBuilder {sock: sk})
+	                .expect("create unix socket");
+	            portus::run::<_, PyAlg>(
+	                b,
+	                &portus::Config {
+	                    logger: Some(log),
+	                    config: cfg, 
+	                }
+	            ).unwrap();
+	        }
+
+	        #[cfg(all(target_os = "linux"))]
+	        "netlink" => {
+	            use portus::ipc::netlink::Socket;
+	            let b = Socket::<ipc::Nonblocking>::new()
+	                .map(|sk| BackendBuilder {sock: sk})
+	                .expect("create netlink socket");
+
+	            portus::run::<_, PyAlg>(
+	                b,
+	                &portus::Config {
+	                    logger: Some(log),
+	                    config: cfg,
+	                }
+	            ).unwrap();
+
+	        }
+
+	        _ => unreachable!()
+
+	    }
     }
 }
 
