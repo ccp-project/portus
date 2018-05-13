@@ -17,14 +17,14 @@ class AIMD(portus.AlgBase):
         sys.stderr.write("Installing program...\n")
         self.datapath.install(
 	    """\
-                (def 
-                    (Report.acked 0) 
-                    (Report.sacked 0) 
-                    (Report.loss 0) 
-                    (Report.timeout false)
-                    (Report.rtt 0)
-                    (Report.inflight 0)
-                )
+                (def (Report
+                    (volatile acked 0) 
+                    (volatile sacked 0) 
+                    (volatile loss 0) 
+                    (volatile timeout false)
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
                 (when true
                     (:= Report.inflight Flow.packets_in_flight)
                     (:= Report.rtt Flow.rtt_sample_us)
@@ -36,9 +36,11 @@ class AIMD(portus.AlgBase):
                 )
                 (when (|| Report.timeout (> Report.loss 0))
                     (report)
+                    (:= Micros 0)
                 )
-                (when (> Ns Flow.rtt_sample_us)
+                (when (> Micros Flow.rtt_sample_us)
                     (report)
+                    (:= Micros 0)
                 )
             """.format(self.cwnd)
 	)
