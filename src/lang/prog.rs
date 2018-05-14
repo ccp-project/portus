@@ -5,16 +5,15 @@ use super::datapath::{Scope, Type, check_atom_type};
 /// An `Event` is a condition expression and a sequence of execution expressions.
 /// If the condition expression evaluates to `true`, the execution expressions are
 /// evaluated.
+/// Scope cascades through the `Expr`:
+/// Expr with `Type::Name` will in scope for successive `Expr`
 #[derive(Debug, PartialEq)]
 pub struct Event {
     pub flag: Expr,
     pub body: Vec<Expr>,
 }
 
-/// a `Prog` is multiple `Event`
-/// Scope cascades through the `Expr`:
-/// Expr with `Type::Name` will in scope for successive `Expr`
-/// Other `Expr` will not be evaluated.
+/// AST representation of a datapath program.
 #[derive(Debug, PartialEq)]
 pub struct Prog(pub Vec<Event>);
 
@@ -22,8 +21,8 @@ pub struct Prog(pub Vec<Event>);
 // (def (decl)...) grammar
 // ------------------------------------------
 
-/// Declare a state variable and provide an initial value
-/// Optionally declare the variable "volatile", meaning it gets reset on "(report)"
+// Declare a state variable and provide an initial value
+// Optionally declare the variable "volatile", meaning it gets reset on "(report)"
 named!(
     decl<(bool, Type, Type)>,
     ws!(delimited!(
@@ -49,8 +48,8 @@ named!(
     ))
 );
 
-/// a Prog has special syntax *at the beginning* to declare variables.
-/// (def (decl) ...)
+// a Prog has special syntax *at the beginning* to declare variables.
+// (def (decl) ...)
 named!(
     defs<Vec<(bool, Type, Type)>>,
     ws!(delimited!(
@@ -93,7 +92,7 @@ named!(
 // (when (bool expr) (body)...) grammar
 // ------------------------------------------
 
-/// (when (single expr) (expr)...)
+// (when (single expr) (expr)...)
 named!(
     event<Result<Event>>,
     ws!(delimited!(
@@ -121,6 +120,8 @@ named!(
 );
 
 impl Prog {
+    /// Turn raw bytes into an AST representation, including implementing syntactic sugar features
+    /// such as `(report)` and `(fallthrough)`. 
     pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
         use nom::{IResult, Needed};

@@ -1,3 +1,6 @@
+//! When the datapath program specifies, the datapath sends a Report message containing
+//! measurements to CCP. Use the `Scope` returned from compiling the program to query the values.
+
 use std::io::prelude::*;
 use {Result, Error};
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s, u64_to_u8s, u64_from_u8s};

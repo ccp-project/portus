@@ -1,3 +1,57 @@
+//! Welcome to CCP.
+//!
+//! This crate, portus, implements a CCP. This includes:
+//! 1. An interface definition for external types wishing to implement congestion control
+//!    algorithms (`CongAlg`).
+//! 2. A [compiler](lang/index.html) for datapath programs.
+//! 3. An IPC and serialization [layer](ipc/index.html) for communicating with libccp-compliant datapaths.
+//!
+//! The entry points into portus are [run](./fn.run.html) and [spawn](./fn.spawn.html), which start
+//! the CCP algorithm runtime. This runtime listens for datapath messages and dispatches calls to
+//! the appropriate congestion control methods.
+//!
+//! Example
+//! =======
+//! 
+//! The following congestion control algorithm sets the congestion window to `42`, and prints the
+//! minimum RTT observed over 42 millisecond intervals.
+//!
+//! ```
+//! extern crate portus;
+//! use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
+//! use portus::ipc::Ipc;
+//! use portus::lang::Scope;
+//!
+//! struct MyCongestionControlAlgorithm(Scope);
+//! #[derive(Clone)]
+//! struct MyEmptyConfig;
+//!
+//! impl<T: Ipc> CongAlg<T> for MyCongestionControlAlgorithm {
+//!     type Config = MyEmptyConfig;
+//!     fn name() -> String {
+//!         String::from("My congestion control algorithm")
+//!     }
+//!     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self {
+//!         let sc = control.install(b"
+//!             (def (Report
+//!                 (volatile minrtt +infinity)
+//!             ))
+//!             (when true
+//!                 (:= Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
+//!             )
+//!             (when (> Micros 42000)
+//!                 (report)
+//!                 (reset)
+//!             )
+//!         ").unwrap();
+//!         MyCongestionControlAlgorithm(sc)
+//!     }
+//!     fn on_report(&mut self, sock_id: u32, m: Report) {
+//!         println!("minrtt: {:?}", m.get_field("Report.minrtt", &self.0).unwrap());
+//!     }
+//! }
+//! ```
+
 #![feature(box_patterns)]
 #![feature(test)]
 #![feature(never_type)]
@@ -31,6 +85,7 @@ use std::sync::{Arc, atomic};
 use std::thread;
 
 #[derive(Clone, Debug)]
+/// CCP custom error type.
 pub struct Error(pub String);
 
 impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
@@ -39,14 +94,19 @@ impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
     }
 }
 
+/// CCP custom `Result` type, using `Error` as the `Err` type.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// A collection of methods to interact with the datapath.
 pub trait DatapathTrait {
+    /// Install a fold function in the datapath.
     fn install(&self, src: &[u8]) -> Result<Scope>;
+    /// Update the value of a register in an already-installed fold function.
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
     fn get_sock_id(&self) -> u32;
 }
 
+/// A collection of methods to interact with the datapath.
 pub struct Datapath<T: Ipc>{
     sock_id: u32,
     sender: BackendSender<T>,
@@ -72,7 +132,6 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
         Ok(sc)
     }
 
-    /// pass a Scope and (Reg name, new_value) pairs
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()> {
         let fields : Vec<(Reg, u64)> = update.iter().map(
             |&(reg_name, new_value)| {
@@ -112,33 +171,9 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
     }
 }
 
-pub struct Report {
-    fields: Vec<u64>,
-}
-
-impl Report {
-    pub fn get_field(&self, field: &str, sc: &Scope) -> Option<u64> {
-        sc.get(field).and_then(|r| match *r {
-            Reg::Report(idx, _, _) => {
-                if idx as usize >= self.fields.len() {
-                    return None;
-                }
-
-                Some(self.fields[idx as usize])
-            },
-            _ => None,
-        })
-    }
-}
-
-pub trait CongAlg<T: Ipc> {
-    type Config: Clone;
-    fn name() -> String;
-    fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
-    fn on_report(&mut self, sock_id: u32, m: Report);
-    fn close(&mut self) {} // default implementation does nothing (optional method)
-}
-
+/// Defines a `slog::Logger` to use for (optional) logging 
+/// and a custom `CongAlg::Config` to pass into algorithms as new flows
+/// are created.
 pub struct Config<I, U: ?Sized>
 where
     I: Ipc,
@@ -176,6 +211,9 @@ where
 }
 
 #[derive(Clone)]
+/// The set of information passed by the datapath to CCP
+/// when a connection starts. It includes a unique 5-tuple (CCP socket id + source and destination
+/// IP and port), the initial congestion window (`init_cwnd`), and flow MSS.
 pub struct DatapathInfo {
     pub sock_id: u32,
     pub init_cwnd: u32,
@@ -186,22 +224,57 @@ pub struct DatapathInfo {
     pub dst_port: u32,
 }
 
+/// Contains the values of the pre-defined Report struct from the fold function.
+/// Use `get_field` to query its values using the names defined in the fold function.
+pub struct Report {
+    fields: Vec<u64>,
+}
+
+impl Report {
+    /// Uses the `Scope` returned by `lang::compile` (or `install`) to query 
+    /// the `Report` for its values.
+    pub fn get_field(&self, field: &str, sc: &Scope) -> Option<u64> {
+        sc.get(field).and_then(|r| match *r {
+            Reg::Report(idx, _, _) => {
+                if idx as usize >= self.fields.len() {
+                    return None;
+                }
+
+                Some(self.fields[idx as usize])
+            },
+            _ => None,
+        })
+    }
+}
+
+/// Implement this trait to define a CCP congestion control algorithm.
+pub trait CongAlg<T: Ipc> {
+    /// Implementors use `Config` to define custion configuration parameters.
+    type Config: Clone;
+    fn name() -> String;
+    fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
+    fn on_report(&mut self, sock_id: u32, m: Report);
+    fn close(&mut self) {} // default implementation does nothing (optional method)
+}
+
 #[derive(Debug)]
+/// A handle to manage running instances of the CCP execution loop.
 pub struct CCPHandle {
     pub continue_listening: Arc<atomic::AtomicBool>,
     pub join_handle: thread::JoinHandle<Result<()>>,
 }
 
 impl CCPHandle {
-    /// sets the Arc<AtomicBool> to be false, so running function can return
+    /// Instruct the execution loop to exit.
     pub fn kill(&self) {
        self.continue_listening.store(false, atomic::Ordering::SeqCst);
     }
 
-    /// handles errors from the run_inner processs that was just launched
-    /// TODO: join_handle.join() returns an Err instead of Ok, because
-    /// some function panicked, this function should return an error
-    /// with the same string from the panic.
+    // TODO: join_handle.join() returns an Err instead of Ok, because
+    // some function panicked, this function should return an error
+    // with the same string from the panic.
+    /// Collect the error from the thread running the CCP execution loop
+    /// once it exits.
     pub fn wait(self) -> Result<()> {
         match self.join_handle.join() {
             Ok(r) => r,
@@ -210,11 +283,19 @@ impl CCPHandle {
     }
 }
 
-/// Main execution loop of ccp for the static pipeline use case.
-/// The run method blocks 'forever' - and only returns if something caused execution to fail.
-/// Callers must construct a backend builder, and a config to pass into run_inner.
-/// The call to run_inner should never return unless there was an error.
-/// Takes a reference to a config
+/// Main execution loop of CCP for the static pipeline use case.
+/// The `run` method blocks 'forever'; it only returns in two cases:
+/// 1. The IPC socket is closed.
+/// 2. An invalid message is received.
+///
+/// Callers must construct a `BackendBuilder` and a `Config`.
+/// Algorithm implementations should
+/// 1. Initializes an ipc backendbuilder (depending on the datapath).
+/// 2. Calls `run()`, or `spawn() `passing the `BackendBuilder b` and a `Config` with optional
+/// logger and command line argument structure.
+/// Run() or spawn() create arc<AtomicBool> objects,
+/// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
+/// boolean to kill the thread.
 pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: &Config<I, U>) -> Result<!>
 where
     I: Ipc,
@@ -227,11 +308,15 @@ where
     }
 }
 
-/// Spawns a ccp process, and returns a CCPHandle object.
-/// The caller can call kill on the CCPHandle.
-/// This causes the backend built from the backend builder to set
-/// a flag to false and stop iterating.
-/// Takes a config (not reference)
+/// Spawn a thread which will perform the CCP execution loop. Returns
+/// a `CCPHandle`, which the caller can use to cause the execution loop
+/// to stop.
+/// The `run` method blocks 'forever'; it only returns in three cases:
+/// 1. The IPC socket is closed.
+/// 2. An invalid message is received.
+/// 3. The caller calls `CCPHandle::kill()`
+///
+/// See [`run`](./fn.run.html) for more information.
 pub fn spawn<I, U>(backend_builder: BackendBuilder<I>, cfg: Config<I, U>) -> CCPHandle
 where
     I: Ipc,
@@ -246,24 +331,17 @@ where
     }
 }
 
-/// Main execution inner loop of ccp.
-/// Blocks "forever", or until the iterator stops iterating.
-/// In this use case, an algorithm implementation is a binary which
-/// 1. Initializes an ipc backendbuilder (depending on the datapath).
-/// 2. Calls `run()`, or `spawn() `passing the `BackendBuilder b` and a `Config` with optional
-/// logger and command line argument structure.
-/// Run() or spawn() create arc<AtomicBool> objects,
-/// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
-/// boolean to kill the thread.
-///
-/// `run_inner()`:
-/// 1. listens for messages from the datapath
-/// 2. call the appropriate message in `U: impl CongAlg`
-/// The function can return for two reasons: an error, or the iterator returned None.
-/// The latter should only happen for spawn(), and not for run().
-/// It returns any error, either from:
-/// 1. the IPC channel failing
-/// 2. Receiving an install control message (only the datapath should receive these).
+// Main execution inner loop of ccp.
+// Blocks "forever", or until the iterator stops iterating.
+//
+// `run_inner()`:
+// 1. listens for messages from the datapath
+// 2. call the appropriate message in `U: impl CongAlg`
+// The function can return for two reasons: an error, or the iterator returned None.
+// The latter should only happen for spawn(), and not for run().
+// It returns any error, either from:
+// 1. the IPC channel failing
+// 2. Receiving an install control message (only the datapath should receive these).
 fn run_inner<I, U>(backend_builder: BackendBuilder<I>, cfg: &Config<I, U>, continue_listening: Arc<atomic::AtomicBool>)  -> Result<()>
 where
     I: Ipc,

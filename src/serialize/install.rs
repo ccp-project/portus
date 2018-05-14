@@ -1,3 +1,5 @@
+//! CCP sends this message containing a datapath program. 
+
 use std::io::prelude::*;
 use Result;
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};

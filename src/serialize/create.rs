@@ -1,3 +1,5 @@
+//! Message sent from datapath to CCP when a new flow starts.
+
 use std::io::prelude::*;
 use Result;
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};

@@ -26,6 +26,7 @@ pub(crate) fn check_atom_type(e: &Expr) -> Result<Type> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+/// A datapath register. 
 pub enum Reg {
     Control(u8, Type),
     ImmNum(u64),
@@ -55,6 +56,7 @@ impl Reg {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A single event to handle in the datapath, if the flag instruction evaluates truthily.
 pub struct Event {
     pub flag_idx: u32,
     pub num_flag_instrs: u32,
@@ -63,6 +65,7 @@ pub struct Event {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A single instruction to execute in the datapath.
 pub struct Instr {
     pub res: Reg,
     pub op: Op,
@@ -71,6 +74,7 @@ pub struct Instr {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Instruction-level representation of a datapath program.
 pub struct Bin {
     pub events: Vec<Event>,
     pub instrs: Vec<Instr>,
@@ -377,6 +381,8 @@ impl RegFile {
 }
 
 #[derive(Clone, Debug)]
+/// A mapping from variable names defined in the datapath program to their
+/// datapath register representations.
 pub struct Scope {
     pub(crate) named: RegFile,
     pub(crate) num_control: u8,

@@ -1,3 +1,105 @@
+//! The datapath program compiler.
+//! 
+//! Datapath programs consist of two parts:
+//! 1. Variable definitions
+//! 2. Event definitions
+//!
+//! Variable Definitions
+//! --------------------
+//!
+//! The `def` keyword starts the variable definitions clause. It must appear at the beginning of
+//! the program. A `def` clause contains one or more variable definitions, and the definition of
+//! the `Report` struct. Only the variables within the `Report` struct will be accessible from CCP
+//! programs. Variables within the `Report` struct can optionally be declared `volatile`, which
+//! means they will be reset to their default values after each report is sent to CCP. For example, 
+//! a variable counting the number of cumulatively acknowledged packets would be declared volatile
+//! to prevent double-counting these values in the CCP algorithm logic.
+//!
+//! ### Example
+//! ```no-run
+//! (def 
+//!     (state_var 0)
+//!     (Report
+//!         (minrtt +infinity)
+//!         (volatile acked 0)
+//!     )
+//! )
+//! ```
+//!
+//! Event Definitions
+//! -----------------
+//!
+//! Then `when` keyword starts an event definition clause. There are one or more event definition
+//! clauses in the datapath program. The datapath will evaluate each event definition clause in
+//! order. The first expression following the `when` keyword must evaluate to a boolean value, if
+//! it is true, then the body is evaluated, and subsequent events are ignored unless
+//! `(fallthrough)` is specified.
+//!
+//! ### Example
+//! ```no-run
+//! (when true
+//!     (:= Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
+//!     (fallthrough)
+//! )
+//! (when (> Micros 50)
+//!     (report)
+//! )
+//! ```
+//!
+//! Compiling
+//! ---------
+//!
+//! `lang::compile()` will take a byte array with datapath program source and produce a `Bin`,
+//! which contains a series of instructions and can be serialized into a format libccp-compliant
+//! datapaths understand.
+//!
+//! ### Example
+//!
+//! Let's compile a program which would count the number of ECN-marked packets over 1 millisecond intervals.
+//!
+//! ```
+//! extern crate portus;
+//! use portus::lang;
+//!
+//! fn main() {
+//!     let my_cool_program = b"
+//!         (def (Report (volatile ecnpackets 0)))
+//!         (when true
+//!             (:= Report.ecnpackets (+ Report.ecnpackets Ack.ecn_packets))
+//!             (fallthrough)
+//!         )
+//!         (when (> Micros 1000)
+//!             (report)
+//!             (reset)
+//!         )
+//!     ";
+//!     let (bin, scope) = lang::compile(my_cool_program).unwrap();
+//! }
+//! ```
+//!
+//! Available Primitives
+//! --------------------
+//!
+//! The datapath makes available the following primitives:
+//!
+//!  Name                   | Description                 
+//! ------------------------|-----------------------------
+//! "Ack.bytes_acked"       | In-order bytes acked        
+//! "Ack.bytes_misordered"  | Out-of-order bytes acked    
+//! "Ack.ecn_bytes"         | ECN-marked bytes            
+//! "Ack.ecn_packets"       | ECN-marked packets          
+//! "Ack.lost_pkts_sample"  | Number of lost packets      
+//! "Ack.now"               | Current time                
+//! "Ack.packets_acked"     | In-order packets acked      
+//! "Ack.packets_misordered"| Out-of-order packets acked  
+//! "Flow.bytes_in_flight"  | Bytes in flight             
+//! "Flow.bytes_pending"    | Bytes in socket buffer      
+//! "Flow.packets_in_flight"| Packets in flight           
+//! "Flow.rate_incoming"    | Incoming rate               
+//! "Flow.rate_outgoing"    | Outgoing rate               
+//! "Flow.rtt_sample_us"    | Round-trip time             
+//! "Flow.was_timeout"      | Did a timeout occur?        
+
 use std;
 use nom;
 

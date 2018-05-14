@@ -1,3 +1,29 @@
+//! Serialization library for communicating with libccp in the datapath.
+//!
+//! Messages have a common CCP header:
+//! 
+//! ```no-run
+//! -----------------------------------
+//! | Msg Type | Len (B)  | Uint32    |
+//! | (2 B)    | (2 B)    | (32 bits) |
+//! -----------------------------------
+//! total: 8 Bytes
+//! ```
+//!
+//! Message types 0-3 are reserved for predefined message types. All other types are treated as
+//! "unknown" - the header will be parsed, and raw access to the remaining bytes is available
+//! through `RawMsg::get_bytes()`.
+//!
+//! A message type has 4 components, always in the following order.
+//! 1. CCP Header
+//! 2. u32s
+//! 3. u64s
+//! 4. Arbitrary bytes
+//!
+//! For convenience, the predefined message types define a number of u32s and u64s.
+//! External message types can implement `get_bytes()` to pass custom types in the message payload.
+//! In these cases, there is little deserialization overhead from the u32 and u64 parts of the message.
+
 use std;
 use std::vec::Vec;
 use std::io::prelude::*;
@@ -31,13 +57,6 @@ pub(crate) fn u64_from_u8s(buf: &[u8]) -> u64 {
     LittleEndian::read_u64(buf)
 }
 
-/// (`type`, `len`, `socket_id`) header
-/// -----------------------------------
-/// | Msg Type | Len (B)  | Uint32    |
-/// | (2 B)    | (2 B)    | (32 bits) |
-/// -----------------------------------
-/// total: 8 Bytes
-///
 pub const HDR_LENGTH: u32 = 8;
 fn serialize_header(typ: u8, len: u32, sid: u32) -> Vec<u8> {
     let mut hdr = [0u8; 8];
@@ -60,6 +79,7 @@ fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u32, u32)> {
 #[derive(Clone)]
 #[derive(Debug)]
 #[derive(PartialEq)]
+/// A raw messge buffer with a parsed CCP header.
 pub struct RawMsg<'a> {
     pub typ: u8,
     pub len: u32,
@@ -88,17 +108,9 @@ impl<'a> RawMsg<'a> {
     }
 }
 
-/// A message type has 4 components, always in the following order.
-/// 1. Header
-/// 2. u32s
-/// 3. u64s
-/// 4. Arbitrary bytes
-///
-/// For convenience, the predefined message types define a number of u32s and u64s.
-/// External message types can implement `get_bytes()` to pass custom types in the message payload.
-/// In these cases, there is no overhead from the u32 and u64 parts of the message.
-/// Message types wanting to become "predefined" (and as such take advantage of `get_u32s()` and
-/// `get_u64s()` below) should edit this file accordingly (see `impl RawMsg`)
+/// Types that can be serialized.
+// Message types wanting to become "predefined" (and as such take advantage of `get_u32s()` and
+// `get_u64s()` below) should edit this file accordingly (see `impl RawMsg`)
 pub trait AsRawMsg {
     fn get_hdr(&self) -> (u8, u32, u32);
     fn get_u32s<W: Write>(&self, _: &mut W) -> Result<()> {
@@ -142,6 +154,7 @@ pub mod install;
 pub mod update_field;
 mod testmsg;
 
+/// Serialize a serializable message.
 pub fn serialize<T: AsRawMsg>(m: &T) -> Result<Vec<u8>> {
     let (a, b, c) = m.get_hdr();
     let mut msg = serialize_header(a, b, c);

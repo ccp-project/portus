@@ -1,3 +1,5 @@
+//! Helper type for writing unit tests.
+
 use std;
 
 #[derive(Clone)]

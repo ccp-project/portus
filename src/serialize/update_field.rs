@@ -1,3 +1,6 @@
+//! CCP sends this message specifying that the datapath should set the values of the
+//! given fields to the given values.
+
 use std::io::prelude::*;
 use {Result, Error};
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s, u64_to_u8s};

@@ -1,3 +1,6 @@
+//! A library wrapping various IPC mechanisms with a datagram-oriented
+//! messaging layer. This is how CCP communicates with the datapath.
+
 use std::rc::{Rc, Weak};
 use std::sync::{Arc, atomic};
 
@@ -5,11 +8,15 @@ use super::Error;
 use super::Result;
 
 #[cfg(all(target_os = "linux"))]
+/// Netlink socket implementation
 pub mod netlink;
+/// Unix domain socket implementation
 pub mod unix;
 #[cfg(all(target_os = "linux"))]
+/// Character device implementation
 pub mod kp;
 
+/// IPC mechanisms must implement this trait.
 pub trait Ipc: 'static + Sync + Send {
     /// Blocking send
     fn send(&self, msg: &[u8]) -> Result<()>;
@@ -36,6 +43,7 @@ impl<T: Ipc> BackendBuilder<T> {
     }
 }
 
+/// A send-only handle to the underlying IPC socket.
 pub struct BackendSender<T: Ipc>(Weak<T>);
 
 impl<T: Ipc> BackendSender<T> {
@@ -52,8 +60,8 @@ impl<T: Ipc> Clone for BackendSender<T> {
     }
 }
 
-/// Backend will yield incoming IPC messages forever.
-/// It owns the socket; senders hold weak references.
+/// Backend will yield incoming IPC messages forever via `next()`.
+/// It owns the socket; `BackendSender` holds weak references.
 /// The atomic bool is a way to stop iterating.
 pub struct Backend<'a, T: Ipc> {
     sock: Rc<T>,
@@ -65,9 +73,6 @@ pub struct Backend<'a, T: Ipc> {
 
 use ::serialize::Msg;
 impl<'a, T: Ipc> Backend<'a, T> {
-    /// Pass in a T: Ipc, the Ipc substrate to use.
-    /// Return a Backend on which to call send_msg
-    /// and listen
     pub fn new(
         sock: T, 
         continue_listening: Arc<atomic::AtomicBool>, 
@@ -86,10 +91,15 @@ impl<'a, T: Ipc> Backend<'a, T> {
         BackendSender(Rc::downgrade(&self.sock))
     }
 
+    /// Return a copy of the flag variable that indicates that the
+    /// `Backend` should continue listening (i.e., not exit).
     pub fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
         Arc::clone(&(self.continue_listening))
     }
 
+    /// Get the next IPC message.
+    // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
+    // of `self`, so we cannot implement that trait.
     pub fn next<'b>(&'b mut self) -> Option<Msg<'b>> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
@@ -106,8 +116,8 @@ impl<'a, T: Ipc> Backend<'a, T> {
         }
     }
     
-    /// calls ipc repeatedly to read one or more messages.
-    /// Returns a slice into self.receive_buf covering the read data
+    // calls IPC repeatedly to read one or more messages.
+    // Returns a slice into self.receive_buf covering the read data
     fn get_next_read<'i>(&mut self) -> Result<usize> {
         loop {
             // if continue_loop has been set to false, stop iterating
