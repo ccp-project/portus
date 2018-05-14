@@ -285,11 +285,25 @@ fn init_mod(py:pyo3::Python<'static>, m:&PyModule) -> PyResult<()> {
         py_connect(py, ipc_str, alg, blocking, debug)
     }
 
+    #[pyfn(m, "_try_compile")]
+    fn _py_try_compile(py:pyo3::Python<'static>, prog:String) -> PyResult<String> {
+        py_try_compile(py, prog)
+    }
+
     m.add_class::<DatapathInfo>()?;
     m.add_class::<PyDatapath>()?;
     m.add_class::<PyReport>()?;
 
     Ok(())
+}
+
+use portus::lang;
+use std::error::Error;
+fn py_try_compile(_py:pyo3::Python<'static>, prog:String) -> PyResult<String> {
+    match lang::compile(prog.as_bytes()) {
+        Ok(_)  => Ok("".to_string()),
+        Err(e) => Ok(e.description().to_string()),
+    }
 }
 
 use std::ffi::CStr;

@@ -3,7 +3,7 @@ from abc import ABCMeta, abstractmethod
 import signal
 import sys
 import inspect
-from . import util
+from . import util, checker
 
 ### Class ### 
 method_signatures = {
@@ -45,6 +45,8 @@ def connect(ipc, cls, blocking=True, debug=False):
         raise Exception(cls.__name__ + " must be a subclass of portus.AlgBase")
     if not AlgBase.implements_interface(cls):
         return
+    checker._check_datapath_programs(cls)
+
     AlgBase.register(cls)
 
     return _connect(ipc, cls, blocking, debug)
