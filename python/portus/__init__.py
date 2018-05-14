@@ -1,8 +1,9 @@
 from .pyportus import _connect, DatapathInfo, PyDatapath, PyReport
 from abc import ABCMeta, abstractmethod
-import inspect
 import signal
 import sys
+import inspect
+from . import util
 
 ### Class ### 
 method_signatures = {
@@ -47,11 +48,3 @@ def connect(ipc, cls, blocking=True, debug=False):
     AlgBase.register(cls)
 
     return _connect(ipc, cls, blocking, debug)
-
-### Utils ###
-def ip_to_str(ip):
-    import struct, socket
-    return struct.unpack("!I", socket.inet_aton(ip))[0]
-def str_to_ip(s):
-    import struct, socket
-    return socket.inet_ntoa(struct.pack("!I", s))
