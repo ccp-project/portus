@@ -47,6 +47,7 @@ pub enum Expr {
     Atom(Prim),
     Cmd(Command),
     Sexp(Op, Box<Expr>, Box<Expr>),
+    None,
 }
 
 use std::str;
@@ -171,8 +172,17 @@ named!(
 );
 
 named!(
+    comment<Result<Expr>>,
+    ws!(do_parse!(
+        tag!("#") >>
+        take_until!("\n") >>
+        (Ok(Expr::None))
+    ))
+);
+
+named!(
     pub expr<Result<Expr>>,
-    alt_complete!(sexp | command | atom)
+    alt_complete!(comment | sexp | command | atom)
 );
 
 named!(
@@ -185,7 +195,10 @@ impl Expr {
     pub fn new(src: &[u8]) -> Result<Vec<Self>> {
         use nom::Needed;
         match exprs(src) {
-            IResult::Done(_, me) => me.into_iter().collect(),
+            IResult::Done(_, me) => me.into_iter().filter(|e| match e {
+                Ok(Expr::None) => false,
+                _ => true,
+            }).collect(),
             IResult::Error(e) => Err(Error::from(e)),
             IResult::Incomplete(Needed::Unknown) => Err(Error::from("need more src")),
             IResult::Incomplete(Needed::Size(s)) => Err(
@@ -210,6 +223,7 @@ impl Expr {
                     Box::new(Expr::Atom(Prim::Bool(true))),
                 )
             }
+            Expr::None => {},
             Expr::Atom(_) => {},
             Expr::Sexp(_, box ref mut left, box ref mut right) => {
                 left.desugar();
@@ -492,6 +506,23 @@ mod tests {
             vec![
                 Expr::Cmd(Command::Report),
                 Expr::Cmd(Command::Fallthrough),
+            ]
+        );
+    }
+
+    #[test]
+    fn comments() {
+        let foo = b"
+            # such comments
+            (report) # very descriptive # wow (+ 2 3)
+            # much documentation
+        ";
+
+        let e = Expr::new(foo).unwrap();
+        assert_eq!(
+            e,
+            vec![
+                Expr::Cmd(Command::Report),
             ]
         );
     }
