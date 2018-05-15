@@ -14,6 +14,31 @@ fn test(log: &slog::Logger) {
     use portus::serialize::AsRawMsg;
     use std::sync::{Arc, atomic};
 
+    debug!(log, "checking kernel version");
+    let uname = Command::new("uname")
+        .arg("-r")
+        .output()
+        .expect("uname failed");
+    let uname_stdout = String::from_utf8_lossy(&uname.stdout);
+    let version = uname_stdout.split(".").collect::<Vec<_>>();
+    let major = version[0].parse::<u32>().unwrap();
+    let minor = version[1].parse::<u32>().unwrap();
+    if major != 4 || minor < 13 || minor > 16 {
+        error!(log,"current kernel version is {}.{}, but test requires >= 4.13 and <= 4.16", major, minor);
+        return;
+    }
+
+    debug!(log, "checking permissions");
+    let id = Command::new("id")
+        .arg("-u")
+        .output()
+        .expect("id failed");
+    let id_stdout = String::from_utf8_lossy(&id.stdout);
+    if id_stdout.trim().parse::<u32>().unwrap() != 0 {
+        error!(log, "test must be run as root");
+        return;
+    }
+
     debug!(log, "update ccp-kernel submodule");
     Command::new("git")
         .arg("submodule")
