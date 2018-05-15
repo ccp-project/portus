@@ -1,4 +1,4 @@
-from .pyportus import _connect, DatapathInfo, PyDatapath, PyReport
+from .pyportus import _connect, DatapathInfo, PyDatapath, PyReport, _test
 from abc import ABCMeta, abstractmethod
 import signal
 import sys

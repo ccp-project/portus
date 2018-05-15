@@ -254,7 +254,7 @@ impl PyDatapath {
         }
     }
 
-    fn install(&mut self, _py : Python, prog: String) -> PyResult<()> {
+    fn install(&mut self, py : Python, prog: String, fields : Option<&PyList>) -> PyResult<()> {
         if self.debug {
             self.logger.as_ref().map(|log| {
                 debug!(log, "Installing new datapath program";
@@ -263,16 +263,49 @@ impl PyDatapath {
             });
         }
 
-        match self.backend.install(prog.as_bytes()) {
-            Ok(sc) => {
+        let ret = match fields {
+            Some(list) => {
+                let items : Result<Vec<(String,u32)>, _> = list.into_iter().map(|tuple_ref| {
+                    let tuple_obj : PyObject = tuple_ref.into();
+                    let tuple:&PyTuple = match tuple_obj.extract(py) {
+                        Ok(t) => t,
+                        Err(_) => {
+                            raise!(TypeError, "second argument to datapath.install must be a list of tuples")
+                        }
+                    };
+                    if tuple.len() != 2 {
+                        raise!(TypeError, "second argument to datapath.install must be a list of tuples with exactly two values each");
+                    }
+                    let name = match PyString::try_from(tuple.get_item(0)) {
+                        Ok(ps) => ps.to_string_lossy().into_owned(),
+                        Err(_) => raise!(TypeError, "second argument to datapath.install must be a list of tuples of the form (string, int|float)"),
+                    };
+                    let val = match tuple.get_item(1).extract::<u32>() {
+                        Ok(v) => v,
+                        Err(_) => raise!(TypeError, "second argument to datapath.install must be a list of tuples of the form (string, int|float)")
+                    };
+                    Ok((name,val))
+                }).collect();
+                items.map(|v| {
+                    let args: Vec<(&str,u32)> = v.iter().map(|(s,i)| (&s[..],i.clone())).collect();
+                    self.backend.install(prog.as_bytes(), Some(&args[..]))
+                })
+            },
+            None => { Ok(self.backend.install(prog.as_bytes(), None)) }
+        };
+
+        match ret {
+            Ok(Ok(sc)) => {
                 self.sc = Some(Rc::new(sc));
                 Ok(())
+            }
+            Ok(Err(e)) => {
+                raise!(Exception, format!("Failed to install datapath program: {:?}", e))
             }
             Err(e) => {
                 raise!(Exception, format!("Failed to install datapath program: {:?}", e))
             }
         }
-
     }
 }
 
@@ -300,7 +333,7 @@ fn init_mod(py:pyo3::Python<'static>, m:&PyModule) -> PyResult<()> {
 use portus::lang;
 use std::error::Error;
 fn py_try_compile(_py:pyo3::Python<'static>, prog:String) -> PyResult<String> {
-    match lang::compile(prog.as_bytes()) {
+    match lang::compile(prog.as_bytes(), &[]) {
         Ok(_)  => Ok("".to_string()),
         Err(e) => Ok(e.description().to_string()),
     }
