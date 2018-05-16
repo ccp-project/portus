@@ -1,3 +1,16 @@
+//! This crate implements integration tests for libccp and portus.
+//! Each integration test consists of the following;:
+//! 1. A struct IntegrationTest<T: Ipc>, along with the Impl.
+//!     This could be a tuple struct around TestBase, declared as:
+//!     pub struct IntegrationTest<T: Ipc>(TestBase<T>)
+//! 2. Any additional structs for use with struct IntegrationTest, 
+//!     such as an IntegrationTestMeasurements struct
+//! 3. impl<T: Ipc> CongAlg<T> for IntegrationTest<T>
+//!     - This contains the onCreate() and onReport().
+//!     on_create() might install a program implemented in the IntegrationTest,
+//!     while on_report() might contain a checker function for the test.
+//!     on_report MUST send "Done" on the channel to end the test properly.
+
 extern crate clap;
 extern crate time;
 #[macro_use]
@@ -10,55 +23,26 @@ use portus::lang::Scope;
 use std::time::{Duration, SystemTime};
 use std::sync::mpsc;
 const ACKED_PRIMITIVE: u32 = 5; // libccp uses this same value for acked_bytes
+pub const DONE: &str = "Done";
 
 #[derive(Clone)]
 pub struct IntegrationTestConfig {
-    pub sender: mpsc::Sender<String>,
+    pub sender: mpsc::Sender<String>
 }
 
-pub struct IntegrationTest<T: Ipc> {
+pub struct TestBase<T: Ipc> {
     control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
     sc: Option<Scope>,
-    current_test_start: SystemTime,
-    current_test: u32,
+    test_start: SystemTime,
     sender: mpsc::Sender<String>,
 }
 
-pub struct IntegrationTestMeasurements {
-    pub acked: u32,
-    pub cwnd: u32,
-    pub rate: u32,
-}
+pub struct TestBasicSerialize<T: Ipc>(TestBase<T>);
 
-/// IntegrationTest contains tests, followed by checker functions
-/// on_report and create loop through the tests and checker functions
-impl<T: Ipc> IntegrationTest<T> {
-    // get_fields used by all the tests
-    fn get_fields(&mut self, m: &Report) -> IntegrationTestMeasurements {
-        let sc = self.sc.as_ref().expect("scope should be initialized");
-        let ack = m.get_field("Report.acked", sc).expect(
-            "expected acked field in returned measurement"
-         ) as u32;
-
-        let cwnd = m.get_field("Report.cwnd", sc).expect(
-            "expected datapath cwnd field in returned measurement"
-        ) as u32;
-
-        let rate = m.get_field("Report.rate", sc).expect(
-            "expected datapath rate field in returned measurement"
-        ) as u32;
-
-        IntegrationTestMeasurements{
-            acked: ack,
-            cwnd: cwnd,
-            rate: rate,
-        }
-    }
-
-    // basic program: checks that report happens and contains the correct answer
-    fn install_basic_test(&self) -> Option<Scope> {
-        self.control_channel.install(
+impl<T: Ipc> TestBasicSerialize<T> {
+    fn install_test(&self) -> Option<Scope> {
+        self.0.control_channel.install(
             b" (def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))
             (when true
                 (:= Report.acked (+Report.acked Ack.bytes_acked))
@@ -74,22 +58,54 @@ impl<T: Ipc> IntegrationTest<T> {
         ).ok()
     }
 
-    // checks that the report from the baxic test contains the right answer
-    fn check_basic_test(&mut self, m: &Report) -> bool {
-        let ms = self.get_fields(&m);
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
+        let acked = m.get_field("Report.acked", sc).expect(
+            "expected acked field in returned measurement"
+         ) as u32;
         let answer = 20 * ACKED_PRIMITIVE;
-        assert!( ms.acked == answer, 
-                "Got wrong answer from basic test, expected: {}, got: {}", answer, ms.acked);
-        self.current_test += 1;
-        self.logger.as_ref().map(|log| {
+        assert!( acked == answer, 
+                "Got wrong answer from basic test, expected: {}, got: {}", answer, acked);
+        self.0.logger.as_ref().map(|log| {
             info!(log, "Passed basic serialization test.")
         });
         true
     }
+}
 
-    // timing test: checks timing of events, that a report comes back at roughly the correct time
-    fn install_timing_test(&self) -> Option<Scope> {
-        self.control_channel.install(
+impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
+    type Config = IntegrationTestConfig;
+    fn name() -> String {
+        String::from("integration-test")
+    }
+
+    fn create(control: Datapath<T>, cfg: Config<T, TestBasicSerialize<T>>, _info: DatapathInfo) -> Self {
+        let mut s = Self {
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
+        };
+
+        s.0.test_start = SystemTime::now();
+        s.0.sc = s.install_test();
+        s
+    }
+
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
+        self.check_test(&m);
+        self.0.sender.send(String::from(DONE)).unwrap();
+    }
+}
+
+pub struct TestTiming<T: Ipc>(TestBase<T>);
+
+impl<T: Ipc> TestTiming<T> {
+    fn install_test(&self) -> Option<Scope> {
+        self.0.control_channel.install(
             b" (def (Report.acked 0) (Control.state 0) (Report.cwnd 0) (Report.rate 0))
             (when true
                 (:= Report.acked Ack.bytes_acked)
@@ -105,30 +121,61 @@ impl<T: Ipc> IntegrationTest<T> {
         ).ok()
     }
 
-    // checks that the report comes at the right time
-    fn check_timing_test(&mut self, m: &Report) -> bool {
-        let ms = self.get_fields(&m);
-
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
+        let acked = m.get_field("Report.acked", sc).expect(
+            "expected acked field in returned measurement"
+         ) as u32;
         // check that it has roughly been 3 seconds
-        let time_elapsed = self.current_test_start.elapsed().unwrap();
+        let time_elapsed = self.0.test_start.elapsed().unwrap();
         assert!((time_elapsed >= Duration::from_secs(3) &&
                 time_elapsed < Duration::from_secs(4)), 
                 "Report in timing test received at not correct time, got: {}, expected 3 seconds", time_elapsed.subsec_nanos());
 
         // sanity check: acked primitive should be constant
-        assert!( ms.acked == ACKED_PRIMITIVE, 
-                "Got wrong answer from basic test, expected: {}, got: {}", ms.acked, ACKED_PRIMITIVE);
-        self.current_test += 1;
-        self.logger.as_ref().map(|log| {
+        assert!( acked == ACKED_PRIMITIVE, 
+                "Got wrong answer from basic test, expected: {}, got: {}", acked, ACKED_PRIMITIVE);
+        self.0.logger.as_ref().map(|log| {
             info!(log, "Passed timing test.")
         });
         true
     }
+}
 
-    // installs an update to the cwnd and rate registers to check updates happen
-    fn install_update_test(&self) -> Option<Scope> {
+impl<T: Ipc> CongAlg<T> for TestTiming<T> {
+    type Config = IntegrationTestConfig;
+    fn name() -> String {
+        String::from("integration-test")
+    }
+
+    fn create(control: Datapath<T>, cfg: Config<T, TestTiming<T>>, _info: DatapathInfo) -> Self {
+        let mut s = Self {
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
+        };
+
+        s.0.test_start = SystemTime::now();
+        s.0.sc = s.install_test();
+        s
+    }
+
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
+        self.check_test(&m);
+        self.0.sender.send(String::from(DONE)).unwrap();
+    }
+}
+
+pub struct TestUpdateFields<T: Ipc>(TestBase<T>);
+
+impl<T: Ipc> TestUpdateFields<T> {
+    fn install_test(&self) -> Option<Scope> {
         // fold function that only reports when Cwnd is set to 42
-        self.control_channel.install(
+        self.0.control_channel.install(
             b" (def (Report.acked 0) (Report.cwnd 0) (Report.rate 0))
             (when true
                 (:= Report.acked Ack.bytes_acked)
@@ -141,26 +188,67 @@ impl<T: Ipc> IntegrationTest<T> {
             )
             ",
         ).ok()
+
     }
 
-    fn check_install_update(&mut self, m: &Report) -> bool {
-        // in returned measurement, check that Cwnd and Rate are set to new values
-        let ms = self.get_fields(&m);
-        assert!(ms.cwnd == 42,
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
+        let cwnd = m.get_field("Report.cwnd", sc).expect(
+            "expected datapath cwnd field in returned measurement"
+        ) as u32;
+        let rate = m.get_field("Report.rate", sc).expect(
+            "expected rate field in returned measurement"
+         ) as u32;
+        assert!(cwnd == 42,
                 "Report in install_update contains wrong answer for cwnd, expected: {}, got: {}",
-                42, ms.cwnd);
-        assert!(ms.rate == 10,
+                42, cwnd);
+        assert!(rate == 10,
                 "Report in install_update contains wrong answer for rate, expected: {}, got: {}",
-                42, ms.cwnd);
-        self.current_test += 1;
-        self.logger.as_ref().map(|log| {
+                42, rate);
+        self.0.logger.as_ref().map(|log| {
             info!(log, "Passed update fields test.")
         });
         true
     }
+}
 
-    fn install_volatile_test(&self) -> Option<Scope> {
-        self.control_channel.install(
+impl<T: Ipc> CongAlg<T> for TestUpdateFields<T> {
+    type Config = IntegrationTestConfig;
+    fn name() -> String {
+        String::from("integration-test")
+    }
+
+    fn create(control: Datapath<T>, cfg: Config<T, TestUpdateFields<T>>, _info: DatapathInfo) -> Self {
+        let mut s = Self {
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
+        };
+
+        s.0.test_start = SystemTime::now();
+        s.0.sc = s.install_test();
+        {
+            let sc = s.0.sc.as_ref().unwrap();
+            s.0.control_channel.update_field(sc, &[("Cwnd", 42u32), ("Rate", 10u32)]).unwrap();
+        }
+        s
+    }
+
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
+        self.check_test(&m);
+        self.0.sender.send(String::from(DONE)).unwrap();
+    }
+}
+pub struct TestVolatileVars<T: Ipc>(TestBase<T>);
+
+impl<T: Ipc> TestVolatileVars<T> {
+    fn install_test(&self) -> Option<Scope> {
+        // fold function that only reports when Cwnd is set to 42
+        self.0.control_channel.install(
             b"
             (def 
                 (Report
@@ -179,8 +267,8 @@ impl<T: Ipc> IntegrationTest<T> {
         ).ok()
     }
 
-    fn check_volatile_test(&mut self, m: &Report) -> bool {
-        let sc = self.sc.as_ref().expect("scope should be initialized");
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
         let foo = m.get_field("Report.foo", sc).expect("get Report.foo");
         let bar = m.get_field("Report.bar", sc).expect("get Report.bar");
 
@@ -189,7 +277,7 @@ impl<T: Ipc> IntegrationTest<T> {
             false
         } else {
             assert_eq!(bar, 20);
-            self.logger.as_ref().map(|log| {
+            self.0.logger.as_ref().map(|log| {
                 info!(log, "Passed volatility test.")
             });
             true
@@ -197,59 +285,32 @@ impl<T: Ipc> IntegrationTest<T> {
     }
 }
 
-impl<T: Ipc> CongAlg<T> for IntegrationTest<T> {
+impl<T: Ipc> CongAlg<T> for TestVolatileVars<T> {
     type Config = IntegrationTestConfig;
-	
     fn name() -> String {
         String::from("integration-test")
     }
 
-    fn create(control: Datapath<T>, cfg: Config<T, IntegrationTest<T>>, _info: DatapathInfo) -> Self {  
+    fn create(control: Datapath<T>, cfg: Config<T, TestVolatileVars<T>>, _info: DatapathInfo) -> Self {
         let mut s = Self {
-            control_channel: control,
-            sc: None,
-            logger: cfg.logger,
-            current_test_start: SystemTime::now(),
-            current_test: 0,
-            sender: cfg.config.sender.clone(),
-
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
         };
 
-        s.logger.as_ref().map(|log| {
-            debug!(log, "starting integration test flow");
-        });
-        // install first test 
-        s.current_test_start = SystemTime::now();
-        s.sc = s.install_basic_test(); 
+        s.0.test_start = SystemTime::now();
+        s.0.sc = s.install_test();
         s
     }
 
     fn on_report(&mut self, _sock_id: u32, m: Report) {
-        if self.current_test == 0 {
-            self.check_basic_test(&m); 
-            self.current_test_start = SystemTime::now();
-            self.sc = self.install_timing_test();
-        } else if self.current_test == 1 {
-            self.check_timing_test(&m);
-            self.sc = self.install_update_test();
-            let sc = self.sc.as_ref().unwrap();
-            // set Cwnd through an update_field message
-            self.control_channel.update_field(sc, &[("Cwnd", 42u32), ("Rate", 10u32)]).unwrap();
-        } else if self.current_test == 2 {
-            self.check_install_update(&m);
-            self.sc = self.install_volatile_test();
-        } else if self.current_test == 3 {
-            let done = self.check_volatile_test(&m);
-            if done {
-                self.current_test += 1;
-                self.current_test_start = SystemTime::now();
-            }
-        } else if self.current_test == 4 {
-            // send on the channel to close the integration test program
-            self.logger.as_ref().map(|log| {
-                info!(log, "Passed all integration tests!")
-            });
-            self.sender.send(String::from("Done!")).unwrap();
+        let done = self.check_test(&m);
+        if done {
+            self.0.sender.send(String::from(DONE)).unwrap();
         }
     }
 }
