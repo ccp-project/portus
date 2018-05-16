@@ -521,20 +521,21 @@ impl Scope {
     }
 
     // if the Type was initially None, update it now that we know what it is.
-    fn update_type(&mut self, name: &str, t: &Type) -> Result<Reg> {
+    // When updating values in scope before installation in datapath, this is used
+    pub(crate) fn update_type(&mut self, name: &str, t: &Type) -> Result<Reg> {
         self.named
             .get_mut(name)
             .ok_or_else(|| Error::from(format!("Unknown {:?}", name)))
             .and_then(|old_reg| match *old_reg {
-                Reg::Report(idx, Type::Name(_), v) => {
+                Reg::Report(idx, _, v) => {
                     *old_reg = Reg::Report(idx, t.clone(), v);
                     Ok(old_reg.clone())
                 }
-                Reg::Local(idx, Type::Name(_)) => {
+                Reg::Local(idx, _) => {
                     *old_reg = Reg::Local(idx, t.clone());
                     Ok(old_reg.clone())
                 }
-                Reg::Control(idx, Type::Name(_)) => {
+                Reg::Control(idx, _) => {
                     *old_reg = Reg::Control(idx, t.clone());
                     Ok(old_reg.clone())
                 }

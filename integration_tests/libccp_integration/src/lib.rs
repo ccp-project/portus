@@ -54,7 +54,7 @@ impl<T: Ipc> TestBasicSerialize<T> {
             (when (== Control.num_invoked 20)
                 (report)
             )
-            ",
+            ", None
         ).ok()
     }
 
@@ -117,7 +117,7 @@ impl<T: Ipc> TestTiming<T> {
                 (:= Control.state 1)
                 (report)
             )
-            ",
+            ", None
         ).ok()
     }
 
@@ -186,7 +186,7 @@ impl<T: Ipc> TestUpdateFields<T> {
             (when (== Cwnd 42)
                 (report)
             )
-            ",
+            ", None
         ).ok()
 
     }
@@ -243,6 +243,7 @@ impl<T: Ipc> CongAlg<T> for TestUpdateFields<T> {
         self.0.sender.send(String::from(DONE)).unwrap();
     }
 }
+
 pub struct TestVolatileVars<T: Ipc>(TestBase<T>);
 
 impl<T: Ipc> TestVolatileVars<T> {
@@ -263,7 +264,7 @@ impl<T: Ipc> TestVolatileVars<T> {
             (when (== Report.foo 10)
                 (report)
             )
-            ",
+            ", None
         ).ok()
     }
 
@@ -292,6 +293,66 @@ impl<T: Ipc> CongAlg<T> for TestVolatileVars<T> {
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, TestVolatileVars<T>>, _info: DatapathInfo) -> Self {
+        let mut s = Self {
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
+        };
+
+        s.0.test_start = SystemTime::now();
+        s.0.sc = s.install_test();
+        s
+    }
+
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
+        let done = self.check_test(&m);
+        if done {
+            self.0.sender.send(String::from(DONE)).unwrap();
+        }
+    }
+}
+
+pub struct TestPresetVars<T: Ipc>(TestBase<T>);
+
+impl<T: Ipc> TestPresetVars<T> {
+    fn install_test(&self) -> Option<Scope> {
+        // fold function that only reports when Cwnd is set to 42
+        self.0.control_channel.install(
+            b"
+            (def
+                (Report
+                    (testFoo 0)
+                )
+                (foo 0)
+            )
+            (when true
+                (:= Report.testFoo foo)
+                (report)
+            )
+            ", Some(&[("foo", 52)][..])
+        ).ok()
+    }
+
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
+        let foo = m.get_field("Report.testFoo", sc).expect("get Report.testFoo");
+
+        assert_eq!(foo, 52, "Foo should be installed automaticaly as 52.");
+        true
+    }
+}
+
+impl<T: Ipc> CongAlg<T> for TestPresetVars<T> {
+    type Config = IntegrationTestConfig;
+    fn name() -> String {
+        String::from("integration-test")
+    }
+
+    fn create(control: Datapath<T>, cfg: Config<T, TestPresetVars<T>>, _info: DatapathInfo) -> Self {
         let mut s = Self {
             0: TestBase {
                 control_channel: control,

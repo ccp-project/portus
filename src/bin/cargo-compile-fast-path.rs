@@ -57,8 +57,8 @@ impl<'v> Visit<'v> for FastPathProgramFinder {
                     match emc.args.first() {
                         Some(Punctuated(&Lit(ref l), _)) | Some(End(&Lit(ref l))) => { 
                             let compile_result = match l.lit {
-                                ByteStr(ref ls) => { lang::compile(&ls.value()) }
-                                Str(ref ls)     => { lang::compile(ls.value().as_bytes()) }
+                                ByteStr(ref ls) => { lang::compile(&ls.value(), &[]) }
+                                Str(ref ls)     => { lang::compile(ls.value().as_bytes(), &[]) }
                                 _           => { panic!("Non-string passed to install(). This shouldn't have compiled in the first place...") }
                             };
                             self.total += 1;

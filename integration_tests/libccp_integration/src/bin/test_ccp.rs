@@ -10,7 +10,7 @@ extern crate slog;
 extern crate libccp_integration_test;
 extern crate portus;
 
-use libccp_integration_test::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars};
+use libccp_integration_test::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars, TestPresetVars};
 use std::process::{Command, Stdio};
 use portus::ipc::{BackendBuilder, Blocking};
 use portus::ipc::unix::Socket;
@@ -23,7 +23,8 @@ enum Test {
     TestBasicSerialize,
     TestTiming,
     TestUpdateFields,
-    TestVolatileVars
+    TestVolatileVars,
+    TestPresetVars,
 }
 
 // Spawn userspace ccp
@@ -68,6 +69,7 @@ fn run_test(libccp_location: String, log: slog::Logger, test: Test) {
         Test::TestTiming => start_ccp::<TestTiming<Socket<Blocking>>>(log, tx, test),
         Test::TestUpdateFields  => start_ccp::<TestUpdateFields<Socket<Blocking>>>(log, tx, test),
         Test::TestVolatileVars => start_ccp::<TestVolatileVars<Socket<Blocking>>>(log, tx, test),
+        Test::TestPresetVars => start_ccp::<TestPresetVars<Socket<Blocking>>>(log, tx, test)
     };
 
     // sleep before spawning mock datapath, so sockets can be setup properly
@@ -97,5 +99,6 @@ fn main() {
     run_test(libccp_location.to_string(), log.clone(), Test::TestTiming);
     run_test(libccp_location.to_string(), log.clone(), Test::TestUpdateFields);
     run_test(libccp_location.to_string(), log.clone(), Test::TestVolatileVars);
+    run_test(libccp_location.to_string(), log.clone(), Test::TestPresetVars);
     info!(log, "Passed all integration tests!";);
 }

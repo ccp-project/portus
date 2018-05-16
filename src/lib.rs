@@ -100,7 +100,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// A collection of methods to interact with the datapath.
 pub trait DatapathTrait {
     /// Install a fold function in the datapath.
-    fn install(&self, src: &[u8]) -> Result<Scope>;
+    fn install(&self, src: &[u8], fields: Option<&[(&str, u32)]>) -> Result<Scope>;
     /// Update the value of a register in an already-installed fold function.
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
     fn get_sock_id(&self) -> u32;
@@ -118,8 +118,10 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
         return self.sock_id;
     }
     
-    fn install(&self, src: &[u8]) -> Result<Scope> {
-        let (bin, sc) = lang::compile(src)?;
+    /// pass a vector of (Reg name, value) pairs to be installed automatically
+    fn install(&self, src: &[u8], fields: Option<&[(&str, u32)]>) -> Result<Scope> {
+        let (bin, sc) = lang::compile(src, fields.unwrap_or_else(|| &[]))?;
+
         let msg = serialize::install::Msg {
             sid: self.sock_id,
             num_events: bin.events.len() as u32,
@@ -146,8 +148,8 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
                         format!("Unknown field: {:?}", reg_name)
                     ))
                     .and_then(|reg| match *reg {
-                        ref r@Reg::Control(_, _) => {
-                            Ok((r.clone(), u64::from(new_value)))
+                        Reg::Control(idx, ref t) => {
+                            Ok((Reg::Control(idx, t.clone()), u64::from(new_value)))
                         }
                         Reg::Implicit(idx, ref t) if idx == 4 || idx == 5 => {
                             Ok((Reg::Implicit(idx, t.clone()), u64::from(new_value)))

@@ -92,15 +92,18 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     /// Make no updates in the datapath, and send a report after an interval
     fn install_datapath_interval(&self, interval: time::Duration) -> Scope {
         self.control_channel.install(
-            format!("
-                (def (Report
+            b"
+                (def
+                (Report
                     (volatile acked 0) 
                     (volatile sacked 0) 
                     (volatile loss 0) 
                     (volatile timeout false) 
                     (volatile rtt 0)
                     (volatile inflight 0)
-                ))
+                )
+                (reportTime 0)
+                )
                 (when true
                     (:= Report.inflight Flow.packets_in_flight)
                     (:= Report.rtt Flow.rtt_sample_us)
@@ -114,11 +117,11 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (report)
                     (:= Micros 0)
                 )
-                (when (> Micros {})
+                (when (> Micros reportTime)
                     (report)
                     (:= Micros 0)
                 )
-            ", interval.num_microseconds().unwrap()).as_bytes()
+            ", Some(&[("reportTime", interval.num_microseconds().unwrap() as u32)][..])
         ).unwrap()
     }
 
@@ -151,7 +154,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (report)
                     (:= Micros 0)
                 )
-            ",
+            ", None
         ).unwrap()
     }
 
@@ -176,7 +179,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (:= Report.inflight Flow.packets_in_flight)
                     (report)
                 )
-            ",
+            ", None
         ).unwrap()
     }
 
@@ -206,7 +209,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                 (when (|| Report.timeout (> Report.loss 0))
                     (report)
                 )
-            "
+            ", None
         ).unwrap()
     }
 
