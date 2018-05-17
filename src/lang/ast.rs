@@ -526,4 +526,14 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn old_syntax() {
+        let foo = b"(reset)";
+        let er = Expr::new(foo);
+        match er {
+            Ok(e) => panic!("false ok: {:?}", e),
+            Err(_) => (),
+        }
+    }
 }
