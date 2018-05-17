@@ -43,7 +43,7 @@
 //!                 (report)
 //!                 (reset)
 //!             )
-//!         ").unwrap();
+//!         ", None).unwrap();
 //!         MyCongestionControlAlgorithm(sc)
 //!     }
 //!     fn on_report(&mut self, sock_id: u32, m: Report) {
