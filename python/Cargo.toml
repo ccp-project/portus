@@ -13,7 +13,7 @@ slog-term = "2"
 time = "0.1"
 
 [dependencies.pyo3]
-version = "0.2"
+version = "0.2.7"
 features = ["extension-module"]
 default-features = false
 
