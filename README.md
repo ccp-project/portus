@@ -1,3 +1,5 @@
+# Portus [![Build Status](https://travis-ci.org/ccp-project/portus.svg?branch=master)](https://travis-ci.org/ccp-project/portus)
+
 Portus is an implementation of a congestion control plane (CCP).
 It is a library that can be used to write new congestion control
 algorithms in user-space. 

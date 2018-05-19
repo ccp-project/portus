@@ -1,6 +1,6 @@
 [submodule "integration_tests/libccp_integration/libccp"]
 	path = integration_tests/libccp_integration/libccp
-	url = git@github.com:ccp-project/libccp.git
+        url = https://github.com/ccp-project/libccp.git
 [submodule "src/ipc/test-char-dev/ccp-kernel"]
 	path = src/ipc/test-char-dev/ccp-kernel
-	url = git@github.com:ccp-project/ccp-kernel.git
+        url = https://github.com/ccp-project/ccp-kernel.git
