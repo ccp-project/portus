@@ -17,8 +17,8 @@ class ProgramFinder(ast.NodeVisitor):
         for child in ast.walk(call_node):
             if isinstance(child, _ast.Attribute) and child.attr == "install":
                 args = call_node.args
-                if len(args) > 1:
-                    raise ValueError("datapath.install expects a single argument (a datapath program string)")
+                if len(args) > 2:
+                    raise ValueError("datapath.install expects a datapath program string and (optionally) a list of tuples of fields to set at the same time")
                 arg = args[0]
                 found_string_arg = False
                 for arg_child in ast.walk(arg):

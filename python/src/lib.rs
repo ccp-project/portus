@@ -1,4 +1,4 @@
-#![feature(box_patterns, proc_macro, specialization, const_fn)]
+#![feature(box_patterns, proc_macro, specialization, const_fn, proc_macro_path_invoc)]
 use std::rc::{Rc,Weak};
 
 #[macro_use]
@@ -252,6 +252,58 @@ impl PyDatapath {
             Ok(()) => Ok(()),
             Err(e) => { raise!(Exception, format!("Failed to update field, err: {:?}", e)) }
         }
+    }
+
+    fn update_fields(&self, py : Python, fields : &PyList) -> PyResult<()> {
+        if self.debug {
+            self.logger.as_ref().map(|log| {
+                debug!(log, "Updating fields";
+                   "sid" => self.sock_id,
+                   "fields" => format!("{:?}",fields), 
+               )
+            });
+        }
+        let sc = match self.sc {
+            Some(ref s) => { s }
+            None => {
+                raise!(ReferenceError, "Cannot update field: no datapath program installed yet!");
+            }
+        };
+
+        let ret = {
+            let items : Result<Vec<(String,u32)>, _> = fields.into_iter().map(|tuple_ref| {
+                let tuple_obj : PyObject = tuple_ref.into();
+                let tuple:&PyTuple = match tuple_obj.extract(py) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples")
+                    }
+                };
+                if tuple.len() != 2 {
+                    raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples with exactly two values each");
+                }
+                let name = match PyString::try_from(tuple.get_item(0)) {
+                    Ok(ps) => ps.to_string_lossy().into_owned(),
+                    Err(_) => raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples of the form (string, int|float)"),
+                };
+                let val = match tuple.get_item(1).extract::<u32>() {
+                    Ok(v) => v,
+                    Err(_) => raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples of the form (string, int|float)")
+                };
+                Ok((name,val))
+            }).collect();
+            items.map(|v| {
+                let args: Vec<(&str,u32)> = v.iter().map(|(s,i)| (&s[..],i.clone())).collect();
+                self.backend.update_field(sc, &args[..])
+            })
+        };
+
+        match ret {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => { raise!(Exception, format!("Failed to update fields, err: {:?}", e)) },
+            Err(e)     => { raise!(Exception, format!("Failed to update fields, err: {:?}", e)) },
+        }
+        
     }
 
     fn install(&mut self, py : Python, prog: String, fields : Option<&PyList>) -> PyResult<()> {
