@@ -1,17 +1,22 @@
-all: build test lint algs
+all: build test-portus test-ipc lint algs
+
+travis: build test-portus libccp-integration
+
+
+
+OS := $(shell uname)
 
 build:
 	cargo +nightly build --all
 
-OS := $(shell uname)
-test: build
+test-portus: build
 	cargo +nightly test --all
+
+test-ipc: build
 ifeq ($(OS), Linux)
 	sudo ./target/debug/nltest
 	sudo ./target/debug/kptest
-else
 endif
-	make libccp-integration
 
 lint:
 	cargo +nightly clippy
