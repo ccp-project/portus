@@ -172,7 +172,7 @@ named!(
 );
 
 named!(
-    comment<Result<Expr>>,
+    pub comment<Result<Expr>>,
     ws!(do_parse!(
         tag!("#") >>
         take_until!("\n") >>
