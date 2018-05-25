@@ -1,5 +1,5 @@
 use super::{Error, Result};
-use super::ast::{atom, expr, Expr, exprs, name};
+use super::ast::{atom, comment, expr, Expr, exprs, name};
 use super::datapath::{Scope, Type, check_atom_type};
 
 /// An `Event` is a condition expression and a sequence of execution expressions.
@@ -116,7 +116,11 @@ named!(
 );
 named!(
     events<Vec<Result<Event>>>,
-    many1!(event)
+    many1!(do_parse!(
+        opt!(comment) >>
+        e: event >>
+        (e)
+    ))
 );
 
 impl Prog {
@@ -397,9 +401,9 @@ mod tests {
     #[test]
     fn combined() {
         let foo = b"
-            (def (foo 0) (bar 0))
+            (def (foo 0) (bar 0)) # this is a comment
             (when (> foo 0)
-                (:= bar (+ bar 1))
+                (:= bar (+ bar 1)) # this is a comment
                 (:= foo (* foo 2))
             )
             (when true
@@ -437,6 +441,7 @@ mod tests {
                                 Box::new(Expr::Atom(Prim::Num(1))),
                             )),
                         ),
+                        Expr::None,
                         Expr::Sexp(
                             Op::Bind,
                             Box::new(Expr::Atom(Prim::Name(String::from("foo")))),

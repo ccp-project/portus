@@ -610,8 +610,8 @@ mod tests {
     #[test]
     fn primitives() {
         let foo = b"
-        (def (Report (foo 0)))
-        (when true
+        (def (Report (foo 0))) # this is a comment
+        (when true # this is a comment
             (bind Report.foo 4)
         )";
         
