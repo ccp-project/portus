@@ -287,7 +287,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left must be a mutable register
                     // and if right is a Reg::None, we have to replace it
                     match (&left, &right) {
-                        (&Reg::Report(_, _, _), &Reg::None) => {
+                        (&Reg::Report(_, _, _), &Reg::None) | (&Reg::Control(_,_), &Reg::None) => {
                             let last_instr = instrs.last_mut().map(|last| {
                                 // Double-check that the instruction being replaced
                                 // actually is a Reg::None before we go replace it
@@ -862,6 +862,63 @@ mod tests {
                         op: Op::Bind,
                         left: sc.get("__shouldReport").unwrap().clone(),
                         right: Reg::ImmBool(true),
+                    },
+                ]
+            }
+        );
+    }
+
+    #[test]
+    fn control_if_definition() {
+        let foo = b"
+        (def (controlFoo 0))
+        (when true
+            (bind  controlFoo (if (== controlFoo 0) (+ controlFoo 1)))
+        )
+        ";
+
+        let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
+        let b = Bin::compile_prog(&p, &mut sc).unwrap();
+        let control_foo_reg = sc.get("controlFoo").unwrap().clone();
+        assert_eq!(
+            b,
+            Bin{
+                events: vec![Event{
+                    flag_idx: 1,
+                    num_flag_instrs: 1,
+                    body_idx: 2,
+                    num_body_instrs: 3,
+                }],
+                instrs: vec![
+                    Instr {
+                        res: control_foo_reg.clone(),
+                        op: Op::Def,
+                        left: control_foo_reg.clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: sc.get("__eventFlag").unwrap().clone(),
+                        op: Op::Bind,
+                        left: sc.get("__eventFlag").unwrap().clone(),
+                        right: Reg::ImmBool(true),
+                    },
+                    Instr {
+                        res: Reg::Tmp(0, Type::Bool(None)),
+                        op: Op::Equiv,
+                        left: sc.get("controlFoo").unwrap().clone(),
+                        right: Reg::ImmNum(0),
+                    },
+                    Instr {
+                        res: Reg::Tmp(1, Type::Num(None)),
+                        op: Op::Add,
+                        left: sc.get("controlFoo").unwrap().clone(),
+                        right: Reg::ImmNum(1),
+                    },
+                    Instr {
+                        res: sc.get("controlFoo").unwrap().clone(),
+                        op: Op::If,
+                        left: Reg::Tmp(0, Type::Bool(None)),
+                        right: Reg::Tmp(1, Type::Num(None)),
                     },
                 ]
             }
