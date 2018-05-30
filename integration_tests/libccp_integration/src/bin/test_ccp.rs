@@ -10,7 +10,7 @@ extern crate slog;
 extern crate libccp_integration_test;
 extern crate portus;
 
-use libccp_integration_test::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars, TestPresetVars};
+use libccp_integration_test::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars, TestPresetVars, TestLongProgram, TestMultipleTrueConditions, TestIfNotIf};
 use std::process::{Command, Stdio};
 use portus::ipc::{BackendBuilder, Blocking};
 use portus::ipc::unix::Socket;
@@ -25,6 +25,9 @@ enum Test {
     TestUpdateFields,
     TestVolatileVars,
     TestPresetVars,
+    TestLongProgram,
+    TestMultipleTrueConditions,
+    TestIfNotIf,
 }
 
 // Spawn userspace ccp
@@ -69,7 +72,10 @@ fn run_test(libccp_location: String, log: slog::Logger, test: Test) {
         Test::TestTiming => start_ccp::<TestTiming<Socket<Blocking>>>(log, tx, test),
         Test::TestUpdateFields  => start_ccp::<TestUpdateFields<Socket<Blocking>>>(log, tx, test),
         Test::TestVolatileVars => start_ccp::<TestVolatileVars<Socket<Blocking>>>(log, tx, test),
-        Test::TestPresetVars => start_ccp::<TestPresetVars<Socket<Blocking>>>(log, tx, test)
+        Test::TestPresetVars => start_ccp::<TestPresetVars<Socket<Blocking>>>(log, tx, test),
+        Test::TestLongProgram => start_ccp::<TestLongProgram<Socket<Blocking>>>(log, tx, test),
+        Test::TestMultipleTrueConditions => start_ccp::<TestMultipleTrueConditions<Socket<Blocking>>>(log, tx, test),
+        Test::TestIfNotIf => start_ccp::<TestIfNotIf<Socket<Blocking>>>(log, tx, test),
     };
 
     // sleep before spawning mock datapath, so sockets can be setup properly
@@ -95,10 +101,13 @@ fn main() {
     let log = portus::algs::make_logger();
 
     // run test with various tests
-    run_test(libccp_location.to_string(), log.clone(), Test::TestBasicSerialize);
-    run_test(libccp_location.to_string(), log.clone(), Test::TestTiming);
+    //run_test(libccp_location.to_string(), log.clone(), Test::TestBasicSerialize);
+    /*run_test(libccp_location.to_string(), log.clone(), Test::TestTiming);
     run_test(libccp_location.to_string(), log.clone(), Test::TestUpdateFields);
     run_test(libccp_location.to_string(), log.clone(), Test::TestVolatileVars);
     run_test(libccp_location.to_string(), log.clone(), Test::TestPresetVars);
+    run_test(libccp_location.to_string(), log.clone(), Test::TestLongProgram);*/
+    //run_test(libccp_location.to_string(), log.clone(), Test::TestMultipleTrueConditions);
+    run_test(libccp_location.to_string(), log.clone(), Test::TestIfNotIf);
     info!(log, "Passed all integration tests!";);
 }

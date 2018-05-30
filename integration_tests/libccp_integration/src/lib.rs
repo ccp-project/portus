@@ -42,6 +42,7 @@ pub struct TestBasicSerialize<T: Ipc>(TestBase<T>);
 
 impl<T: Ipc> TestBasicSerialize<T> {
     fn install_test(&self) -> Option<Scope> {
+        println!("Installing test");
         self.0.control_channel.install(
             b" (def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))
             (when true
@@ -80,6 +81,7 @@ impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, TestBasicSerialize<T>>, _info: DatapathInfo) -> Self {
+        println!("Calling create");
         let mut s = Self {
             0: TestBase {
                 control_channel: control,
@@ -375,3 +377,240 @@ impl<T: Ipc> CongAlg<T> for TestPresetVars<T> {
         }
     }
 }
+
+pub struct TestLongProgram<T: Ipc>(TestBase<T>);
+
+impl<T: Ipc> TestLongProgram<T> {
+    fn install_test(&self) -> Option<Scope> {
+        // emulate a long program, modeled loosely after the bbr state machine
+        self.0.control_channel.install(
+            b"
+            (def
+                (Report
+                    (reportVar1 0)
+                    (reportVar2 0)
+                    (reportVar3 0)
+                    (reportVar4 0)
+                    (reportVar5 0)
+                    (reportVar6 0)
+                    (reportVar7 0)
+                    (volatile loss 0)
+                    (volatile minrtt +infinity)
+                )
+                (controlVar1 0)
+            )
+            (when true
+                (:= Report.loss (+ Report.loss Ack.lost_pkts_sample))
+                (:= Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
+                (fallthrough)
+            )
+            (when (&& (> Micros 3000) (== controlVar1 0))
+                (:= controlVar1 1)
+                (:= Report.reportVar1 (max Flow.rtt_sample_us 3000))
+                (:= Report.reportVar5 (+ Report.reportVar5 Ack.bytes_acked))
+                (fallthrough)
+            )
+            (when (&& (> Micros 6000) (== controlVar1 1))
+                (:= controlVar1 2)
+                (:= Report.reportVar2 (max Flow.rtt_sample_us 6000))
+                (:= Report.reportVar6 (+ Report.reportVar5 Ack.bytes_acked))
+                (fallthrough)
+            )
+            (when (&& (> Micros 9000) (== controlVar1 2))
+                (:= controlVar1 3)
+                (:= Report.reportVar3 (max Flow.rtt_sample_us 9000))
+                (:= Report.reportVar7 (+ Report.reportVar6 Ack.bytes_acked))
+                (fallthrough)
+            )
+            (when (&& (> Micros 12000) (== controlVar1 3))
+                (:= Report.reportVar4 (max Flow.rtt_sample_us 12000))
+                (report)
+            )
+            ", None
+        ).ok()
+    }
+
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
+        let var1 = m.get_field("Report.reportVar1", sc).expect("get Report.reportVar1");
+        let var2 = m.get_field("Report.reportVar2", sc).expect("get Report.reportVar2");
+        let var3 = m.get_field("Report.reportVar3", sc).expect("get Report.reportVar3");
+        let var4 = m.get_field("Report.reportVar4", sc).expect("get Report.reportVar4");
+        let var5 = m.get_field("Report.reportVar5", sc).expect("get Report.reportVar5");
+        let var6 = m.get_field("Report.reportVar6", sc).expect("get Report.reportVar6");
+        let var7 = m.get_field("Report.reportVar7", sc).expect("get Report.reportVar7");
+
+        assert_eq!(var1, 3000, "Var1 should be installed as 3000.");
+        assert_eq!(var2, 6000, "Var1 should be installed as 6000.");
+        assert_eq!(var3, 9000, "Var1 should be installed as 9000.");
+        assert_eq!(var4, 12000, "Var1 should be installed as 12000.");
+        assert_eq!(var5, ACKED_PRIMITIVE as u64, "Var5 should be the acked value.");
+        assert_eq!(var6, (ACKED_PRIMITIVE*2) as u64, "Var6 should be the acked value * 2.");
+        assert_eq!(var7, (ACKED_PRIMITIVE*3) as u64, "Var7 should be the acked value * 3.");
+        true
+    }
+}
+
+impl<T: Ipc> CongAlg<T> for TestLongProgram<T> {
+    type Config = IntegrationTestConfig;
+    fn name() -> String {
+        String::from("integration-test")
+    }
+
+    fn create(control: Datapath<T>, cfg: Config<T, TestLongProgram<T>>, _info: DatapathInfo) -> Self {
+        let mut s = Self {
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
+        };
+
+        s.0.test_start = SystemTime::now();
+        s.0.sc = s.install_test();
+        s
+    }
+
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
+        let done = self.check_test(&m);
+        if done {
+            self.0.sender.send(String::from(DONE)).unwrap();
+        }
+    }
+}
+
+pub struct TestMultipleTrueConditions<T: Ipc>(TestBase<T>);
+
+impl<T: Ipc> TestMultipleTrueConditions<T> {
+    fn install_test(&self) -> Option<Scope> {
+        // fold function that only reports when Cwnd is set to 42
+        self.0.control_channel.install(
+            b"
+            (def
+                (Report
+                    (testVar1 0)
+                    (testVar2 0)
+                )
+                (controlVar1 0)
+            )
+            (when true
+                (:= Report.testVar1 10)
+                (fallthrough)
+            )
+            (when (> Micros 0)
+                (:= controlVar1 2)
+                (fallthrough)
+            )
+            (when true
+                (:= Report.testVar2 10)
+                (report)
+            )
+            ", None
+        ).ok()
+    }
+
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
+        let var1 = m.get_field("Report.testVar1", sc).expect("get Report.testVar1");
+        let var2 = m.get_field("Report.testVar2", sc).expect("get Report.testVar2");
+        assert_eq!(var1, 10, "Var1 should automatically be set to 10.");
+        assert_eq!(var2, 10, "Var2 should automatically be set to 10.");
+        true
+    }
+}
+
+impl<T: Ipc> CongAlg<T> for TestMultipleTrueConditions<T> {
+    type Config = IntegrationTestConfig;
+    fn name() -> String {
+        String::from("integration-test")
+    }
+
+    fn create(control: Datapath<T>, cfg: Config<T, TestMultipleTrueConditions<T>>, _info: DatapathInfo) -> Self {
+        let mut s = Self {
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
+        };
+
+        s.0.test_start = SystemTime::now();
+        println!("Installing test next");
+        s.0.sc = s.install_test();
+        println!("Installed test");
+        s
+    }
+
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
+        let done = self.check_test(&m);
+        if done {
+            self.0.sender.send(String::from(DONE)).unwrap();
+        }
+    }
+}
+
+pub struct TestIfNotIf<T: Ipc>(TestBase<T>);
+
+impl<T: Ipc> TestIfNotIf<T> {
+    fn install_test(&self) -> Option<Scope> {
+        // fold function that only reports when Cwnd is set to 42
+        self.0.control_channel.install(
+            b"
+            (def
+                (Report
+                    (testVar1 0)
+                )
+            )
+            (when true
+                (:= Report.testVar1 10)
+                (fallthrough)
+            )
+            (when (== Report.testVar1 10))
+                (report)
+            )
+            ", None
+        ).ok()
+    }
+
+    fn check_test(&mut self, m: &Report) -> bool {
+        let sc = self.0.sc.as_ref().expect("scope should be initialized");
+        let var1 = m.get_field("Report.testVar1", sc).expect("get Report.testVar1");
+        assert_eq!(var1, 10, "Var1 should automatically be set to 10.");
+        true
+    }
+}
+
+impl<T: Ipc> CongAlg<T> for TestIfNotIf<T> {
+    type Config = IntegrationTestConfig;
+    fn name() -> String {
+        String::from("integration-test")
+    }
+
+    fn create(control: Datapath<T>, cfg: Config<T, TestIfNotIf<T>>, _info: DatapathInfo) -> Self {
+        let mut s = Self {
+            0: TestBase {
+                control_channel: control,
+                sc: Default::default(),
+                logger: cfg.logger,
+                test_start: SystemTime::now(),
+                sender: cfg.config.sender.clone(),
+            }
+        };
+
+        s.0.test_start = SystemTime::now();
+        s.0.sc = s.install_test();
+        s
+    }
+
+    fn on_report(&mut self, _sock_id: u32, m: Report) {
+        let done = self.check_test(&m);
+        if done {
+            self.0.sender.send(String::from(DONE)).unwrap();
+        }
+    }
+}
+

@@ -1,11 +1,12 @@
 CC = gcc # C compiler
 CFLAGS = -fPIC -Wall -Wextra -O2 -g # C flags
-CFLAGS += -D__USRLIB__ # Only use this makefile for compiling user-space library
+CFLAGS += -D__USRLIB__ -D__DEBUG__ # Only use this makefile for compiling user-space library
+CFLAGS += -std=gnu99 -Wno-declaration-after-statement -fgnu89-inline
 ifeq ($(DEBUG), 1)
 	CFLAGS += -D__DEBUG__
 else
 endif
-LDFLAGS = -shared  # linking flags
+LDFLAGS = -pthread -lpthread -shared  # linking flags
 RM = rm -f  # rm command
 LIB_NAME = ccp
 LIBCCP = lib${LIB_NAME}.so # target lib
@@ -32,7 +33,7 @@ $(SRCS:.c=.d):%.d:%.c
 include $(SRCS:.c=.d)
 
 $(TEST_DATAPATH): ${LIBCCP} ${INTEGRATE_SRCS}
-	$(CC) ${CFLAGS} ${INTEGRATE_SRCS} -L . -l ${LIB_NAME} -o ${TEST_DATAPATH}
+	$(CC) ${CFLAGS} ${INTEGRATE_SRCS} -L. ${LDFLAGS} -l ${LIB_NAME} -o ${TEST_DATAPATH}
 
 .PHONY: $(TEST_CCP)
 $(TEST_CCP):
