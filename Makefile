@@ -48,8 +48,8 @@ libccp-integration:
 	cd integration_tests/libccp_integration && cargo +nightly build
 	cd integration_tests/libccp_integration && make
 ifeq ($(OS), Linux)
-	cd integration_tests/libccp_integration && export LD_LIBRARY_PATH=$(shell pwd)/integration_tests/libccp_integration && ./target/debug/test_ccp ./test_datapath
+	cd integration_tests/libccp_integration && export LD_LIBRARY_PATH=$(shell pwd)/integration_tests/libccp_integration/libccp && ./target/debug/test_ccp ./test_datapath
 endif
 ifeq ($(OS), Darwin)
-	cd integration_tests/libccp_integration && export DYLD_LIBRARY_PATH=$(shell pwd) && ./target/debug/test_ccp ./test_datapath
+	cd integration_tests/libccp_integration && export DYLD_LIBRARY_PATH=$(shell pwd)/integration_tests/libccp_integration/libccp && ./target/debug/test_ccp ./test_datapath
 endif
