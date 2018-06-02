@@ -75,6 +75,8 @@ pub mod serialize;
 pub mod test_helper;
 #[macro_use]
 pub mod algs;
+mod errors;
+pub use errors::*;
 
 use std::collections::HashMap;
 
@@ -83,16 +85,6 @@ use ipc::{BackendSender, BackendBuilder};
 use serialize::Msg;
 use std::sync::{Arc, atomic};
 use std::thread;
-
-#[derive(Clone, Debug)]
-/// CCP custom error type.
-pub struct Error(pub String);
-
-impl<T: std::error::Error + std::fmt::Display> From<T> for Error {
-    fn from(e: T) -> Error {
-        Error(format!("portus err: {}", e))
-    }
-}
 
 /// CCP custom `Result` type, using `Error` as the `Err` type.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -229,23 +221,29 @@ pub struct DatapathInfo {
 /// Contains the values of the pre-defined Report struct from the fold function.
 /// Use `get_field` to query its values using the names defined in the fold function.
 pub struct Report {
-    fields: Vec<u64>,
+    pub program_uid: u32, 
+        fields: Vec<u64>,
 }
 
 impl Report {
     /// Uses the `Scope` returned by `lang::compile` (or `install`) to query 
     /// the `Report` for its values.
-    pub fn get_field(&self, field: &str, sc: &Scope) -> Option<u64> {
-        sc.get(field).and_then(|r| match *r {
-            Reg::Report(idx, _, _) => {
-                if idx as usize >= self.fields.len() {
-                    return None;
+    pub fn get_field(&self, field: &str, sc: &Scope) -> Result<u64> {
+        match sc.get(field) {
+            Some(r) => {
+                match *r {
+                    Reg::Report(idx, _, _) => {
+                        if idx as usize >= self.fields.len() {
+                            Err(Error::from(InvalidReportError))
+                        } else {
+                            Ok(self.fields[idx as usize])
+                        }
+                    },
+                    _ => Err(Error::from(InvalidRegTypeError)),
                 }
-
-                Some(self.fields[idx as usize])
             },
-            _ => None,
-        })
+            None => Err(Error::from(FieldNotFoundError)),
+        }
     }
 }
 
