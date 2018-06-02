@@ -384,6 +384,7 @@ impl RegFile {
 /// A mapping from variable names defined in the datapath program to their
 /// datapath register representations.
 pub struct Scope {
+    pub        program_uid: u32,
     pub(crate) named: RegFile,
     pub(crate) num_control: u8,
     pub(crate) num_local: u8,
@@ -430,12 +431,20 @@ macro_rules! expand_reg {
     });
 }
 
+
+use std::sync::atomic::{AtomicU32, Ordering};
+static ID_COUNTER : AtomicU32 = AtomicU32::new(0);
+macro_rules! get_next_uid {
+    () => (ID_COUNTER.fetch_add(1, Ordering::SeqCst) + 1)
+}
+
 impl Scope {
     /// Define variables always accessible in the datapath,
     /// in the context of the most recent packet.
     /// All datapaths shall recognize these Names.
     pub fn new() -> Self {
         let mut sc = Scope {
+            program_uid: get_next_uid!(),
             named: RegFile::new(),
             num_control: 0,
             num_local: 0,

@@ -93,7 +93,8 @@ impl<'a> RawMsg<'a> {
         use std::mem;
         match self.typ {
             create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
-            measure::MEASURE | update_field::UPDATE_FIELD => Ok(mem::transmute(&self.bytes[0..4])),
+            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..8])),
+            update_field::UPDATE_FIELD => Ok(mem::transmute(&self.bytes[0..4])),
             _ => Ok(&[]),
         }
     }
@@ -102,7 +103,8 @@ impl<'a> RawMsg<'a> {
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
-            measure::MEASURE | update_field::UPDATE_FIELD => Ok(&self.bytes[4..(self.len as usize - HDR_LENGTH as usize)]),
+            measure::MEASURE => Ok(&self.bytes[8..(self.len as usize - HDR_LENGTH as usize)]),
+            update_field::UPDATE_FIELD => Ok(&self.bytes[4..(self.len as usize - HDR_LENGTH as usize)]),
             _ => Ok(self.bytes),
         }
     }
@@ -138,7 +140,7 @@ mod test_helper {
             fn $id() {
                 let m = $m;
                 let buf: Vec<u8> = ::serialize::serialize::<$typ>(&m.clone()).expect("serialize");
-                let (msg, _) = ::serialize::Msg::from_buf(&buf[..]).expect("deserialize");
+                let (msg, _) = ::serialize::Msg::from_buf(&buf[..]).expect("deserialize: check_msg");
                 match msg {
                     $got => assert_eq!($x, m),
                     _ => panic!("wrong type for message"),
