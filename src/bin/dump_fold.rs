@@ -22,6 +22,7 @@ fn main() {
     println!("instructions:\n{:?}", bin);
     let msg = serialize::install::Msg {
         sid: 1,
+        program_uid: 9,
         num_events: bin.events.len() as u32,
         num_instrs: bin.instrs.len() as u32,
         instrs: bin,

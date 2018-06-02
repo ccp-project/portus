@@ -173,6 +173,18 @@ impl<T: Ipc> CongAlg<T> for PyAlg {
         let pyd_ref : &PyDatapath = pyd.as_ref(py);
         let report = match pyd_ref.sc {
             Some(ref s) => {
+                if m.program_uid != s.program_uid {
+                    if self.config.debug {
+                        self.logger.as_ref().map(|log| {
+                            debug!(log, "Report is stale, ignoring...";
+                               "sid"        => sock_id,
+                               "report_uid" => m.program_uid,
+                               "scope_uid"  => s.program_uid,
+                           )
+                        });
+                    }
+                    return;
+                }
                 let rep = py.init(|_t| PyReport {
                     report: m,
                     sc: Rc::downgrade(s),
@@ -221,10 +233,8 @@ impl<'p> pyo3::class::PyObjectProtocol<'p> for PyReport {
             }
         };
         match self.report.get_field(field_name.as_ref(), &sc) {
-            Some(val) => { Ok(val) }
-            None => {
-                raise!(AttributeError, format!("Report has no variable {}", name));
-            }
+            Ok(val)               => Ok(val),
+            Err(portus::Error(e)) => raise!(Exception, format!("Failed to get {}: {}", name, e)),
         }
     }
 }

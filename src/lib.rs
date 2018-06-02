@@ -55,6 +55,7 @@
 #![feature(box_patterns)]
 #![feature(test)]
 #![feature(never_type)]
+#![feature(integer_atomics)]
 
 extern crate bytes;
 extern crate clap;
@@ -116,6 +117,7 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
 
         let msg = serialize::install::Msg {
             sid: self.sock_id,
+            program_uid: sc.program_uid,
             num_events: bin.events.len() as u32,
             num_instrs: bin.instrs.len() as u32,
             instrs: bin,
@@ -229,6 +231,10 @@ impl Report {
     /// Uses the `Scope` returned by `lang::compile` (or `install`) to query 
     /// the `Report` for its values.
     pub fn get_field(&self, field: &str, sc: &Scope) -> Result<u64> {
+        if sc.program_uid != self.program_uid {
+            return Err(Error::from(StaleProgramError))
+        }
+
         match sc.get(field) {
             Some(r) => {
                 match *r {
@@ -397,7 +403,10 @@ where
                         alg.close();
                     } else {
                         let alg = flows.get_mut(&m.sid).unwrap();
-                        alg.on_report(m.sid, Report { fields: m.fields })
+                        alg.on_report(m.sid, Report {
+                            program_uid: m.program_uid,
+                            fields: m.fields 
+                        })
                     }
                 } else {
                     cfg.logger.as_ref().map(|log| {

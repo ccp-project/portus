@@ -22,6 +22,7 @@ fn test_ser_over_ipc() {
             msg,
             serialize::Msg::Ms(serialize::measure::Msg {
                 sid: 42,
+                program_uid: 7,
                 num_fields: 1,
                 fields: vec![0],
             })
@@ -41,6 +42,7 @@ fn test_ser_over_ipc() {
         // serialize a message
         let m = serialize::measure::Msg {
             sid: 42,
+            program_uid: 7,
             num_fields: 1,
             fields: vec![0],
         };
@@ -77,6 +79,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
                 msg,
                 serialize::Msg::Ms(serialize::measure::Msg {
                     sid: 42,
+                    program_uid: 12,
                     num_fields: 1,
                     fields: vec![0],
                 })
@@ -98,6 +101,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
         );
         let m = serialize::measure::Msg {
             sid: 42,
+            program_uid: 12,
             num_fields: 1,
             fields: vec![0],
         };
