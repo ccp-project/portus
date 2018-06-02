@@ -169,12 +169,10 @@ pub fn compile(src: &[u8], updates: &[(&str, u32)]) -> Result<(Bin, Scope)> {
     Prog::new_with_scope(src)
         .and_then(|(p, mut s)| {
             for &(name, new_val) in updates {
-                println!("name: {}, new_val: {}", name, new_val);
                 match s.update_type(name, &Type::Num(Some(new_val as u64))) {
                     Ok(_) => {},
                     Err(e) => println!("err: {}", e)
                 }
-                println!("done");
             }
 
             Ok((Bin::compile_prog(&p, &mut s)?, s))
