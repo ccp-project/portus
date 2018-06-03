@@ -83,7 +83,7 @@ mod tests {
                 7, 0, 0, 0,                                     // program_uid = 7
                 1, 0, 0, 0,                                     // num_events = 1
                 3, 0, 0, 0,                                     // num_instrs = 3
-                1, 1, 2, 1,                                     // event { flag-idx=1, num-flag=1, body-idx=2, num-body=1 }
+                1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0,  // event { flag-idx=1, num-flag=1, body-idx=2, num-body=1 }
                 2, 5, 0, 0, 0, 0, 5, 0, 0, 0, 0, 1, 0, 0, 0, 0, // (def (Report.foo 0))
                 1, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 1, 0, 0, 0, // (when true
                 1, 5, 0, 0, 0, 0, 5, 0, 0, 0, 0, 1, 4, 0, 0, 0, //     (bind Report.foo 4))
