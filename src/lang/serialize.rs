@@ -17,18 +17,14 @@ impl Bin {
             .collect()
     }
 }
-
-impl IntoIterator for Event {
-    type Item = Result<u8>;
-    type IntoIter = EventBytes;
-
-    fn into_iter(self) -> Self::IntoIter {
-        EventBytes{ e: self, which: 0 }
-    }
-}
-
-/// Emit each of the four fields of `datapath::Event` as a `u8`. This implies
-/// that the maximum number of instructions is 256.
+/// pub struct Event {
+///     flag_idx: u32,
+///     num_flag_instrs: u32,
+///     body_idx: u32,
+///     num_body_instrs: u32
+/// }
+/// Emit each of the four fields of `datapath::Event` as a `u32`. This implies
+/// that the maximum number of instructions is 1024, but we limit this value in libccp.
 /// The number of flag instructions is further limited by the maximum expression
 /// depth (the number of temporary registers), which is 8.
 ///
@@ -36,26 +32,22 @@ impl IntoIterator for Event {
 ///
 /// |----------------|-----------------|----------------|-----------------|
 /// | flag instr idx | num flag instrs | body instr idx | num body instrs |
-/// | u8             | u8              | u8             | u8              |
+/// | u32            | u32             | u32            | u32             |
 /// |----------------|-----------------|----------------|-----------------|
-pub struct EventBytes {
-    e: Event,
-    which: u8,
-}
-
-impl Iterator for EventBytes {
+impl IntoIterator for Event {
     type Item = Result<u8>;
+    type IntoIter = ::std::vec::IntoIter<Result<u8>>;
 
-    fn next(&mut self) -> Option<Result<u8>> {
-        self.which += 1;
-        match self.which {
-            0 => unreachable!(),
-            1 => Some(Ok(self.e.flag_idx as u8)),
-            2 => Some(Ok(self.e.num_flag_instrs as u8)),
-            3 => Some(Ok(self.e.body_idx as u8)),
-            4 => Some(Ok(self.e.num_body_instrs as u8)),
-            _ => None,
-        }
+    fn into_iter(self) -> Self::IntoIter {
+        let v = &mut[0, 0, 0, 0,
+                     0, 0, 0, 0,
+                     0, 0, 0, 0,
+                     0, 0, 0, 0];
+        u32_to_u8s(&mut v[0..=3], self.flag_idx);
+        u32_to_u8s(&mut v[4..=7], self.num_flag_instrs);
+        u32_to_u8s(&mut v[8..=11], self.body_idx);
+        u32_to_u8s(&mut v[12..=15], self.num_body_instrs);
+        v.iter().map(|u| Ok(*u)).collect::<Vec<Result<u8>>>().into_iter()
     }
 }
 
@@ -243,7 +235,10 @@ mod tests {
             v,
             vec![
                 // event description
-                0x01, 0x01, 0x02, 0x01,
+                0x01, 0x00, 0x00, 0x00,
+                0x01, 0x00, 0x00, 0x00,
+                0x02, 0x00, 0x00, 0x00,
+                0x01, 0x00, 0x00, 0x00,
                 // def reg::report(6) <- 0
                 0x02, 0x05, 0x06, 0x00, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 
                 // reg::eventFlag <- 1
