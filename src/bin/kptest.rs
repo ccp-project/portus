@@ -39,15 +39,16 @@ fn test(log: &slog::Logger) {
         return;
     }
 
-    debug!(log, "update ccp-kernel submodule");
-    Command::new("git")
-        .arg("submodule")
-        .arg("update")
-        .arg("--init")
-        .arg("--recursive")
-        .current_dir("./")
+    debug!(log, "checking submodule");
+    let ls = Command::new("ls")
+        .current_dir("./src/ipc/test-char-dev/ccp-kernel")
         .output()
-        .expect("submodule update failed");
+        .expect("ls failed");
+    let ls_out = String::from_utf8_lossy(&ls.stdout);
+    if ls_out.trim().is_empty() {
+        error!(log, "could not find submodule. Did you run `git submodule update --init --recursive`?");
+        return;
+    }
 
     debug!(log, "unload module");
     Command::new("sudo")
