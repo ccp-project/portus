@@ -22,7 +22,7 @@ impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u32, u32) {
         (
             INSTALL,
-            HDR_LENGTH + 12 + (self.num_events * 4 + self.num_instrs * 16),
+            HDR_LENGTH + 12 + (self.num_events * 16 + self.num_instrs * 16),
             self.sid,
         )
     }
@@ -78,7 +78,7 @@ mod tests {
             buf,
             vec![
                 2, 0,                                           // INSTALL
-                72, 0,                                          // length = 68
+                84, 0,                                          // length = 84
                 1, 0, 0, 0,                                     // sock_id = 1
                 7, 0, 0, 0,                                     // program_uid = 7
                 1, 0, 0, 0,                                     // num_events = 1
