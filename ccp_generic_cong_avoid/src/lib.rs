@@ -54,6 +54,8 @@ pub enum GenericCongAvoidConfigReport {
 pub enum GenericCongAvoidConfigSS {
     Datapath,
     Ccp,
+    Hss,
+    HssTime
 }
 
 #[derive(Clone, Copy)]
@@ -86,6 +88,7 @@ pub struct GenericCongAvoidMeasurements {
     pub loss:        u32,
     pub rtt:         u32,
     pub inflight:    u32,
+    pub datapath_cwnd:        u32,
 }
 
 impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
@@ -101,6 +104,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (volatile timeout false) 
                     (volatile rtt 0)
                     (volatile inflight 0)
+                    (datapath_cwnd 0)
                 )
                 (reportTime 0)
                 )
@@ -111,6 +115,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
                     (:= Report.loss Ack.lost_pkts_sample)
                     (:= Report.timeout Flow.was_timeout)
+                    (:= Report.datapath_cwnd Cwnd)
                     (fallthrough)
                 )
                 (when (|| Report.timeout (> Report.loss 0))
@@ -136,6 +141,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (volatile timeout false) 
                     (volatile rtt 0)
                     (volatile inflight 0)
+                    (datapath_cwnd 0)
                 ))
                 (when true
                     (:= Report.inflight Flow.packets_in_flight)
@@ -144,6 +150,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
                     (:= Report.loss Ack.lost_pkts_sample)
                     (:= Report.timeout Flow.was_timeout)
+                    (:= Report.datapath_cwnd Cwnd)
                     (fallthrough)
                 )
                 (when (|| Report.timeout (> Report.loss 0))
@@ -169,6 +176,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (volatile timeout false) 
                     (volatile rtt 0)
                     (volatile inflight 0)
+                    (datapath_cwnd 0)
                 ))
                 (when true
                     (:= Report.acked (+ Report.acked Ack.bytes_acked))
@@ -177,6 +185,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (:= Report.timeout Flow.was_timeout)
                     (:= Report.rtt Flow.rtt_sample_us)
                     (:= Report.inflight Flow.packets_in_flight)
+                    (:= Report.datapath_cwnd Cwnd)
                     (report)
                 )
             ", None
@@ -195,6 +204,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (volatile timeout false) 
                     (volatile rtt 0)
                     (volatile inflight 0)
+                    (datapath_cwnd 0)
                 ))
                 (when true
                     (:= Report.acked (+ Report.acked Ack.bytes_acked))
@@ -204,6 +214,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
                     (:= Report.rtt Flow.rtt_sample_us)
                     (:= Report.inflight Flow.packets_in_flight)
                     (:= Cwnd (+ Cwnd Ack.bytes_acked))
+                    (:= Report.datapath_cwnd Cwnd)
                     (fallthrough)
                 )
                 (when (|| Report.timeout (> Report.loss 0))
@@ -213,6 +224,128 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
         ).unwrap()
     }
 
+    /// Hybrid slow start: uses increasing delay as a signal to exit slow start
+    /// Note: this implementation requires a *modification* to the CCP API in order to count packet
+    /// rounds
+    /// For now, we modify the QUIC datapath to encode the last packet in Ack.ecn_bytes
+    fn install_hss_update(&self) -> Scope {
+        self.control_channel.install(
+            b"
+                (def
+                    (Report
+                        (volatile acked 0)
+                        (volatile sacked 0)
+                        (volatile loss 0)
+                        (volatile timeout false)
+                        (volatile rtt 0)
+                        (volatile inflight 0)
+                        (datapath_cwnd 0)
+                    )
+                    (minrtt +infinity)
+                    (cwndCapHss 0)
+                    (rttSampleCount 0)
+                    (currentMinRtt +infinity)
+					(minRttIncreaseThreshold 0)
+                    (lastRTT +infinity)
+                    (roundEnd 0)
+                )
+                (when true
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.inflight Flow.packets_in_flight)
+					(:= minrtt (min minrtt Flow.rtt_sample_us))
+                    (:= rttSampleCount (!if (== lastRTT Flow.rtt_sample_us) (+ rttSampleCount 1)))
+                    (:= lastRTT Flow.rtt_sample_us)
+                    (:= Cwnd (+ Cwnd Ack.bytes_acked))
+                    (:= Report.datapath_cwnd Cwnd)
+                    (fallthrough)
+                )
+                (when (== rttSampleCount 0)
+                    (:= roundEnd Ack.ecn_packets)
+                    (fallthrough)
+                )
+                (when (< rttSampleCount 9)
+                    (:= currentMinRtt (min currentMinRtt Flow.rtt_sample_us))
+                    (fallthrough)
+                )
+				(when (== rttSampleCount 8)
+					(:= minRttIncreaseThreshold (/ minrtt 8))
+					(fallthrough)
+				)
+                (when (&& (> minRttIncreaseThreshold 0) (&& (> Cwnd cwndCapHss) (> currentMinRtt (+ minrtt minRttIncreaseThreshold))))
+                    (report)
+                )
+                (when (|| (> Ack.ecn_bytes roundEnd) (== Ack.ecn_bytes roundEnd))
+                    (:= currentMinRtt +infinity)
+                    (:= rttSampleCount 0)
+                    (:= roundEnd Ack.ecn_packets)
+                    (fallthrough)
+                )
+            ", Some(&[("cwndCapHss", 16 * self.mss as u32)])
+        ).unwrap()
+    }
+
+    /// Hss: alternate implementation that uses time instead of packet rounds to signal leaving a
+    /// round
+    fn install_hss_time_update(&self) -> Scope {
+        self.control_channel.install(
+            b"
+                (def
+                    (Report
+                        (volatile acked 0)
+                        (volatile sacked 0)
+                        (volatile loss 0)
+                        (volatile timeout false)
+                        (volatile rtt 0)
+                        (volatile inflight 0)
+                        (datapath_cwnd 0)
+                    )
+                    (minrtt +infinity)
+                    (cwndCapHss 0)
+                    (rttSampleCount 0)
+                    (currentMinRtt +infinity)
+					(minRttIncreaseThreshold 0)
+                    (lastRTT +infinity)
+                )
+                (when true
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.inflight Flow.packets_in_flight)
+					(:= minrtt (min minrtt Flow.rtt_sample_us))
+                    (:= rttSampleCount (!if (== lastRTT Flow.rtt_sample_us) (+ rttSampleCount 1)))
+                    (:= lastRTT Flow.rtt_sample_us)
+                    (:= Cwnd (+ Cwnd Ack.bytes_acked))
+                    (:= Report.datapath_cwnd Cwnd)
+                    (fallthrough)
+                )
+                (when (< rttSampleCount 9)
+                    (:= currentMinRtt (min currentMinRtt Flow.rtt_sample_us))
+                    (fallthrough)
+                )
+				(when (== rttSampleCount 8)
+					(:= minRttIncreaseThreshold (/ minrtt 8))
+					(:= Report.debug 30)
+					(fallthrough)
+				)
+                (when (&& (> minRttIncreaseThreshold 0) (&& (> Cwnd cwndCapHss) (> currentMinRtt (+ minrtt minRttIncreaseThreshold))))
+                    (report)
+                )
+                (when (> Micros minrtt)
+                    (:= currentMinRtt +infinity)
+                    (:= rttSampleCount 0)
+                    (:= Micros 0)
+                    (fallthrough)
+                )
+            ", Some(&[("cwndCapHss", 16 * self.mss as u32)])
+        ).unwrap()
+
+    }
     fn update_cwnd(&self) {
         if let Err(e) = self.control_channel
             .update_field(&self.sc, &[("Cwnd", self.alg.curr_cwnd())]) 
@@ -225,44 +358,78 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
         }
     }
 
-    fn get_fields(&mut self, m: &Report) -> GenericCongAvoidMeasurements {
+    fn get_fields(&mut self, m: &Report) -> Option<GenericCongAvoidMeasurements> {
         let sc = &self.sc;
-        let ack = m.get_field(&String::from("Report.acked"), sc).expect(
-            "expected acked field in returned measurement",
-        ) as u32;
+        let mut ms = GenericCongAvoidMeasurements{
+            acked: 0,
+            was_timeout: false,
+            sacked: 0,
+            loss: 0,
+            rtt: 0,
+            inflight: 0,
+            datapath_cwnd: 0
+        };
+        match m.get_field(&String::from("Report.acked"), sc) {
+            Ok(val) => {ms.acked = val as u32;}
+            Err(e) => {
+                println!("Error {:?} on unwrapping field Report.acked", e);
+                return None;
+            }
+        };
+        
+        match m.get_field(&String::from("Report.sacked"), sc) {
+            Ok(val) => {ms.sacked = val as u32;}
+            Err(e) => {
+                println!("Error {:?} on unwrapping field Report.sacked", e);
+                return None;
+            }
+        };
 
-        let sack = m.get_field(&String::from("Report.sacked"), sc).expect(
-            "expected sacked field in returned measurement",
-        ) as u32;
+        match m.get_field(&String::from("Report.timeout"), sc) {
+            Ok(val) => {ms.was_timeout = val == 1;}
+            Err(e) => {
+                println!("Error {:?} on unwrapping field Report.timeout", e);
+                return None;
+            }
+        };
 
-        let was_timeout = m.get_field(&String::from("Report.timeout"), sc).expect(
-            "expected timeout field in returned measurement",
-        ) as u32;
+        match m.get_field(&String::from("Report.rtt"), sc) {
+            Ok(val) => {ms.rtt = val as u32;}
+            Err(e) => {
+                println!("Error {:?} on unwrapping field Report.rtt", e);
+                return None;
+            }
+        };
 
-        let inflight = m.get_field(&String::from("Report.inflight"), sc).expect(
-            "expected inflight field in returned measurement",
-        ) as u32;
-
-        let loss = m.get_field(&String::from("Report.loss"), sc).expect(
-            "expected loss field in returned measurement",
-        ) as u32;
-
-        let rtt = m.get_field(&String::from("Report.rtt"), sc).expect(
-            "expected rtt field in returned measurement",
-        ) as u32;
-
-        GenericCongAvoidMeasurements{
-            acked: ack,
-            was_timeout: was_timeout == 1,
-            sacked: sack,
-            loss,
-            rtt,
-            inflight,
-        }
+        match m.get_field(&String::from("Report.inflight"), sc) {
+            Ok(val) => {ms.inflight = val as u32;}
+            Err(e) => {
+                println!("Error {:?} on unwrapping field Report.inflight", e);
+                return None;
+            }
+        };
+        
+        match m.get_field(&String::from("Report.loss"), sc) {
+            Ok(val) => {ms.loss = val as u32;}
+            Err(e) => {
+                println!("Error {:?} on unwrapping field Report.loss", e);
+                return None;
+            }
+        };
+        
+        match m.get_field(&String::from("Report.datapath_cwnd"), sc) {
+            Ok(val) => {ms.datapath_cwnd = val as u32;}
+            Err(e) => {
+                println!("Error {:?} on unwrapping field Report.datapath_cwnd", e);
+                return None;
+            }
+        };
+        Some(ms)
     }
 
     fn handle_timeout(&mut self) {
-        self.ss_thresh /= 2;
+        self.ss_thresh = (self.ss_thresh as f64/0.85) as u32;
+        
         if self.ss_thresh < self.init_cwnd {
             self.ss_thresh = self.init_cwnd;
         }
@@ -376,6 +543,14 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
                 s.sc = s.install_ss_update();
                 s.in_startup = true;
             }
+            (GenericCongAvoidConfigSS::Hss, _) => {
+                s.sc = s.install_hss_update();
+                s.in_startup = true;
+            }
+            (GenericCongAvoidConfigSS::HssTime, _) => {
+                s.sc = s.install_hss_time_update();
+                s.in_startup = true;
+            }
             (GenericCongAvoidConfigSS::Ccp, GenericCongAvoidConfigReport::Ack) => {
                 s.sc = s.install_ack_update();
             }
@@ -391,8 +566,12 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
     }
 
     fn on_report(&mut self, _sock_id: u32, m: Report) {
-        let mut ms = self.get_fields(&m);
-
+        match self.get_fields(&m) {
+            None => return,
+            Some(_) => {},
+        }
+        let mut ms = self.get_fields(&m).unwrap();
+        // check that report is not from an old scope
         if self.in_startup {
             // install new fold
             match self.report_option {
@@ -406,6 +585,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
                     self.sc = self.install_datapath_interval(i);
                 }
             }
+            self.ss_thresh = ms.datapath_cwnd;
 
             self.alg.set_cwnd(ms.inflight * self.mss);
             self.in_startup = false;
@@ -419,6 +599,17 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
 
         ms.acked = self.slow_start_increase(ms.acked);
 
+        self.logger.as_ref().map(|log| {
+            debug!(log, "got ack"; 
+                "acked(pkts)" => ms.acked / self.mss,
+                "curr_cwnd (pkts)" => self.alg.curr_cwnd() / self.mss,
+                "inflight (pkts)" => ms.inflight,
+                "loss" => ms.loss,
+                "ssthresh" => self.ss_thresh,
+                "rtt" => ms.rtt,
+                "datapathCwnd" => ms.datapath_cwnd/self.mss
+            );
+        });
         // increase the cwnd corresponding to new in-order cumulative ACKs
         self.alg.increase(&ms);
         self.maybe_reduce_cwnd(&ms);
@@ -431,15 +622,5 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
 
         self.update_cwnd();
 
-        self.logger.as_ref().map(|log| {
-            debug!(log, "got ack"; 
-                "acked(pkts)" => ms.acked / self.mss,
-                "curr_cwnd (pkts)" => self.alg.curr_cwnd() / self.mss,
-                "inflight (pkts)" => ms.inflight,
-                "loss" => ms.loss,
-                "ssthresh" => self.ss_thresh,
-                "rtt" => ms.rtt,
-            );
-        });
     }
 }

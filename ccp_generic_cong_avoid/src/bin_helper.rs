@@ -29,6 +29,12 @@ pub fn make_args(name: &str) -> Result<(GenericCongAvoidConfig, String), std::nu
         .arg(Arg::with_name("ss_in_fold")
              .long("ss_in_fold")
              .help("Implement slow start in the datapath"))
+        .arg(Arg::with_name("hybrid_slow_start")
+             .long("hybrid_slow_start")
+             .help("Implements hybrid slow start instead of regular loss based slow start. By default in the datapath."))
+        .arg(Arg::with_name("hss_time")
+             .long("hss_time")
+             .help("Implements hybrid slow start without relying on packet rounds, but time instead, without modifications to the CCP API."))
         .arg(Arg::with_name("report_per_ack")
              .long("per_ack")
              .help("Specifies that the datapath should send a measurement upon every ACK"))
@@ -67,7 +73,15 @@ pub fn make_args(name: &str) -> Result<(GenericCongAvoidConfig, String), std::nu
             } else {
                 GenericCongAvoidConfigReport::Rtt
             },
-            ss: if matches.is_present("ss_in_fold") {GenericCongAvoidConfigSS::Datapath} else {GenericCongAvoidConfigSS::Ccp},
+            ss: if matches.is_present("ss_in_fold") {
+                GenericCongAvoidConfigSS::Datapath
+            } else if matches.is_present("hybrid_slow_start") {
+                GenericCongAvoidConfigSS::Hss
+            } else if matches.is_present("hss_time") {
+                GenericCongAvoidConfigSS::HssTime
+            } else {
+                GenericCongAvoidConfigSS::Ccp
+            },
             use_compensation: matches.is_present("compensate_update"),
             deficit_timeout: u32::from_str_radix(matches.value_of("deficit_timeout").unwrap(), 10)?,
         },
