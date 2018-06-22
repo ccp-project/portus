@@ -428,7 +428,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     }
 
     fn handle_timeout(&mut self) {
-        self.ss_thresh = (self.ss_thresh as f64/0.85) as u32;
+        self.ss_thresh = (self.ss_thresh as f64/2.0) as u32;
         
         if self.ss_thresh < self.init_cwnd {
             self.ss_thresh = self.init_cwnd;

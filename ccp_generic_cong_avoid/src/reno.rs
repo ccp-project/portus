@@ -16,7 +16,7 @@ impl GenericCongAvoidAlg for Reno {
         Reno {
             mss,
             init_cwnd: f64::from(init_cwnd),
-            cwnd: f64::from(init_cwnd),
+           cwnd: f64::from(init_cwnd),
         }
     }
 
@@ -34,7 +34,7 @@ impl GenericCongAvoidAlg for Reno {
     }
 
     fn reduction(&mut self, _m: &GenericCongAvoidMeasurements) {
-        self.cwnd /= 2.0;
+        self.cwnd = self.cwnd/2.0;
         if self.cwnd <= self.init_cwnd {
             self.cwnd = self.init_cwnd;
         }

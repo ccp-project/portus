@@ -89,7 +89,7 @@ impl GenericCongAvoidAlg for Cubic {
             cwnd: f64::from(init_cwnd / mss),
             cwnd_cnt: 0.0f64,
             tcp_friendliness: true,
-            beta: 0.3f64,
+            beta: 0.26f64, // for QUIC
             fast_convergence: true,
             c: 0.4f64,
             wlast_max: 0.0f64,
