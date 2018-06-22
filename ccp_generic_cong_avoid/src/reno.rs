@@ -34,7 +34,7 @@ impl GenericCongAvoidAlg for Reno {
     }
 
     fn reduction(&mut self, _m: &GenericCongAvoidMeasurements) {
-        self.cwnd = self.cwnd/2.0;
+        self.cwnd = self.cwnd * 0.85;
         if self.cwnd <= self.init_cwnd {
             self.cwnd = self.init_cwnd;
         }
