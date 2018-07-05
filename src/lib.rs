@@ -591,7 +591,10 @@ where
                     } else {
                         let mut key = flows.get_mut(&m.sid).unwrap();
                         aggregates.get_mut(&key).and_then(move |agg| {
-                            agg.on_report(m.sid, Report { fields: m.fields });
+                            agg.on_report(m.sid, Report { 
+                                program_uid: m.program_uid,
+                                fields: m.fields
+                            });
                             Some(())
                         }).or_else(|| {
                             eprintln!("error: unknown aggregate key {:?}!", key);
