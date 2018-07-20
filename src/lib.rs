@@ -280,7 +280,7 @@ pub trait Aggregator<T: Ipc> {
 
     /// If a new flow corresponds to an existing aggregate, replace the create() method
     /// from CongAlg with new_flow() to notify the aggregate of a new flow arrival.
-    fn new_flow(&mut self, info: DatapathInfo, control: Datapath<T>);
+    fn new_flow(&mut self, control: Datapath<T>, info: DatapathInfo);
 
     /// Called when a flow belonging to this aggregate ends.
     fn close_one(&mut self, key: &Self::Key);
@@ -546,10 +546,10 @@ where
                 let k = U::Key::from(info);
 
                 aggregates.get_mut(&k).and_then(|agg| {
-                    agg.new_flow(info, Datapath {
+                    agg.new_flow(Datapath {
                         sock_id: c.sid,
                         sender: backend.clone(),
-                    });
+                    }, info);
                     Some(())
                 }).or_else(|| {
                     let agg = U::create(

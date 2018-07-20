@@ -1,0 +1,13 @@
+[package]
+name = "ccp_host_aggregation"
+version = "0.1.0"
+authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
+
+[dependencies]
+clap = "2.29"
+portus = { path = ".." }
+ccp_generic_cong_avoid = { path = "../ccp_generic_cong_avoid" }
+slog = "2"
+slog-async = "2"
+slog-term = "2"
+time = "0.1"
