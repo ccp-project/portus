@@ -33,6 +33,10 @@ impl<T> Socket<T> {
 }
 
 impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
+    fn name() -> String {
+        String::from("char")
+    }
+
     fn send(&self, buf:&[u8]) -> Result<()> {
         nix::unistd::write(self.fd.as_raw_fd(), buf)
             .map(|_| ())

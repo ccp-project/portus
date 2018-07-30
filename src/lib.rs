@@ -357,6 +357,14 @@ where
     let mut  b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
     let mut flows = HashMap::<u32, U>::new();
     let backend = b.sender();
+
+    cfg.logger.as_ref().map(|log| {
+        info!(log, "starting CCP";
+            "algorithm" => U::name(),
+            "ipc"       => I::name(),
+        );
+    });
+
     while let Some(msg) = b.next() {
         match msg {
             Msg::Cr(c) => {

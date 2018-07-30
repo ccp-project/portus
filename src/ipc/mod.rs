@@ -18,6 +18,8 @@ pub mod kp;
 
 /// IPC mechanisms must implement this trait.
 pub trait Ipc: 'static + Sync + Send {
+    /// Returns the name of this IPC mechanism (e.g. "netlink" for Linux netlink sockets)
+    fn name() -> String;
     /// Blocking send
     fn send(&self, msg: &[u8]) -> Result<()>;
     /// Blocking listen. Return value is how many bytes were read. Should not allocate.

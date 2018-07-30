@@ -144,6 +144,10 @@ impl<T> Socket<T> {
 
 use super::Blocking;
 impl super::Ipc for Socket<Blocking> {
+    fn name() -> String {
+        String::from("netlink")
+    }
+
     fn recv(&self, buf: &mut [u8]) -> Result<usize> {
         self.__recv(buf, nix::sys::socket::MsgFlags::empty())
     }
@@ -159,6 +163,10 @@ impl super::Ipc for Socket<Blocking> {
 
 use super::Nonblocking;
 impl super::Ipc for Socket<Nonblocking> {
+    fn name() -> String {
+        String::from("netlink")
+    }
+
     fn recv(&self, buf: &mut [u8]) -> Result<usize> {
         self.__recv(buf, nix::sys::socket::MSG_DONTWAIT)
     }

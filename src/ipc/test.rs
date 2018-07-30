@@ -11,6 +11,10 @@ impl FakeIpc {
 }
 
 impl Ipc for FakeIpc {
+    fn name() -> String {
+        String::from("fake")
+    }
+
     fn send(&self, msg: &[u8]) -> Result<(), super::Error> {
         let mut x = self.0.lock().unwrap();
         (*x).extend(msg);

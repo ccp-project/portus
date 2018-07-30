@@ -48,6 +48,10 @@ impl<T> Socket<T> {
 }
 
 impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
+    fn name() -> String {
+        String::from("unix")
+    }
+
     fn send(&self, msg: &[u8]) -> Result<()> {
         self.sk.send_to(msg, self.dest.clone())
             .map(|_| ())
