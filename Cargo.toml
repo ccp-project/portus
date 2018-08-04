@@ -1,7 +1,13 @@
 [package]
 name = "portus"
 version = "0.2.3"
-authors = ["Akshay Narayan <akshayn@csail.mit.edu>"]
+authors = ["Akshay Narayan <akshayn@csail.mit.edu>", "Frank Cangialosi <frankc@csail.mit.edu", "Deepti Raghavan <deeptir@stanford.edu"]
+description = "A Congestion Control Plane"
+homepage = "https://ccp-project.github.io"
+documentation = "https://docs.rs/portus/0.2.3/portus/"
+repository = "https://github.com/ccp-project/portus"
+readme = "./README.md"
+license = "ISC"
 
 [dependencies]
 bytes = "0.4.5"
