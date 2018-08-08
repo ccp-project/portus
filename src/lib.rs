@@ -512,6 +512,14 @@ where
     let mut aggregates = HashMap::<U::Key, U>::new();
     let mut num_flows_per_agg = HashMap::<U::Key, u32>::new();
     let backend = b.sender();
+
+    cfg.logger.as_ref().map(|log| {
+        info!(log, "starting CCP";
+            "algorithm" => U::name(),
+            "ipc"       => I::name(),
+        );
+    });
+
     while let Some(msg) = b.next() {
         match msg {
             Msg::Cr(c) => {
