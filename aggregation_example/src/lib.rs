@@ -223,13 +223,13 @@ impl<T: Ipc> AggregationExample<T> {
 
         // increase cwnd by 1 / cwnd per packet
         // print!("cwnd {} += {} * {} * ( {} / {} ) = ", self.cwnd, self.mss, self.num_flows, new_bytes_acked, self.cwnd);
-        self.cwnd += (self.mss as f64 * self.num_flows as f64 * (new_bytes_acked as f64 / self.cwnd as f64)) as u32;
+        self.cwnd += (self.mss as f64 * (new_bytes_acked as f64 / self.cwnd as f64)) as u32;
         // println!("{}", self.cwnd);
     }
 
     fn cwnd_reduction(&mut self, acked: u32, sacked: u32, loss: u32) {
         if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
-            self.cwnd -= self.cwnd / (2 * self.num_flows);
+            self.cwnd -= self.cwnd / 2; // * self.num_flows);
             if self.cwnd <= self.init_cwnd {
                 self.cwnd = self.init_cwnd;
             }
