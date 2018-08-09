@@ -3,23 +3,20 @@ extern crate time;
 #[macro_use]
 extern crate slog;
 extern crate portus;
-extern crate ccp_generic_cong_avoid;
 
 use std::time::Instant;
 use std::collections::HashMap;
 use portus::{Aggregator, CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
 use portus::lang::Scope;
-//use ccp_generic_cong_avoid::{GenericCongAvoid, GenericCongAvoidConfig, reno::Reno, cubic::Cubic};
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
 pub const DEFAULT_PENDING_BYTES: u32 = 2896;
 
 pub struct AggregationExample<T: Ipc> {
     logger: Option<slog::Logger>,
-
-    cwnd: u32,
     sc: Scope,
+    cwnd: u32,
     init_cwnd: u32,
     curr_cwnd_reduction: u32,
     mss: u32,
@@ -83,16 +80,28 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
             util: 0,
             last_msg: Instant::now(),
         };
-        let sc = f.install_datapath_program();
+        /*
+j       let sc = f.install_datapath_program();
         if self.num_flows == 0 {
             self.sc = sc;
         }
         self.subflows.insert(info.sock_id, f);
         self.num_flows += 1;
+        */
+        self.num_flows += 1;
+        if self.num_flows == 1 {
+            self.sc = f.install_datapath_program();
+            self.reallocate();
+        } else {
+            self.reallocate();
+            f.install_datapath_program();
+        }
+        self.subflows.insert(info.sock_id, f);
     }
 
     fn close_one(&mut self, _key: &BottleneckID) {
-        // TODO logic
+        self.num_flows -= 1;
+        self.reallocate();
     }
 }
 
@@ -115,7 +124,7 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
             ss_thresh: DEFAULT_SS_THRESH,
 
             subflows: HashMap::new(),
-            num_flows: 1,
+            num_flows: 0,
             algorithm: cfg.config.algorithm,
             allocator: cfg.config.allocator,
             forecast: cfg.config.forecast,
@@ -143,9 +152,17 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
         }
 
 		if was_timeout {
+            self.logger.as_ref().map(|log| {
+                warn!(log, "timeout"; 
+                    "sid" => sock_id,
+                    "total_cwnd (pkts)" => self.cwnd / self.mss,
+                    "ssthresh" => self.ss_thresh,
+                );
+            });
             self.handle_timeout();
             return;
         }
+
         match self.algorithm.as_str() {
             "reno" => self.reno_increase_with_slow_start(acked),
             _ => unreachable!(),
@@ -161,11 +178,18 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
 
         self.reallocate();
 
-        if self.curr_cwnd_reduction > 0 {
-            // TODO log in cwnd reduction, acked, deficit = curr_Cwnd_Reduction
-        } else {
-            // TODO log got ack
-        }
+        self.logger.as_ref().map(|log| {
+            info!(log, "ack";
+                "sid" => sock_id,
+                "acked" => acked / self.mss,
+                "sacked" => sacked,
+                "ssthresh" => self.ss_thresh,
+                "total_cwnd (pkts)" => self.cwnd / self.mss,
+                "inflight" => inflight,
+                "loss" => loss,
+                "rtt" => rtt,
+                "deficit" => self.curr_cwnd_reduction);
+        });
     }
 }
 
@@ -180,8 +204,6 @@ impl<T: Ipc> AggregationExample<T> {
         self.cwnd = ((self.cwnd * (self.num_flows - 1)) / self.num_flows) + self.init_cwnd;
         self.curr_cwnd_reduction = 0;
 
-        // TODO log timeout
-        
         self.reallocate();
     }
 
@@ -200,7 +222,9 @@ impl<T: Ipc> AggregationExample<T> {
         }
 
         // increase cwnd by 1 / cwnd per packet
-        self.cwnd += self.mss * self.num_flows * (new_bytes_acked / self.cwnd);
+        // print!("cwnd {} += {} * {} * ( {} / {} ) = ", self.cwnd, self.mss, self.num_flows, new_bytes_acked, self.cwnd);
+        self.cwnd += (self.mss as f64 * self.num_flows as f64 * (new_bytes_acked as f64 / self.cwnd as f64)) as u32;
+        // println!("{}", self.cwnd);
     }
 
     fn cwnd_reduction(&mut self, acked: u32, sacked: u32, loss: u32) {
@@ -300,7 +324,7 @@ impl<T: Ipc> SubFlow<T> {
                     (report)
                     (:= Micros 0)
                 )
-            ", Some(&[("Cwnd", self.cwnd)])
+            ", None
         ).unwrap()
     }
 }
