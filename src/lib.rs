@@ -231,9 +231,11 @@ impl Report {
     /// Uses the `Scope` returned by `lang::compile` (or `install`) to query 
     /// the `Report` for its values.
     pub fn get_field(&self, field: &str, sc: &Scope) -> Result<u64> {
+        /*
         if sc.program_uid != self.program_uid {
             return Err(Error::from(StaleProgramError))
         }
+        */
 
         match sc.get(field) {
             Some(r) => {
