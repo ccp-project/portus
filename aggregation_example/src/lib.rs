@@ -5,6 +5,7 @@ extern crate slog;
 extern crate portus;
 extern crate ccp_generic_cong_avoid;
 
+use std::time::Instant;
 use std::collections::HashMap;
 use portus::{Aggregator, CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
@@ -16,19 +17,29 @@ pub const DEFAULT_PENDING_BYTES: u32 = 2896;
 
 pub struct AggregationExample<T: Ipc> {
     logger: Option<slog::Logger>,
-    num_flows: u32,
-    total_cwnd: u32,
-    subflows: HashMap<u32, SubFlow<T> >,
+
+    cwnd: u32,
     sc: Scope,
     init_cwnd: u32,
- 
-    // TODO algorithm, allocator, forecast, maybe set fuction
+    curr_cwnd_reduction: u32,
+    mss: u32,
+    ss_thresh: u32,
+
+    num_flows: u32,
+    subflows: HashMap<u32, SubFlow<T>>,
+    algorithm: String,
+    allocator: String,
+    forecast: bool,
 }
 
 pub struct SubFlow<T: Ipc> {
     control: Datapath<T>,
     cwnd: u32,
-    // TODO add other stuff cwnd, rtt etc.
+    rtt: u32,
+    inflight: u32,
+    pending: u32,
+    util: u32,
+    last_msg: std::time::Instant,
 }
 
 #[derive(Clone)]
@@ -65,8 +76,12 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
     fn new_flow(&mut self, control: Datapath<T>, info: DatapathInfo) {
         let f = SubFlow {
             control: control,
-            cwnd: info.init_cwnd, // TODO
-            // TODO init cc defaults, cwnd, etc.
+            cwnd: info.init_cwnd,
+            rtt: 0,
+            inflight: 0,
+            pending: DEFAULT_PENDING_BYTES,
+            util: 0,
+            last_msg: Instant::now(),
         };
         let sc = f.install_datapath_program();
         if self.num_flows == 0 {
@@ -76,7 +91,7 @@ impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
         self.num_flows += 1;
     }
 
-    fn close_one(&mut self, key: &BottleneckID) {
+    fn close_one(&mut self, _key: &BottleneckID) {
         // TODO logic
     }
 }
@@ -89,45 +104,138 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, AggregationExample<T>>, info: DatapathInfo) -> Self {
-        /*
-        let alg = match cfg.algorithm {
-            "reno"  => { GenericCongAvoid::<T, Reno>::create(control, cfg, info) },
-            "cubic" => { GenericCongAvoid::<T, Cubic>::create(control, cfg, info) },
-            _       => panic!("unsupported algorithm"),
-        };
-        */
 
         let mut s = Self {
             logger: cfg.logger,
-            total_cwnd: info.init_cwnd,
+            cwnd: info.init_cwnd,
             init_cwnd: info.init_cwnd,
             sc: Default::default(),
+            mss: info.mss,
+            curr_cwnd_reduction: 0,
+            ss_thresh: DEFAULT_SS_THRESH,
+
             subflows: HashMap::new(),
             num_flows: 1,
-            // TODO allocator, algorithm, forecast
+            algorithm: cfg.config.algorithm,
+            allocator: cfg.config.allocator,
+            forecast: cfg.config.forecast,
         };
 
         s.logger.as_ref().map(|log| {
             debug!(log, "starting new aggregate"); 
         });
 
-        
         s.new_flow(control, info);
     
         s
     }
 
-    fn on_report(&mut self, sock_id: u32, m: Report) {
+    fn on_report(&mut self, sock_id: u32, r: Report) {
+        let rs = self.get_fields(&r);
+        let (acked, sacked, loss, was_timeout, rtt, inflight, pending) = rs;
 
+        if let Some(flow) = self.subflows.get_mut(&sock_id) {
+            flow.rtt = rtt;
+            flow.inflight = inflight;
+            flow.pending = pending;
+            flow.util = acked + sacked;
+            flow.last_msg = Instant::now();
+        }
+
+		if was_timeout {
+            self.handle_timeout();
+            return;
+        }
+        match self.algorithm.as_str() {
+            "reno" => self.reno_increase_with_slow_start(acked),
+            _ => unreachable!(),
+        }
+        
+        if loss > 0 || sacked > 0 {
+            self.cwnd_reduction(acked, sacked, loss);
+        } else if acked < self.curr_cwnd_reduction {
+            self.curr_cwnd_reduction -= acked / self.mss;
+        } else {
+            self.curr_cwnd_reduction = 0;
+        }
+
+        self.reallocate();
+
+        if self.curr_cwnd_reduction > 0 {
+            // TODO log in cwnd reduction, acked, deficit = curr_Cwnd_Reduction
+        } else {
+            // TODO log got ack
+        }
     }
 }
 
 impl<T: Ipc> AggregationExample<T> {
-    fn reallocate(&mut self) {
 
+    fn handle_timeout(&mut self) {
+        self.ss_thresh /= 2;
+        if self.ss_thresh < self.init_cwnd {
+            self.ss_thresh = self.init_cwnd;
+        }
+
+        self.cwnd = ((self.cwnd * (self.num_flows - 1)) / self.num_flows) + self.init_cwnd;
+        self.curr_cwnd_reduction = 0;
+
+        // TODO log timeout
+        
+        self.reallocate();
     }
 
-    fn get_fields(&mut self, r: Report) -> (u32, u32, u32, bool, u32, u32, u32) {
+    fn reno_increase_with_slow_start(&mut self, acked: u32) {
+        let mut new_bytes_acked = acked;
+ 
+        if self.cwnd < self.ss_thresh {
+            // increase cwnd by 1 per packet, until ssthresh
+            if self.cwnd + new_bytes_acked > self.ss_thresh {
+                new_bytes_acked -= self.ss_thresh - self.cwnd;
+                self.cwnd = self.ss_thresh;
+            } else {
+                self.cwnd += new_bytes_acked;
+                new_bytes_acked = 0;
+            }
+        }
+
+        // increase cwnd by 1 / cwnd per packet
+        self.cwnd += self.mss * self.num_flows * (new_bytes_acked / self.cwnd);
+    }
+
+    fn cwnd_reduction(&mut self, acked: u32, sacked: u32, loss: u32) {
+        if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
+            self.cwnd -= self.cwnd / (2 * self.num_flows);
+            if self.cwnd <= self.init_cwnd {
+                self.cwnd = self.init_cwnd;
+            }
+
+            self.ss_thresh = self.cwnd;
+
+            // TODO old code did this BEFORE cwnd update, is that correct? (i think it was a bug)
+            self.reallocate(); 
+        }
+
+        self.curr_cwnd_reduction += sacked + loss;
+    }
+
+    fn reallocate(&mut self) {
+        match self.allocator.as_str() {
+            "rr" => self.allocate_rr(),
+            _ => unreachable!(),
+        }
+    }
+
+    fn allocate_rr(&mut self) {
+        for (_, f) in &mut self.subflows {
+            f.cwnd = self.cwnd / self.num_flows;
+            if let Err(e) = f.control.update_field(&self.sc, &[("Cwnd", f.cwnd)]) {
+                self.logger.as_ref().map(|log| { warn!(log, "failed to update cwnd"; "err" => ?e); });
+            }
+        }
+    }
+
+    fn get_fields(&mut self, r: &Report) -> (u32, u32, u32, bool, u32, u32, u32) {
         let sc = &self.sc;
         let ack = r.get_field(&String::from("Report.acked"), sc).expect(
             "expected acked field in returned report",
