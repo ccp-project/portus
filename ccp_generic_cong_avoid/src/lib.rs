@@ -424,7 +424,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
         self.maybe_reduce_cwnd(&ms);
         if self.curr_cwnd_reduction > 0 {
             self.logger.as_ref().map(|log| {
-                debug!(log, "in cwnd reduction"; "acked" => ms.acked / self.mss, "deficit" => self.curr_cwnd_reduction);
+                debug!(log, "in cwnd reduction"; "acked" => ms.acked / self.mss, "deficit" => self.curr_cwnd_reduction, "curr_cwnd (pkts)"  => self.alg.curr_cwnd() / self.mss);
             });
             return;
         }

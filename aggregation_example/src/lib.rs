@@ -155,7 +155,7 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
             self.logger.as_ref().map(|log| {
                 warn!(log, "timeout"; 
                     "sid" => sock_id,
-                    "total_cwnd (pkts)" => self.cwnd / self.mss,
+                    "total_cwnd" => self.cwnd / self.mss,
                     "ssthresh" => self.ss_thresh,
                 );
             });
@@ -184,10 +184,11 @@ impl<T: Ipc> CongAlg<T> for AggregationExample<T> {
                 "acked" => acked / self.mss,
                 "sacked" => sacked,
                 "ssthresh" => self.ss_thresh,
-                "total_cwnd (pkts)" => self.cwnd / self.mss,
+                "total_cwnd" => self.cwnd / self.mss,
                 "inflight" => inflight,
                 "loss" => loss,
                 "rtt" => rtt,
+                "flows" => self.num_flows,
                 "deficit" => self.curr_cwnd_reduction);
         });
     }
@@ -229,6 +230,7 @@ impl<T: Ipc> AggregationExample<T> {
 
     fn cwnd_reduction(&mut self, acked: u32, sacked: u32, loss: u32) {
         if loss > 0 && self.curr_cwnd_reduction == 0 || (acked > 0 && self.cwnd == self.ss_thresh) {
+            // TODO reno only reduction
             self.cwnd -= self.cwnd / 2; // * self.num_flows);
             if self.cwnd <= self.init_cwnd {
                 self.cwnd = self.init_cwnd;
