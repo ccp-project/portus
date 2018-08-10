@@ -1,10 +1,9 @@
-all: build test-portus test-ipc lint algs
+all: build test-portus test-ipc libccp-integration lint algs
 
 travis: build test-portus libccp-integration
 
-
-
 OS := $(shell uname)
+CLIPPY := $(shell cargo --list | grep -c clippy)
 
 build:
 	cargo +nightly build --all
@@ -19,7 +18,11 @@ ifeq ($(OS), Linux)
 endif
 
 lint:
+ifeq ($(CLIPPY), 1)
 	cargo +nightly clippy
+else
+	$(warning clippy not installed, skipping...)
+endif
 
 cargo_bench: build test
 	cargo +nightly bench --all
@@ -33,7 +36,11 @@ algs: generic
 
 generic:
 	cd ccp_generic_cong_avoid && cargo +nightly build
+ifeq ($(CLIPPY), 1)
 	cd ccp_generic_cong_avoid && cargo +nightly clippy
+else
+	$(warning clippy not installed, skipping...)
+endif
 
 clean:
 	cargo clean
@@ -44,7 +51,10 @@ clean:
 integration-test:
 	python integration_tests/algorithms/compare.py reference-trace
 
-libccp-integration:
+integration_tests/libccp_integration/libccp/ccp.h:
+	$(error Did you forget to git submodule update --init --recursive ?)
+
+libccp-integration: integration_tests/libccp_integration/libccp/ccp.h
 	cd integration_tests/libccp_integration && cargo +nightly build
 	cd integration_tests/libccp_integration && make
 ifeq ($(OS), Linux)
