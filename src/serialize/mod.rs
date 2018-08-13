@@ -154,6 +154,8 @@ pub mod create;
 pub mod measure;
 pub mod install;
 pub mod update_field;
+pub mod summary;
+pub mod allocation;
 mod testmsg;
 
 /// Serialize a serializable message.
@@ -186,7 +188,7 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
 /// Reads message type in the header of the input buffer and returns
 /// a Msg of the corresponding type. If the message type is unkown, returns a
 /// wrapper with direct access to the message bytes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(PartialEq)]
 pub enum Msg<'a> {
     Cr(create::Msg),
