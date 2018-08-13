@@ -67,6 +67,10 @@ impl From<DatapathInfo> for BottleneckID {
     }
 }
 
+impl Default for BottleneckID {
+    fn default() -> BottleneckID { BottleneckID(0) }
+}
+
 impl<T: Ipc> Aggregator<T> for AggregationExample<T> {
     type Key = BottleneckID;
 
@@ -99,8 +103,9 @@ j       let sc = f.install_datapath_program();
         self.subflows.insert(info.sock_id, f);
     }
 
-    fn close_one(&mut self, _key: &BottleneckID) {
+    fn close_one(&mut self, sock_id: u32) {
         self.num_flows -= 1;
+        self.subflows.remove(&sock_id);
         self.reallocate();
     }
 }
