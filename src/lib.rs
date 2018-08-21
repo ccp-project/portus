@@ -71,11 +71,7 @@ extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
 
-#[macro_use]
-extern crate serde_derive;
-extern crate serde;
-extern crate rmp;
-extern crate rmp_serde as rmps;
+extern crate cluster_message_types;
 
 pub mod ipc;
 pub mod lang;
@@ -91,8 +87,7 @@ use std::collections::{HashMap, HashSet};
 use ipc::Ipc;
 use ipc::{BackendSender, BackendBuilder};
 use serialize::Msg;
-use serialize::summary::Summary;
-use serialize::allocation::Allocation;
+use cluster_message_types::{summary::Summary, allocation::Allocation};
 use std::sync::{Arc, atomic};
 use std::thread;
 
@@ -305,7 +300,7 @@ pub trait Slave {
     /// Algorithms are expected to maintain statistics internally from Reports and then use this
     /// function to combine those statistics into a single summary that will be sent to the
     /// controller.
-    fn create_summary(&mut self) -> Summary;
+    fn create_summary(&mut self) -> Option<&Summary>;
 
     /// The number of microseconds to wait until sending the next summary. This function is called
     /// first when the aggregate is created and a corresponding timer is set. Once that timer
@@ -329,7 +324,7 @@ pub trait Slave {
 
     /// Called when an Allocation message is received from the controller. Algorithms must adhere
     /// to this rate in aggregate, but are free to decide how to allocate that rate among individual flows. 
-    fn on_allocation(&mut self, a: Allocation);
+    fn on_allocation(&mut self, a: &Allocation);
 }
 
 #[derive(Debug)]
@@ -559,8 +554,6 @@ where
 }
 
 use std::net::{SocketAddr, UdpSocket};
-use serde::{Serialize, Deserialize};
-use rmps::{Serializer, Deserializer};
 use std::io::ErrorKind;
 // Aggregate congestion control version of main inner execution loop of CCP
 // Blocks "forever", or until the iterator stops iterating. 
@@ -655,7 +648,7 @@ where
                                 aggregates.remove(&key).unwrap();
                             }
                             aggregates.get_mut(&key).and_then(|agg| {
-                                agg.close_one(&key);
+                                agg.close_one(m.sid);
                                 if *num_flows == 0 {
                                     agg.close();
                                 }
@@ -710,11 +703,13 @@ where
 {
     let mut receive_buf = [0u8; 1024];
     let mut allocation_buf = [0u8;1024];
-    let mut summary_buf = Vec::new();
-    let mut  b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
-    let backend = b.sender();
+    let mut allocation_msg : Allocation = Default::default();
+    let mut summary_buf = [0u8; 128];
     let mut host_aggregator : Option<U> = None;
     let mut flows = HashSet::<u32>::new();
+
+    let mut  b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
+    let backend = b.sender();
 
     cfg.logger.as_ref().map(|log| {
         info!(log, "starting CCP";
@@ -768,16 +763,16 @@ where
                             sender: backend.clone(),
                         }, info);
                     } else {
-                        host_aggregator = Some(
-                            U::create(
-                                Datapath{
-                                    sock_id: c.sid,
-                                    sender: backend.clone(),
-                                },
-                                cfg.clone(),
-                                info
-                            )
-                        )
+                        let mut agg = U::create(
+                            Datapath{
+                                sock_id: c.sid,
+                                sender: backend.clone(),
+                            },
+                            cfg.clone(),
+                            info
+                        );
+                        next_summary_time = time::precise_time_ns() + (agg.next_summary_time() as u64 * 1000);
+                        host_aggregator = Some(agg);
                     }
                 }
                 Msg::Ms(r) => {
@@ -794,9 +789,10 @@ where
                                 fields: r.fields,
                             });
                             if send_sum_now {
-                                let sum = agg.create_summary();
-                                sum.serialize(&mut Serializer::new(&mut summary_buf)).expect("failed to serialize summary msg");
-                                controller.send_to(&summary_buf[..], controller_addr_s).expect("failed to send immediate summary to controller");
+                                if let Some(sum) = agg.create_summary() {
+                                    sum.write_to(&mut summary_buf);
+                                    controller.send_to(&summary_buf, controller_addr_s).expect("failed to send immediate summary to controller");
+                                }
                             }
                         }
                     } else {
@@ -814,26 +810,26 @@ where
         match controller.recv(&mut allocation_buf) {
             Ok(amt) => {
                 if amt > 0 {
-                    let mut de = Deserializer::new(&allocation_buf[..amt]);
-                    let alloc : Allocation = Deserialize::deserialize(&mut de).expect("failed to deserialize allocation msg");
+                    allocation_msg.read_from(&allocation_buf[..amt]);
                     if let Some(ref mut agg) = host_aggregator {
-                        agg.on_allocation(alloc);
+                        agg.on_allocation(&allocation_msg);
                     } else {
                         cfg.logger.as_ref().map(|log| {
-                            warn!(log, "received allocation but aggregate hasn't been created yet!"; "sid" => alloc.id);
+                            warn!(log, "received allocation but aggregate hasn't been created yet!"; "sid" => &allocation_msg.id);
                         });
                     }
                  }
             }
             Err(ref err) if err.kind() != ErrorKind::WouldBlock => { panic!("UDP socket error: {}", err) }
-            Err(_) => { panic!("UDP socket error: unknown"); }
+            Err(_) => {}
         }
         if next_summary_time > time::precise_time_ns() {
             // send summary
             if let Some(ref mut agg) = host_aggregator {
-                let sum = agg.create_summary();
-                sum.serialize(&mut Serializer::new(&mut summary_buf)).expect("failed to serialize summary msg");
-                controller.send_to(&summary_buf[..], controller_addr_s).expect("failed to send summary to controller");
+                if let Some(sum) = agg.create_summary() { 
+                    sum.write_to(&mut summary_buf);
+                    controller.send_to(&summary_buf, controller_addr_s).expect("failed to send immediate summary to controller");
+                }
                 next_summary_time = time::precise_time_ns() + (agg.next_summary_time() as u64 * 1000);
             } else {
                 cfg.logger.as_ref().map(|log| {

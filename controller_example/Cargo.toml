@@ -1,0 +1,15 @@
+[package]
+name = "controller_example"
+version = "0.1.0"
+authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
+
+[dependencies]
+portus = { path = ".." }
+slog = "2"
+slog-async = "2"
+slog-term = "2"
+clap = "2.29"
+"rmp" = "0.8"
+rmp-serde = "0.13"
+serde = "1.0"
+time = "0.1"
