@@ -1,3 +1,4 @@
+#[cfg(feature = "iokernel")]
 use shenango;
 use std;
 use libc;
@@ -13,6 +14,7 @@ use std::time::Duration;
 #[derive(Copy, Clone)]
 pub enum Backend {
     Linux,
+    #[cfg(feature = "iokernel")]
     Shenango,
 }
 
@@ -24,6 +26,7 @@ impl Backend {
         match self {
             &Backend::Linux =>
                 UdpConnection::Linux(UdpSocket::bind(local_addr).unwrap()),
+            #[cfg(feature = "iokernel")]
             &Backend::Shenango =>
                 UdpConnection::Shenango(shenango::udp::UdpConnection::listen(local_addr)),
         }
@@ -37,6 +40,7 @@ impl Backend {
     {
         match *self {
             Backend::Linux => JoinHandle::Linux(thread::spawn(f)),
+            #[cfg(feature = "iokernel")]
             Backend::Shenango => JoinHandle::Shenango(shenango::thread::spawn(f)),
         }
     }
@@ -44,6 +48,7 @@ impl Backend {
     pub fn sleep(&self, duration: Duration) {
         match *self {
             Backend::Linux => thread::sleep(duration),
+            #[cfg(feature = "iokernel")]
             Backend::Shenango => shenango::sleep(duration),
         }
     }
@@ -52,6 +57,7 @@ impl Backend {
     pub fn thread_yield(&self) {
         match *self {
             Backend::Linux => thread::yield_now(),
+            #[cfg(feature = "iokernel")]
             Backend::Shenango => shenango::thread_yield(),
         }
     }
@@ -63,6 +69,7 @@ impl Backend {
     {
         match *self {
             Backend::Linux => f(),
+            #[cfg(feature = "iokernel")]
             Backend::Shenango => shenango::runtime_init(cfgpath.unwrap().to_owned(), f).unwrap(),
         }
     }
@@ -70,12 +77,14 @@ impl Backend {
 
 pub enum UdpConnection {
     Linux(UdpSocket),
+    #[cfg(feature = "iokernel")]
     Shenango(shenango::udp::UdpConnection),
 }
 impl UdpConnection {
     pub fn send_to(&self, buf: &[u8], addr: SocketAddrV4) -> io::Result<usize> {
         match *self {
             UdpConnection::Linux(ref s) => s.send_to(buf, addr),
+            #[cfg(feature = "iokernel")]
             UdpConnection::Shenango(ref s) => s.write_to(buf, addr),
         }
     }
@@ -85,6 +94,7 @@ impl UdpConnection {
                 SocketAddr::V4(addr) => (len, addr),
                 _ => unreachable!(),
             }),
+            #[cfg(feature = "iokernel")]
             UdpConnection::Shenango(ref s) => s.read_from(buf),
         }
     }
@@ -92,12 +102,14 @@ impl UdpConnection {
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         match *self {
             UdpConnection::Linux(ref s) => s.send(buf),
+            #[cfg(feature = "iokernel")]
             UdpConnection::Shenango(ref s) => s.send(buf),
         }
     }
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         match *self {
             UdpConnection::Linux(ref s) => s.recv(buf),
+            #[cfg(feature = "iokernel")]
             UdpConnection::Shenango(ref s) => s.recv(buf),
         }
     }
@@ -108,6 +120,7 @@ impl UdpConnection {
                 Ok(SocketAddr::V4(addr)) => addr,
                 _ => unreachable!(),
             },
+            #[cfg(feature = "iokernel")]
             UdpConnection::Shenango(ref s) => s.local_addr(),
         }
     }
@@ -118,6 +131,7 @@ impl UdpConnection {
             UdpConnection::Linux(ref s) => unsafe {
                 let _ = libc::shutdown(s.as_raw_fd(), libc::SHUT_RD);
             },
+            #[cfg(feature = "iokernel")]
             UdpConnection::Shenango(ref s) => s.shutdown(),
         }
     }
@@ -125,12 +139,14 @@ impl UdpConnection {
 
 pub enum JoinHandle<T: Send + 'static> {
     Linux(std::thread::JoinHandle<T>),
+    #[cfg(feature = "iokernel")]
     Shenango(shenango::thread::JoinHandle<T>),
 }
 impl<T: Send + 'static> JoinHandle<T> {
     pub fn join(self) -> Result<T, Box<Any + Send + 'static>> {
         match self {
             JoinHandle::Linux(j) => j.join(),
+            #[cfg(feature = "iokernel")]
             JoinHandle::Shenango(j) => j.join(),
         }
     }

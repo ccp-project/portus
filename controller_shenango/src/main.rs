@@ -1,5 +1,6 @@
 extern crate clap;
 extern crate libc;
+#[cfg(feature = "iokernel")]
 extern crate shenango;
 extern crate cluster_message_types;
 extern crate time;
@@ -66,10 +67,13 @@ fn main() {
             .long("backend")
             .takes_value(true)
             .required(true)
-            .possible_values(&[
-                "linux",
-                "shenango"
-            ])
+            .possible_values(
+                (if cfg!(feature = "iokernel") {
+                    &["linux","shenango"]
+                } else {
+                    &["linux"]
+                })
+            )
             .requires_ifs(&[("shenango", "config")])
             .help("Which networking stack to use")
         )
@@ -87,6 +91,7 @@ fn main() {
     let addr: SocketAddrV4 = FromStr::from_str(matches.value_of("addr").unwrap()).unwrap();
     let backend = match matches.value_of("backend").unwrap() {
         "linux"    => Backend::Linux,
+        #[cfg(feature = "iokernel")]
         "shenango" => Backend::Shenango,
         _          => unreachable!(),
     };
