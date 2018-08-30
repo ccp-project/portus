@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
 
 [dependencies]
-shenango = { path = "../../shenango-master/bindings/rust" }
+shenango = { path = "../../shenango-master/bindings/rust", optional=true }
 cluster_message_types = { path = "../cluster_message_types" }
 slog = "2"
 slog-async = "2"
@@ -12,6 +12,10 @@ slog-term = "2"
 clap = "2.29"
 time = "0.1"
 libc = "0.2"
+
+[features]
+default = []
+iokernel = ["shenango"]
 
 [profile.release]
 debug=true
