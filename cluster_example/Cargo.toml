@@ -6,6 +6,7 @@ authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
 [dependencies]
 clap = "2.29"
 portus = { path = ".." }
+cluster_message_types = { path = "../cluster_message_types" }
 slog = "2"
 slog-async = "2"
 slog-term = "2"

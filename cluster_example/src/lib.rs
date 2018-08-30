@@ -3,15 +3,15 @@ extern crate time;
 #[macro_use]
 extern crate slog;
 extern crate portus;
+extern crate cluster_message_types;
 
 use std::cmp::max;
 use std::time::Instant;
 use std::collections::HashMap;
 use portus::{Slave, Aggregator, CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
-use portus::serialize::summary::Summary;
-use portus::serialize::allocation::Allocation;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
+use cluster_message_types::{summary::Summary, allocation::Allocation};
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
 pub const DEFAULT_PENDING_BYTES: u32 = 2896;
