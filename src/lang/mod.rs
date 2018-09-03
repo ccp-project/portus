@@ -130,20 +130,45 @@ impl<'a> From<&'a str> for Error {
         Error(String::from(e))
     }
 }
-impl From<nom::simple_errors::Err> for Error {
-    fn from(e: nom::simple_errors::Err) -> Error {
-        Error(String::from(e.description()))
+impl<I, E> From<nom::Err<I, E>> for Error {
+    fn from(e: nom::Err<I, E>) -> Error {
+        Error(String::from(e.into_error_kind().description()))
+    }
+}
+impl<I, E> From<nom::Context<I, E>> for Error {
+    fn from(e: nom::Context<I, E>) -> Error {
+        Error(String::from(e.into_error_kind().description()))
     }
 }
 impl From<std::string::FromUtf8Error> for Error {
     fn from(e: std::string::FromUtf8Error) -> Error {
-        Error(format!("err {}", e))
+        Error(format!("string err {}", e))
     }
 }
 impl From<std::str::Utf8Error> for Error {
     fn from(e: std::str::Utf8Error) -> Error {
-        Error(format!("err {}", e))
+        Error(format!("string err {}", e))
     }
+}
+impl From<std::num::ParseIntError> for Error {
+    fn from(e: std::num::ParseIntError) -> Error {
+        Error(format!("int err {}", e))
+    }
+}
+
+/// Define this helper macro to replace the named! macro provided by nom
+/// to address https://github.com/Geal/nom/issues/790 with CompleteByteSlice
+macro_rules! named_complete {
+    ($name:ident<$t:ty>, $submac:ident!( $($args:tt)* )) => (
+        fn $name( i: nom::types::CompleteByteSlice ) -> nom::IResult<nom::types::CompleteByteSlice, $t, u32> {
+            $submac!(i, $($args)*)
+        }
+    );
+    (pub $name:ident<$t:ty>, $submac:ident!( $($args:tt)* )) => (
+        pub fn $name( i: nom::types::CompleteByteSlice ) -> nom::IResult<nom::types::CompleteByteSlice, $t, u32> {
+            $submac!(i, $($args)*)
+        }
+    )
 }
 
 mod ast;
