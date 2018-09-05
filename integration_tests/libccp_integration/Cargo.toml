@@ -1,7 +1,7 @@
 [package]
 name = "libccp_integration_test"
 version = "0.0.1"
-authors = ["Deepti Raghavan <deeptir@mit.edu>"]
+authors = ["Deepti Raghavan <deeptir@mit.edu>", "Akshay Narayan <akshayn@csail.mit.edu>"]
 
 [dependencies]
 clap="2.29"

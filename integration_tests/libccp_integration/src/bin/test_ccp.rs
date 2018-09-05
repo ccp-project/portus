@@ -10,7 +10,7 @@ extern crate slog;
 extern crate libccp_integration_test;
 extern crate portus;
 
-use libccp_integration_test::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars, TestPresetVars};
+use libccp_integration_test::scenarios::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars, TestPresetVars};
 use std::process::{Command, Stdio};
 use portus::ipc::{BackendBuilder, Blocking};
 use portus::ipc::unix::Socket;
@@ -31,10 +31,10 @@ enum Test {
 fn start_ccp<T>(log: slog::Logger, tx: mpsc::Sender<String>, test: Test) -> portus::CCPHandle
     where T: portus::CongAlg<
         Socket<Blocking>,
-        Config=libccp_integration_test::IntegrationTestConfig,
+        Config=libccp_integration_test::scenarios::IntegrationTestConfig,
     > + 'static
 {
-    let cfg = libccp_integration_test::IntegrationTestConfig{
+    let cfg = libccp_integration_test::scenarios::IntegrationTestConfig{
         sender: tx, // used for the algorithm to send a signal whent the tests are over
     };
     
@@ -80,7 +80,7 @@ fn run_test(libccp_location: String, log: slog::Logger, test: Test) {
     // wait for program to finish
     let wait_for_done = thread::spawn(move ||{
         let msg = rx.recv().unwrap();
-        assert!(msg == libccp_integration_test::DONE, "Received wrong message on channel");
+        assert!(msg == libccp_integration_test::scenarios::DONE, "Received wrong message on channel");
         ccp_handle.kill(); // causes backend to stop iterating
         libccp_process.kill().unwrap();
         ccp_handle.wait().unwrap();
