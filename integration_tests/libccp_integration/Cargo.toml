@@ -1,12 +1,17 @@
 [package]
 name = "libccp_integration_test"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Deepti Raghavan <deeptir@mit.edu>", "Akshay Narayan <akshayn@csail.mit.edu>"]
 
 [dependencies]
 clap="2.29"
+failure = "0.1"
+minion = "0.1.0"
 portus = { path = "../.." }
-slog = {version = "2"}
 slog-async = "2"
 slog-term = "2"
-time="0.1"
+slog = "2"
+time = "0.1"
+
+[build-dependencies]
+bindgen = "0.40.0"

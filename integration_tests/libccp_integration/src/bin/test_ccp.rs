@@ -10,13 +10,13 @@ extern crate slog;
 extern crate libccp_integration_test;
 extern crate portus;
 
-use libccp_integration_test::scenarios::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars, TestPresetVars};
-use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
+
 use portus::ipc::{BackendBuilder, Blocking};
 use portus::ipc::unix::Socket;
-use std::thread;
-use std::sync::mpsc;
-use std::env;
+
+use libccp_integration_test::scenarios::{TestBasicSerialize, TestTiming, TestUpdateFields, TestVolatileVars, TestPresetVars};
 
 #[derive(Debug)]
 enum Test {
@@ -53,36 +53,35 @@ fn start_ccp<T>(log: slog::Logger, tx: mpsc::Sender<String>, test: Test) -> port
 	)
 }
 
-// Thread to spawn libccp, returns pid
-fn start_libccp(libccp_location: String) -> std::process::Child {
-    Command::new(libccp_location)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn().unwrap()
-}
-
 // Runs a specific intergration test
-fn run_test(libccp_location: String, log: slog::Logger, test: Test) {
+fn run_test(log: slog::Logger, test: Test) {
     let (tx, rx) = mpsc::channel();
-    // spawn libccp
-    let mut libccp_process = start_libccp(libccp_location);
-    let ccp_handle: portus::CCPHandle = match test {
-        Test::TestBasicSerialize => start_ccp::<TestBasicSerialize<Socket<Blocking>>>(log, tx, test),
-        Test::TestTiming => start_ccp::<TestTiming<Socket<Blocking>>>(log, tx, test),
-        Test::TestUpdateFields  => start_ccp::<TestUpdateFields<Socket<Blocking>>>(log, tx, test),
-        Test::TestVolatileVars => start_ccp::<TestVolatileVars<Socket<Blocking>>>(log, tx, test),
-        Test::TestPresetVars => start_ccp::<TestPresetVars<Socket<Blocking>>>(log, tx, test)
-    };
 
-    // sleep before spawning mock datapath, so sockets can be setup properly
-    //thread::sleep(time::Duration::from_millis(500));
+    // spawn libccp
+    let (mock_dp_ready_tx, mock_dp_ready_rx) = mpsc::channel();
+    let (mock_dp_done_tx, mock_dp_done_rx) = mpsc::channel();
+    let dp_log = log.clone();
+    thread::spawn(move || {
+        use libccp_integration_test::mock_datapath;
+        mock_datapath::start(mock_dp_done_rx, mock_dp_ready_tx, dp_log);
+    });
+
+    // wait for mock datapath to spawn
+    mock_dp_ready_rx.recv().unwrap();
+    let ccp_handle: portus::CCPHandle = match test {
+        Test::TestBasicSerialize => start_ccp::<TestBasicSerialize<Socket<Blocking>>>(log.clone(), tx, test),
+        Test::TestTiming => start_ccp::<TestTiming<Socket<Blocking>>>(log.clone(), tx, test),
+        Test::TestUpdateFields  => start_ccp::<TestUpdateFields<Socket<Blocking>>>(log.clone(), tx, test),
+        Test::TestVolatileVars => start_ccp::<TestVolatileVars<Socket<Blocking>>>(log.clone(), tx, test),
+        Test::TestPresetVars => start_ccp::<TestPresetVars<Socket<Blocking>>>(log.clone(), tx, test)
+    };
 
     // wait for program to finish
     let wait_for_done = thread::spawn(move ||{
         let msg = rx.recv().unwrap();
         assert!(msg == libccp_integration_test::scenarios::DONE, "Received wrong message on channel");
         ccp_handle.kill(); // causes backend to stop iterating
-        libccp_process.kill().unwrap();
+        mock_dp_done_tx.send(()).unwrap();
         ccp_handle.wait().unwrap();
     });
     
@@ -90,15 +89,13 @@ fn run_test(libccp_location: String, log: slog::Logger, test: Test) {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect(); // expect that libccp is in args[1]
-    let libccp_location = &args[1];
     let log = portus::algs::make_logger();
 
     // run test with various tests
-    run_test(libccp_location.to_string(), log.clone(), Test::TestBasicSerialize);
-    run_test(libccp_location.to_string(), log.clone(), Test::TestTiming);
-    run_test(libccp_location.to_string(), log.clone(), Test::TestUpdateFields);
-    run_test(libccp_location.to_string(), log.clone(), Test::TestVolatileVars);
-    run_test(libccp_location.to_string(), log.clone(), Test::TestPresetVars);
+    run_test(log.clone(), Test::TestBasicSerialize);
+    run_test(log.clone(), Test::TestTiming);
+    run_test(log.clone(), Test::TestUpdateFields);
+    run_test(log.clone(), Test::TestVolatileVars);
+    run_test(log.clone(), Test::TestPresetVars);
     info!(log, "Passed all integration tests!";);
 }
