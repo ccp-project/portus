@@ -1,3 +1,5 @@
+use nom;
+
 use super::{Error, Result};
 use super::ast::{atom, comment, expr, Expr, exprs, name};
 use super::datapath::{Scope, Type, check_atom_type};
@@ -23,19 +25,19 @@ pub struct Prog(pub Vec<Event>);
 
 // Declare a state variable and provide an initial value
 // Optionally declare the variable "volatile", meaning it gets reset on "(report)"
-named!(
+named_complete!(
     decl<(bool, Type, Type)>,
     ws!(delimited!(
         tag!("("),
         tuple!(
-            map!(opt!(tag!("volatile")), |v: Option<&[u8]>| v.is_some()),
+            map!(opt!(tag!("volatile")), |v: Option<nom::types::CompleteByteSlice>| v.is_some()),
             map!(name, |n: String| Type::Name(n)),
             map_res!(atom, |a: Result<Expr>| a.and_then(|i| check_atom_type(&i)))
         ),
         tag!(")")
     ))
 );
-named!(
+named_complete!(
     report_struct<Vec<(bool, Type, Type)>>,
     ws!(delimited!(
         tag!("("),
@@ -50,7 +52,7 @@ named!(
 
 // a Prog has special syntax *at the beginning* to declare variables.
 // (def (decl) ...)
-named!(
+named_complete!(
     defs<Vec<(bool, Type, Type)>>,
     ws!(delimited!(
         tag!("("),
@@ -93,7 +95,7 @@ named!(
 // ------------------------------------------
 
 // (when (single expr) (expr)...)
-named!(
+named_complete!(
     event<Result<Event>>,
     ws!(delimited!(
         tag!("("),
@@ -114,7 +116,7 @@ named!(
         tag!(")")
     ))
 );
-named!(
+named_complete!(
     events<Vec<Result<Event>>>,
     many1!(do_parse!(
         opt!(comment) >>
@@ -128,9 +130,10 @@ impl Prog {
     /// such as `(report)` and `(fallthrough)`. 
     pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
-        use nom::{IResult, Needed};
-        let body = match defs(source) {
-            IResult::Done(rest, flow_state) => {
+        use nom::Needed;
+        use nom::types::CompleteByteSlice;
+        let body = match defs(CompleteByteSlice(source)) {
+            Ok((rest, flow_state)) => {
                 let (reports, controls): (Vec<(bool, String, Type)>, Vec<(bool, String, Type)>) = flow_state
                     .into_iter()
                     .map(|(is_volatile, var, typ)| match var {
@@ -149,18 +152,20 @@ impl Prog {
 
                 Ok(rest)
             }
-            IResult::Error(e) => Err(Error::from(e)),
-            IResult::Incomplete(Needed::Unknown) => Err(Error::from(String::from("need more src"))),
-            IResult::Incomplete(Needed::Size(s)) => Err(
+            Err(nom::Err::Error(e)) |
+            Err(nom::Err::Failure(e)) => Err(Error::from(e)),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from(String::from("need more src"))),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => Err(
                 Error::from(format!("need {} more bytes", s)),
             ),
         }?;
 
         let evs = match events(body) {
-            IResult::Done(_, me) => me.into_iter().collect(),
-            IResult::Error(e) => Err(Error::from(e)),
-            IResult::Incomplete(Needed::Unknown) => Err(Error::from("need more src")),
-            IResult::Incomplete(Needed::Size(s)) => Err(
+            Ok((_, me)) => me.into_iter().collect(),
+            Err(nom::Err::Error(e)) |
+            Err(nom::Err::Failure(e)) => Err(Error::from(e)),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from("need more src")),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => Err(
                 Error::from(format!("need {} more bytes", s)),
             ),
         }?;
@@ -181,6 +186,8 @@ impl Prog {
 
 #[cfg(test)]
 mod tests {
+    use nom;
+
     use lang::ast::{Expr, Op, Prim};
     use lang::prog::{Event,Prog};
     use lang::datapath::{Scope, Type};
@@ -188,9 +195,9 @@ mod tests {
     #[test]
     fn defs() {
         let foo = b"(def (Bar 0) (Report (Foo 0) (volatile Baz 0)) (Qux 0))";
-        use nom::{IResult, Needed};
+        use nom::Needed;
         match super::defs(foo) {
-            IResult::Done(r, me) => {
+            Ok((r, me)) => {
                 assert_eq!(r, &[]);
                 assert_eq!(
                 me,
@@ -202,18 +209,19 @@ mod tests {
                 ]
             );
             }
-            IResult::Error(e) => panic!(e),
-            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
-            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+            Err(nom::Err::Error(e)) | 
+            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
     }
 
     #[test]
     fn def_infinity() {
         let foo = b"(def (Report (Foo +infinity)))";
-        use nom::{IResult, Needed};
+        use nom::Needed;
         match super::defs(foo) {
-            IResult::Done(r, me) => {
+            Ok((r, me)) => {
                 assert_eq!(r, &[]);
                 assert_eq!(
                     me,
@@ -222,30 +230,32 @@ mod tests {
                     ]
                 );
             }
-            IResult::Error(e) => panic!(e),
-            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
-            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+            Err(nom::Err::Error(e)) | 
+            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
     }
 
     #[test]
     fn reserved_names() {
-        use nom::{IResult, Needed};
+        use nom::Needed;
         let foo = b"(def (__illegalname 0))";
         match super::defs(foo) {
-            IResult::Done(r, me) => panic!("Should not have succeeded: rest {:?}, result {:?}", r, me),
-            IResult::Error(_) => (),
-            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
-            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+            Ok((r, me)) => panic!("Should not have succeeded: rest {:?}, result {:?}", r, me),
+            Err(nom::Err::Error(_)) => (),
+            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
     }
 
     #[test]
     fn simple_event() {
         let foo = b"(when true (+ 3 4))";
-        use nom::{IResult, Needed};
+        use nom::Needed;
         match super::event(foo) {
-            IResult::Done(r, Ok(me)) => {
+            Ok((r, Ok(me))) => {
                 assert_eq!(r, &[]);
                 assert_eq!(
                     me,
@@ -261,12 +271,13 @@ mod tests {
                     }
                 );
             }
-            IResult::Done(_, Err(me)) => {
+            Ok((_, Err(me))) => {
                 panic!(me);
             }
-            IResult::Error(e) => panic!("compilation error: {}", e),
-            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
-            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+            Err(nom::Err::Error(_)) => (),
+            Err(nom::Err::Failure(e)) => panic!("compilation error: {}", super::Error::from(e)),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
     }
 
@@ -278,9 +289,9 @@ mod tests {
                 (* 8 7)
             )
         ";
-        use nom::{IResult, Needed};
+        use nom::Needed;
         match super::event(foo) {
-            IResult::Done(r, Ok(me)) => {
+            Ok((r, Ok(me))) => {
                 assert_eq!(r, &[]);
                 assert_eq!(
                     me,
@@ -305,12 +316,13 @@ mod tests {
                     }
                 );
             }
-            IResult::Done(_, Err(me)) => {
+            Ok((_, Err(me))) => {
                 panic!(me);
             }
-            IResult::Error(e) => panic!(e),
-            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
-            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+            Err(nom::Err::Error(e)) | 
+            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
     }
 
@@ -326,10 +338,10 @@ mod tests {
                 (* 9 8)
             )
         ";
-        use nom::{IResult, Needed};
+        use nom::Needed;
         use ::lang::Result;
         match super::events(foo) {
-            IResult::Done(r, me) => {
+            Ok((r, me)) => {
                 assert_eq!(r, &[]);
                 let res_me: Vec<Event> = me.into_iter().collect::<Result<Vec<Event>>>().unwrap();
                 assert_eq!(
@@ -376,9 +388,10 @@ mod tests {
                     ],
                 );
             }
-            IResult::Error(e) => panic!(e),
-            IResult::Incomplete(Needed::Unknown) => panic!("incomplete"),
-            IResult::Incomplete(Needed::Size(s)) => panic!("need {} more bytes", s),
+            Err(nom::Err::Error(e)) | 
+            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
     }
 

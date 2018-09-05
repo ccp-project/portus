@@ -14,13 +14,14 @@ bytes = "0.4.5"
 clap = "2.29"
 libc = "0.2"
 nix = "0.9.0"
-nom = "^3.2"
+nom = "^4"
 slog = "2"
 slog-async = "2"
 slog-term = "2"
 time = "0.1"
 quote = "0.5"
 walkdir = "2"
+cluster_message_types = { path = "./cluster_message_types" }
 
 [dependencies.syn]
 version = "0.13"

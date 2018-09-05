@@ -10,3 +10,6 @@ slog = {version = "2"}
 slog-async = "2"
 slog-term = "2"
 time="0.1"
+
+[build-dependencies]
+bindgen = "0.40.0"
