@@ -36,6 +36,7 @@ impl Controller {
             match self.socket.recv_from(&mut rcv_buf) {
                 Ok((amt, ref sender_addr)) => {
                     if amt > 0 {
+												println!("got summary from {}", sum.id);
                         sum.read_from(&rcv_buf[..amt]);
                         self.on_summary(&sum, &mut alloc);
                         alloc.write_to(&mut send_buf);
