@@ -1,3 +1,7 @@
+#![allow(non_camel_case_types)]
+#![allow(non_upper_case_globals)]
+#![allow(non_snake_case)]
+
 extern crate clap;
 extern crate time;
 #[macro_use]
@@ -12,6 +16,9 @@ use portus::{Slave, Aggregator, CongAlg, Config, Datapath, DatapathInfo, Datapat
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 use cluster_message_types::{summary::Summary, allocation::Allocation};
+
+pub mod qdisc;
+use qdisc::*;
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
 pub const DEFAULT_PENDING_BYTES: u32 = 2896;
@@ -36,6 +43,7 @@ pub struct ClusterExample<T: Ipc> {
     algorithm: String,
     allocator: String,
     forecast: bool,
+    qdisc : Option<Qdisc>,
 
     _summary : Summary,
 }
@@ -184,9 +192,13 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
             algorithm: cfg.config.algorithm,
             allocator: cfg.config.allocator,
             forecast: cfg.config.forecast,
-
+            qdisc: None,
             _summary : Summary { id: info.src_ip, ..Default::default() }, 
         };
+
+				if s.allocator.as_str() == "qdisc" {
+					s.qdisc = Some(Qdisc::get(String::from("ifb0"), (1,0)));
+				}
 
         s.logger.as_ref().map(|log| {
             debug!(log, "starting new aggregate"); 
@@ -282,10 +294,20 @@ impl<T: Ipc> Slave for ClusterExample<T> {
 impl<T: Ipc> ClusterExample<T> {
 
     fn reallocate(&mut self) {
+
         match self.allocator.as_str() {
-            "rr" => self.allocate_rr(),
-            _ => unreachable!(),
+            "rr"    => self.allocate_rr(),
+            "qdisc" => self.allocate_qdisc(),
+            _       => unreachable!(),
         }
+    }
+
+    fn allocate_qdisc(&mut self) {
+        self.logger.as_ref().map(|log| { info!(log, "qdisc.set_rate"; "rate" => self.rate, "bucket" => self.rate / 100) });
+        match self.qdisc.as_mut().expect("allocation is qdisc but qdisc is None").set_rate(self.rate, self.burst) {
+					Ok(()) => {}
+					Err(()) => {eprintln!("ERROR: failed to set rate!!!")}
+				}
     }
 
     fn allocate_rr(&mut self) {
