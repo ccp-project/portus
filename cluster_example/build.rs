@@ -22,8 +22,13 @@ fn main() {
 		.whitelist_function("rtnl_qdisc_get")
 		.whitelist_function("rtnl_tc_get_stat")
 		.whitelist_function("rtnl_qdisc_put")
+		.whitelist_function("rtnl_qdisc_add")
 		.whitelist_function("TC_CAST")
 		.whitelist_function("TC_HANDLE")
+		.whitelist_function("rtnl_qdisc_tbf_set_rate")
+		.whitelist_var("NETLINK_ROUTE")
+		.whitelist_var("AF_UNSPEC")
+		.whitelist_var("NLM_F_REPLACE")
 		.generate()
 		.expect("unable to generate netlink-route bindings");
 	let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());

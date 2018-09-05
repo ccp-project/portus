@@ -1,3 +1,7 @@
+#![allow(non_camel_case_types)]
+#![allow(non_upper_case_globals)]
+#![allow(non_snake_case)]
+
 extern crate clap;
 extern crate time;
 #[macro_use]
@@ -12,6 +16,9 @@ use portus::{Slave, Aggregator, CongAlg, Config, Datapath, DatapathInfo, Datapat
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 use cluster_message_types::{summary::Summary, allocation::Allocation};
+
+pub mod qdisc;
+use qdisc::*;
 
 pub const DEFAULT_SS_THRESH: u32 = 0x7fffffff;
 pub const DEFAULT_PENDING_BYTES: u32 = 2896;
@@ -97,6 +104,8 @@ impl<T: Ipc> Aggregator<T> for ClusterExample<T> {
             util: 0,
             last_msg: Instant::now(),
         };
+        //let qdisc = Qdisc::new(String::from("ifb0"), (2, 0));
+        //qdisc.set_rate(1250000, 400000);
         /*
 j       let sc = f.install_datapath_program();
         if self.num_flows == 0 {
