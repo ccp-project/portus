@@ -43,6 +43,7 @@ pub struct ClusterExample<T: Ipc> {
     algorithm: String,
     allocator: String,
     forecast: bool,
+    qdisc : Qdisc,
 
     _summary : Summary,
 }
@@ -104,8 +105,6 @@ impl<T: Ipc> Aggregator<T> for ClusterExample<T> {
             util: 0,
             last_msg: Instant::now(),
         };
-        //let qdisc = Qdisc::new(String::from("ifb0"), (2, 0));
-        //qdisc.set_rate(1250000, 400000);
         /*
 j       let sc = f.install_datapath_program();
         if self.num_flows == 0 {
@@ -161,6 +160,7 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
             algorithm: cfg.config.algorithm,
             allocator: cfg.config.allocator,
             forecast: cfg.config.forecast,
+            qdisc: Qdisc::get(String::from("ifb0"), (1,0)),
 
             _summary : Summary { id: info.src_ip, ..Default::default() }, 
         };
@@ -259,10 +259,17 @@ impl<T: Ipc> Slave for ClusterExample<T> {
 impl<T: Ipc> ClusterExample<T> {
 
     fn reallocate(&mut self) {
+
         match self.allocator.as_str() {
-            "rr" => self.allocate_rr(),
-            _ => unreachable!(),
+            "rr"    => self.allocate_rr(),
+            "qdisc" => self.allocate_qdisc(),
+            _       => unreachable!(),
         }
+    }
+
+    fn allocate_qdisc(&mut self) {
+        self.qdisc.set_rate(self.rate, self.rate / 100);
+        self.logger.as_ref().map(|log| { info!(log, "qdisc.set_rate"; "rate" => self.rate, "bucket" => self.rate / 100) });
     }
 
     fn allocate_rr(&mut self) {

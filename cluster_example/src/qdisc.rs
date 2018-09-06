@@ -9,7 +9,7 @@ pub struct Qdisc {
 
 use std::ffi::CString;
 impl Qdisc {
-    pub fn new(if_name: String, (tc_maj, tc_min): (u32, u32)) -> Self {
+    pub fn get(if_name: String, (tc_maj, tc_min): (u32, u32)) -> Self {
         unsafe {
             let mut all_links: *mut nl_cache = std::mem::uninitialized();
             let mut all_qdiscs: *mut nl_cache = std::mem::uninitialized();
