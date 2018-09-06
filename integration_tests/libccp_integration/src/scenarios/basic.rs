@@ -38,8 +38,8 @@ impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
         // compile and return any programs to be installed in the datapath
         let prog = b" (def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))
             (when true
-                (:= Report.acked (+Report.acked Ack.bytes_acked))
-                (:= Control.num_invoked (+Control.num_invoked 1))
+                (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                (:= Control.num_invoked (+ Control.num_invoked 1))
                 (:= Report.cwnd Cwnd)
                 (:= Report.rate Rate)
                 (fallthrough)
