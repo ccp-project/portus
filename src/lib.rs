@@ -702,7 +702,7 @@ where
     U: CongAlg<I> + Aggregator<I> + Slave,
 {
     let mut receive_buf = [0u8; 1024];
-    let mut allocation_buf = [0u8;1024];
+    //let mut allocation_buf = [0u8;1024];
     let mut allocation_msg : Allocation = Default::default();
     let mut summary_buf = [0u8; 128];
     let mut host_aggregator : Option<U> = None;
@@ -790,8 +790,8 @@ where
                             });
                             if send_sum_now {
                                 if let Some(sum) = agg.create_summary() {
-                                    sum.write_to(&mut summary_buf);
-                                    controller.send_to(&summary_buf, controller_addr_s).expect("failed to send immediate summary to controller");
+                                    //sum.write_to(&mut summary_buf);
+                                    controller.send_to(sum.as_slice(), controller_addr_s).expect("failed to send immediate summary to controller");
                                 }
                             }
                         }
@@ -807,15 +807,15 @@ where
                 _ => continue,
             }
         };
-        match controller.recv(&mut allocation_buf) {
+        match controller.recv(allocation_msg.as_mut_slice()) {
             Ok(amt) => {
                 if amt > 0 {
-                    allocation_msg.read_from(&allocation_buf[..amt]);
+                    //allocation_msg.read_from(&allocation_buf[..amt]);
                     if let Some(ref mut agg) = host_aggregator {
                         agg.on_allocation(&allocation_msg);
                     } else {
                         cfg.logger.as_ref().map(|log| {
-                            warn!(log, "received allocation but aggregate hasn't been created yet!"; "sid" => &allocation_msg.id);
+                            unsafe {warn!(log, "received allocation but aggregate hasn't been created yet!"; "sid" => &allocation_msg.id);}
                         });
                     }
                  }
