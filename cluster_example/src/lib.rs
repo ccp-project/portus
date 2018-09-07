@@ -29,6 +29,7 @@ pub struct ClusterExample<T: Ipc> {
     sc: Scope,
     cwnd: u32,
     rate: u32,
+    burst: u32,
     init_cwnd: u32,
     mss: u32,
 
@@ -145,6 +146,7 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
             logger: cfg.logger,
             cwnd: info.init_cwnd,
             rate: 0,
+            burst: 0,
             init_cwnd: info.init_cwnd,
             sc: Default::default(),
             mss: info.mss,
@@ -205,6 +207,7 @@ impl<T: Ipc> Slave for ClusterExample<T> {
 
     fn on_allocation(&mut self, a: &Allocation) {
         self.rate = a.rate;
+        self.burst = a.burst;
         self.reallocate();
     }
 
@@ -268,7 +271,7 @@ impl<T: Ipc> ClusterExample<T> {
     }
 
     fn allocate_qdisc(&mut self) {
-        self.qdisc.set_rate(self.rate, self.rate / 100);
+        self.qdisc.set_rate(self.rate, self.burst);
         self.logger.as_ref().map(|log| { info!(log, "qdisc.set_rate"; "rate" => self.rate, "bucket" => self.rate / 100) });
     }
 
