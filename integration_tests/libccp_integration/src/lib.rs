@@ -19,7 +19,7 @@ extern crate portus;
 
 use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
-use portus::lang::Scope;
+use portus::lang::{Bin,Scope};
 use std::time::{Duration, SystemTime};
 use std::sync::mpsc;
 const ACKED_PRIMITIVE: u32 = 5; // libccp uses this same value for acked_bytes
@@ -30,7 +30,7 @@ pub struct IntegrationTestConfig {
     pub sender: mpsc::Sender<String>
 }
 
-pub struct TestBase<T: Ipc> {
+pub struct TestBase< T: Ipc> {
     control_channel: Datapath<T>,
     logger: Option<slog::Logger>,
     sc: Option<Scope>,
@@ -38,24 +38,11 @@ pub struct TestBase<T: Ipc> {
     sender: mpsc::Sender<String>,
 }
 
-pub struct TestBasicSerialize<T: Ipc>(TestBase<T>);
+pub struct TestBasicSerialize<T: Ipc>(TestBase< T>);
 
 impl<T: Ipc> TestBasicSerialize<T> {
-    fn install_test(&self) -> Option<Scope> {
-        self.0.control_channel.install(
-            b" (def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))
-            (when true
-                (:= Report.acked (+Report.acked Ack.bytes_acked))
-                (:= Control.num_invoked (+Control.num_invoked 1))
-                (:= Report.cwnd Cwnd)
-                (:= Report.rate Rate)
-                (fallthrough)
-            )
-            (when (== Control.num_invoked 20)
-                (report)
-            )
-            ", None
-        ).ok()
+    fn install_test(&mut self) -> Option<Scope> {
+        self.0.control_channel.set_program(String::from("TestBasicSerialize"), None).ok()
     }
 
     fn check_test(&mut self, m: &Report) -> bool {
@@ -79,6 +66,24 @@ impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
         String::from("integration-test")
     }
 
+    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+        // compile and return any programs to be installed in the datapath
+        let prog = b" (def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))
+            (when true
+                (:= Report.acked (+Report.acked Ack.bytes_acked))
+                (:= Control.num_invoked (+Control.num_invoked 1))
+                (:= Report.cwnd Cwnd)
+                (:= Report.rate Rate)
+                (fallthrough)
+            )
+            (when (== Control.num_invoked 20)
+                (report)
+            )
+            ";
+        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
+        Some(vec![(bin, sc, String::from("TestBasicSerialize"))])
+    } 
+
     fn create(control: Datapath<T>, cfg: Config<T, TestBasicSerialize<T>>, _info: DatapathInfo) -> Self {
         let mut s = Self {
             0: TestBase {
@@ -101,24 +106,11 @@ impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
     }
 }
 
-pub struct TestTiming<T: Ipc>(TestBase<T>);
+pub struct TestTiming<T: Ipc>(TestBase< T>);
 
 impl<T: Ipc> TestTiming<T> {
-    fn install_test(&self) -> Option<Scope> {
-        self.0.control_channel.install(
-            b" (def (Report.acked 0) (Control.state 0) (Report.cwnd 0) (Report.rate 0))
-            (when true
-                (:= Report.acked Ack.bytes_acked)
-                (:= Report.cwnd Cwnd)
-                (:= Report.rate Rate)
-                (fallthrough)
-            )
-            (when (&& (> Micros 3000000) (== Control.state 0))
-                (:= Control.state 1)
-                (report)
-            )
-            ", None
-        ).ok()
+    fn install_test(&mut self) -> Option<Scope> {
+        self.0.control_channel.set_program(String::from("TestTiming"), None).ok()
     }
 
     fn check_test(&mut self, m: &Report) -> bool {
@@ -147,6 +139,23 @@ impl<T: Ipc> CongAlg<T> for TestTiming<T> {
     fn name() -> String {
         String::from("integration-test")
     }
+    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+
+        let prog = b" (def (Report.acked 0) (Control.state 0) (Report.cwnd 0) (Report.rate 0))
+            (when true
+                (:= Report.acked Ack.bytes_acked)
+                (:= Report.cwnd Cwnd)
+                (:= Report.rate Rate)
+                (fallthrough)
+            )
+            (when (&& (> Micros 3000000) (== Control.state 0))
+                (:= Control.state 1)
+                (report)
+            )
+            ";
+        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
+        Some(vec![(bin, sc, String::from("TestTiming"))]) 
+    }
 
     fn create(control: Datapath<T>, cfg: Config<T, TestTiming<T>>, _info: DatapathInfo) -> Self {
         let mut s = Self {
@@ -173,22 +182,9 @@ impl<T: Ipc> CongAlg<T> for TestTiming<T> {
 pub struct TestUpdateFields<T: Ipc>(TestBase<T>);
 
 impl<T: Ipc> TestUpdateFields<T> {
-    fn install_test(&self) -> Option<Scope> {
+    fn install_test(&mut self) -> Option<Scope> {
         // fold function that only reports when Cwnd is set to 42
-        self.0.control_channel.install(
-            b" (def (Report.acked 0) (Report.cwnd 0) (Report.rate 0))
-            (when true
-                (:= Report.acked Ack.bytes_acked)
-                (:= Report.cwnd Cwnd)
-                (:= Report.rate Rate)
-                (fallthrough)
-            )
-            (when (== Cwnd 42)
-                (report)
-            )
-            ", None
-        ).ok()
-
+        self.0.control_channel.set_program(String::from("TestUpdateFields"), None).ok()
     }
 
     fn check_test(&mut self, m: &Report) -> bool {
@@ -218,6 +214,25 @@ impl<T: Ipc> CongAlg<T> for TestUpdateFields<T> {
         String::from("integration-test")
     }
 
+    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+        let prog =
+            b" (def (Report.acked 0) (Report.cwnd 0) (Report.rate 0))
+            (when true
+                (:= Report.acked Ack.bytes_acked)
+                (:= Report.cwnd Cwnd)
+                (:= Report.rate Rate)
+                (fallthrough)
+            )
+            (when (== Cwnd 42)
+                (report)
+            )
+            ";
+
+        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
+        Some(vec![(bin, sc, String::from("TestUpdateFields"))])
+    }
+
+
     fn create(control: Datapath<T>, cfg: Config<T, TestUpdateFields<T>>, _info: DatapathInfo) -> Self {
         let mut s = Self {
             0: TestBase {
@@ -244,28 +259,11 @@ impl<T: Ipc> CongAlg<T> for TestUpdateFields<T> {
     }
 }
 
-pub struct TestVolatileVars<T: Ipc>(TestBase<T>);
+pub struct TestVolatileVars<T: Ipc>(TestBase< T>);
 
 impl<T: Ipc> TestVolatileVars<T> {
-    fn install_test(&self) -> Option<Scope> {
-        // fold function that only reports when Cwnd is set to 42
-        self.0.control_channel.install(
-            b"
-            (def 
-                (Report
-                    (volatile foo 0)
-                    (bar 0))
-            )
-            (when true
-                (:= Report.foo (+ Report.foo 1))
-                (:= Report.bar (+ Report.bar 1))
-                (fallthrough)
-            )
-            (when (== Report.foo 10)
-                (report)
-            )
-            ", None
-        ).ok()
+    fn install_test(&mut self) -> Option<Scope> {
+        self.0.control_channel.set_program(String::from("TestVolatileVars"), None).ok()
     }
 
     fn check_test(&mut self, m: &Report) -> bool {
@@ -292,6 +290,27 @@ impl<T: Ipc> CongAlg<T> for TestVolatileVars<T> {
         String::from("integration-test")
     }
 
+    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+        let prog =
+            b"
+            (def
+                (Report
+                    (volatile foo 0)
+                    (bar 0))
+            )
+            (when true
+                (:= Report.foo (+ Report.foo 1))
+                (:= Report.bar (+ Report.bar 1))
+                (fallthrough)
+            )
+            (when (== Report.foo 10)
+                (report)
+            )
+            ";
+        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
+        Some(vec![(bin, sc, String::from("TestVolatileVars"))])
+    }
+
     fn create(control: Datapath<T>, cfg: Config<T, TestVolatileVars<T>>, _info: DatapathInfo) -> Self {
         let mut s = Self {
             0: TestBase {
@@ -316,25 +335,12 @@ impl<T: Ipc> CongAlg<T> for TestVolatileVars<T> {
     }
 }
 
-pub struct TestPresetVars<T: Ipc>(TestBase<T>);
+pub struct TestPresetVars<T: Ipc>(TestBase< T>);
 
 impl<T: Ipc> TestPresetVars<T> {
-    fn install_test(&self) -> Option<Scope> {
+    fn install_test(&mut self) -> Option<Scope> {
         // fold function that only reports when Cwnd is set to 42
-        self.0.control_channel.install(
-            b"
-            (def
-                (Report
-                    (testFoo 0)
-                )
-                (foo 0)
-            )
-            (when true
-                (:= Report.testFoo foo)
-                (report)
-            )
-            ", Some(&[("foo", 52)][..])
-        ).ok()
+        self.0.control_channel.set_program(String::from("TestPresetVars"), Some(&[("foo", 52)][..])).ok()
     }
 
     fn check_test(&mut self, m: &Report) -> bool {
@@ -350,6 +356,24 @@ impl<T: Ipc> CongAlg<T> for TestPresetVars<T> {
     type Config = IntegrationTestConfig;
     fn name() -> String {
         String::from("integration-test")
+    }
+
+    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+        let prog =
+            b"
+            (def
+                (Report
+                    (testFoo 0)
+                )
+                (foo 0)
+            )
+            (when true
+                (:= Report.testFoo foo)
+                (report)
+            )";
+
+        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
+        Some(vec![(bin, sc, String::from("TestPresetVars"))])
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, TestPresetVars<T>>, _info: DatapathInfo) -> Self {

@@ -6,7 +6,7 @@ extern crate portus;
 
 use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
-use portus::lang::Scope;
+use portus::lang::{Bin, Scope};
 
 pub mod reno;
 pub mod cubic;
@@ -90,126 +90,31 @@ pub struct GenericCongAvoidMeasurements {
 
 impl<T: Ipc, A: GenericCongAvoidAlg> GenericCongAvoid<T, A> {
     /// Make no updates in the datapath, and send a report after an interval
-    fn install_datapath_interval(&self, interval: time::Duration) -> Scope {
-        self.control_channel.install(
-            b"
-                (def
-                (Report
-                    (volatile acked 0) 
-                    (volatile sacked 0) 
-                    (volatile loss 0) 
-                    (volatile timeout false) 
-                    (volatile rtt 0)
-                    (volatile inflight 0)
-                )
-                (reportTime 0)
-                )
-                (when true
-                    (:= Report.inflight Flow.packets_in_flight)
-                    (:= Report.rtt Flow.rtt_sample_us)
-                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
-                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
-                    (:= Report.loss Ack.lost_pkts_sample)
-                    (:= Report.timeout Flow.was_timeout)
-                    (fallthrough)
-                )
-                (when (|| Report.timeout (> Report.loss 0))
-                    (report)
-                    (:= Micros 0)
-                )
-                (when (> Micros reportTime)
-                    (report)
-                    (:= Micros 0)
-                )
-            ", Some(&[("reportTime", interval.num_microseconds().unwrap() as u32)][..])
+    fn install_datapath_interval(&mut self, interval: time::Duration) -> Scope {
+        self.control_channel.set_program(
+            String::from("DatapathIntervalProg"), Some(&[("reportTime", interval.num_microseconds().unwrap() as u32)][..])
         ).unwrap()
     }
 
     /// Make no updates in the datapath, and send a report after each RTT
-    fn install_datapath_interval_rtt(&self) -> Scope {
-        self.control_channel.install(
-            b"
-                (def (Report
-                    (volatile acked 0) 
-                    (volatile sacked 0) 
-                    (volatile loss 0) 
-                    (volatile timeout false) 
-                    (volatile rtt 0)
-                    (volatile inflight 0)
-                ))
-                (when true
-                    (:= Report.inflight Flow.packets_in_flight)
-                    (:= Report.rtt Flow.rtt_sample_us)
-                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
-                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
-                    (:= Report.loss Ack.lost_pkts_sample)
-                    (:= Report.timeout Flow.was_timeout)
-                    (fallthrough)
-                )
-                (when (|| Report.timeout (> Report.loss 0))
-                    (report)
-                    (:= Micros 0)
-                )
-                (when (> Micros Flow.rtt_sample_us)
-                    (report)
-                    (:= Micros 0)
-                )
-            ", None
+    fn install_datapath_interval_rtt(&mut self) -> Scope {
+        self.control_channel.set_program(
+            String::from("DatapathIntervalRTTProg"), None
         ).unwrap()
     }
 
     /// Make no updates in the datapath, but send a report on every ack.
-    fn install_ack_update(&self) -> Scope {
-        self.control_channel.install(
-            b"
-                (def (Report
-                    (volatile acked 0) 
-                    (volatile sacked 0) 
-                    (volatile loss 0) 
-                    (volatile timeout false) 
-                    (volatile rtt 0)
-                    (volatile inflight 0)
-                ))
-                (when true
-                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
-                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
-                    (:= Report.loss Ack.lost_pkts_sample)
-                    (:= Report.timeout Flow.was_timeout)
-                    (:= Report.rtt Flow.rtt_sample_us)
-                    (:= Report.inflight Flow.packets_in_flight)
-                    (report)
-                )
-            ", None
+    fn install_ack_update(&mut self) -> Scope {
+        self.control_channel.set_program(
+            String::from("AckUpdateProg"), None
         ).unwrap()
     }
 
     /// Don't update acked, since those acks are already accounted for in slow start.
     /// Send a report once there is a drop or timeout.
-    fn install_ss_update(&self) -> Scope {
-        self.control_channel.install(
-            b"
-                (def (Report
-                    (volatile acked 0) 
-                    (volatile sacked 0) 
-                    (volatile loss 0) 
-                    (volatile timeout false) 
-                    (volatile rtt 0)
-                    (volatile inflight 0)
-                ))
-                (when true
-                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
-                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
-                    (:= Report.loss Ack.lost_pkts_sample)
-                    (:= Report.timeout Flow.was_timeout)
-                    (:= Report.rtt Flow.rtt_sample_us)
-                    (:= Report.inflight Flow.packets_in_flight)
-                    (:= Cwnd (+ Cwnd Ack.bytes_acked))
-                    (fallthrough)
-                )
-                (when (|| Report.timeout (> Report.loss 0))
-                    (report)
-                )
-            ", None
+    fn install_ss_update(&mut self) -> Scope {
+        self.control_channel.set_program(
+            String::from("SSUpdateProg"), None
         ).unwrap()
     }
 
@@ -345,6 +250,119 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
 
     fn name() -> String {
         A::name()
+    }
+
+    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+        // install all the datapath programs that can be used in the lifetime of this program
+        let programs = vec![
+            (String::from("
+                (def
+                (Report
+                    (volatile acked 0)
+                    (volatile sacked 0)
+                    (volatile loss 0)
+                    (volatile timeout false)
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                )
+                (reportTime 0)
+                )
+                (when true
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (fallthrough)
+                )
+                (when (|| Report.timeout (> Report.loss 0))
+                    (report)
+                    (:= Micros 0)
+                )
+                (when (> Micros reportTime)
+                    (report)
+                    (:= Micros 0)
+                )
+            "), String::from("DatapathIntervalProg")),
+            (String::from("
+                (def (Report
+                    (volatile acked 0)
+                    (volatile sacked 0) 
+                    (volatile loss 0)
+                    (volatile timeout false)
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
+                (when true
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (fallthrough)
+                )
+                (when (|| Report.timeout (> Report.loss 0))
+                    (report)
+                    (:= Micros 0)
+                )
+                (when (> Micros Flow.rtt_sample_us)
+                    (report)
+                    (:= Micros 0)
+                )
+            "), String::from("DatapathIntervalRTTProg")),
+            (String::from("
+                (def (Report
+                    (volatile acked 0)
+                    (volatile sacked 0)
+                    (volatile loss 0)
+                    (volatile timeout false)
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
+                (when true
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (report)
+                )
+            "), String::from("AckUpdateProg")),
+            (String::from("
+                (def (Report
+                    (volatile acked 0)
+                    (volatile sacked 0)
+                    (volatile loss 0)
+                    (volatile timeout false)
+                    (volatile rtt 0)
+                    (volatile inflight 0)
+                ))
+                (when true
+                    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+                    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+                    (:= Report.loss Ack.lost_pkts_sample)
+                    (:= Report.timeout Flow.was_timeout)
+                    (:= Report.rtt Flow.rtt_sample_us)
+                    (:= Report.inflight Flow.packets_in_flight)
+                    (:= Cwnd (+ Cwnd Ack.bytes_acked))
+                    (fallthrough)
+                )
+                (when (|| Report.timeout (> Report.loss 0))
+                    (report)
+                )
+
+            "), String::from("SSUpdateProg"))];
+        Some(
+            programs.iter()
+                .map(|(prog, prog_name)| {
+                    let (bin, sc) = portus::compile_program(prog.as_bytes(), None).unwrap();
+                    (bin, sc, prog_name.clone())
+                })
+                .collect::<Vec<(_,_,_)>>()
+            )
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, GenericCongAvoid<T, A>>, info: DatapathInfo) -> Self {

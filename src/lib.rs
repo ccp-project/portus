@@ -21,7 +21,7 @@
 //! use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 //! use portus::ipc::Ipc;
 //! use portus::lang::Scope;
-//!
+//! use portus::lang::Bin;
 //! struct MyCongestionControlAlgorithm(Scope);
 //! #[derive(Clone)]
 //! struct MyEmptyConfig;
@@ -31,8 +31,8 @@
 //!     fn name() -> String {
 //!         String::from("My congestion control algorithm")
 //!     }
-//!     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self {
-//!         let sc = control.install(b"
+//!     fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+//!         let prog = b"
 //!             (def (Report
 //!                 (volatile minrtt +infinity)
 //!             ))
@@ -43,8 +43,13 @@
 //!                 (report)
 //!                 (reset)
 //!             )
-//!         ", None).unwrap();
-//!         MyCongestionControlAlgorithm(sc)
+//!         ";
+//!         let (bin, sc) = portus::compile_program(prog, None).unwrap();
+//!         Some(vec![(bin, sc, String::from("MyProgram"))])
+//!     }
+//!     fn create(mut control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self {
+//!         let sc = control.set_program(String::from("MyProgram"), None).unwrap();
+//!			MyCongestionControlAlgorithm(sc)
 //!     }
 //!     fn on_report(&mut self, sock_id: u32, m: Report) {
 //!         println!("minrtt: {:?}", m.get_field("Report.minrtt", &self.0).unwrap());
@@ -80,20 +85,29 @@ mod errors;
 pub use errors::*;
 
 use std::collections::HashMap;
-
+use std::rc::Rc;
 use ipc::Ipc;
 use ipc::{BackendSender, BackendBuilder};
 use serialize::Msg;
 use std::sync::{Arc, atomic};
 use std::thread;
+use lang::{Reg, Scope, Bin};
 
 /// CCP custom `Result` type, using `Error` as the `Err` type.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Pass in program string and optional fields, returns bin and scope
+pub fn compile_program(src: &[u8], fields: Option<&[(&str, u32)]>) -> Result<(Bin, Scope)> {
+    let (bin, sc) = lang::compile(src, fields.unwrap_or_else(|| &[]))?;
+    Ok((bin, sc))
+}
 /// A collection of methods to interact with the datapath.
 pub trait DatapathTrait {
     /// Install a fold function in the datapath.
-    fn install(&self, src: &[u8], fields: Option<&[(&str, u32)]>) -> Result<Scope>;
+    fn send_and_install(&mut self, bin: Bin, sc: Scope, name: String) -> Result<()>;
+    fn install(&mut self, src: &[u8], fields: Option<&[(&str, u32)]>, program_name: String) -> Result<()>;
+    /// Tell datapath to use a preinstalled program.
+    fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope>;
     /// Update the value of a register in an already-installed fold function.
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
     fn get_sock_id(&self) -> u32;
@@ -103,18 +117,16 @@ pub trait DatapathTrait {
 pub struct Datapath<T: Ipc>{
     sock_id: u32,
     sender: BackendSender<T>,
+    programs: Rc<HashMap<String, Scope>>,
 }
 
-use lang::{Reg, Scope};
 impl<T: Ipc> DatapathTrait for Datapath<T> {
     fn get_sock_id(&self) -> u32 {
         return self.sock_id;
     }
-    
-    /// pass a vector of (Reg name, value) pairs to be installed automatically
-    fn install(&self, src: &[u8], fields: Option<&[(&str, u32)]>) -> Result<Scope> {
-        let (bin, sc) = lang::compile(src, fields.unwrap_or_else(|| &[]))?;
 
+    // send and install a group of programs
+    fn send_and_install(&mut self, bin: Bin, sc: Scope, _name: String) -> Result<()> {
         let msg = serialize::install::Msg {
             sid: self.sock_id,
             program_uid: sc.program_uid,
@@ -125,8 +137,62 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
 
         let buf = serialize::serialize(&msg)?;
         self.sender.send_msg(&buf[..])?;
-        Ok(sc)
+        Ok(())
     }
+    
+    /// pass a vector of (Reg name, value) pairs to be installed automatically
+    /// install a single program from source
+    fn install(&mut self, src: &[u8], fields: Option<&[(&str, u32)]>, program_name: String) -> Result<()> {
+        let (bin, sc) = compile_program(src, fields)?;
+        self.send_and_install(bin, sc, program_name)
+    }
+
+    fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope> {
+        // if the program with this key exists, return it; otherwise return nothing
+        match self.programs.get(&program_name) {
+            Some(sc) => {
+                // apply optional updates to values of registers in this scope
+                let fields : Vec<(Reg, u64)> = fields.unwrap_or_else(|| &[]).iter().map(
+                    |&(reg_name, new_value)| {
+                        if reg_name.starts_with("__") {
+                            return Err(Error(
+                                format!("Cannot update reserved field: {:?}", reg_name)
+                            ));
+                        }
+
+                        sc.get(reg_name)
+                            .ok_or_else(|| Error(
+                                format!("Unknown field: {:?}", reg_name)
+                            ))
+                            .and_then(|reg| match *reg {
+                                Reg::Control(idx, ref t) => {
+                                    Ok((Reg::Control(idx, t.clone()), u64::from(new_value)))
+                                }
+                                Reg::Implicit(idx, ref t) if idx == 4 || idx == 5 => {
+                                    Ok((Reg::Implicit(idx, t.clone()), u64::from(new_value)))
+                                }
+                                _ => Err(Error(
+                                    format!("Cannot update field: {:?}", reg_name),
+                                )),
+                            })
+                    }
+                ).collect::<Result<_>>()?;
+                let msg = serialize::changeprog::Msg {
+                    sid: self.sock_id,
+                    program_uid: sc.program_uid,
+                    num_fields: fields.len() as u32,
+                    fields
+                };
+                let buf = serialize::serialize(&msg)?;
+                self.sender.send_msg(&buf[..])?;
+                Ok(sc.clone())
+            },
+            _ => Err(Error(
+                format!("Map does not contain datapath program with key: {:?}", program_name),
+            )),
+        }
+    }
+
 
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()> {
         let fields : Vec<(Reg, u64)> = update.iter().map(
@@ -258,6 +324,9 @@ pub trait CongAlg<T: Ipc> {
     /// Implementors use `Config` to define custion configuration parameters.
     type Config: Clone;
     fn name() -> String;
+    // run when initializing portus, can install programs relevant to all flows
+    // optional function (none on default)
+    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> { None } // list of compiled programs, optionally
     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
     fn on_report(&mut self, sock_id: u32, m: Report);
     fn close(&mut self) {} // default implementation does nothing (optional method)
@@ -364,6 +433,26 @@ where
             "ipc"       => I::name(),
         );
     });
+    let mut scope_map = Rc::new(HashMap::<String, Scope>::new());
+
+    // run initialize relevant to all flows
+    match U::init_programs() {
+        Some(programs) => {
+            let mut datapath = Datapath {
+                sock_id: 0,
+                sender: backend.clone(),
+                programs: Rc::new(HashMap::<String, Scope>::new()),
+            };
+            let iter = programs.iter();
+            for (bin, sc, prog_name) in iter {
+                match datapath.send_and_install(bin.clone(), sc.clone(), prog_name.to_string()) {
+                    Ok(_) => {Rc::get_mut(&mut scope_map).unwrap().insert(prog_name.to_string(), sc.clone());},
+                    Err(_) => return Err(Error(String::from("Issue installing program"))),
+                }
+            }
+        },
+        None => {}
+    };
 
     while let Some(msg) = b.next() {
         match msg {
@@ -389,7 +478,8 @@ where
                 let alg = U::create(
                     Datapath{
                         sock_id: c.sid, 
-                        sender: backend.clone()
+                        sender: backend.clone(),
+                        programs: scope_map.clone(),
                     },
                     cfg.clone(),
                     DatapathInfo {

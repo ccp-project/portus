@@ -78,7 +78,18 @@ static void mock_datapath_set_rate_abs(__attribute__((unused))struct ccp_datapat
  * Mock datapath send msg
  */
 static int mock_datapath_send_msg(__attribute__((unused))struct ccp_datapath *dp, __attribute__((unused))struct ccp_connection *conn, char *msg, int msg_size) {
-    if (send(send_sock, msg, (uint8_t)msg_size, 0) < 0) {
+	int path_len = 0;
+    struct sockaddr_un send_sockaddr;
+	send_sockaddr.sun_family = AF_UNIX;
+    strcpy(send_sockaddr.sun_path, TO_CCP_SOCKET);
+
+#ifdef __APPLE__
+    path_len = SUN_LEN(&send_sockaddr);
+#else
+    path_len = strlen(send_sockaddr.sun_path) + sizeof(send_sockaddr.sun_family);
+#endif
+
+	if (sendto(send_sock, msg, (uint8_t)msg_size, 0, (struct sockaddr*)(&send_sockaddr), path_len) < 0) {
         printf("Failed to send msg to ccp\n");
         return -1;
     }
@@ -198,29 +209,12 @@ int setup_listening_thread() {
  * Uses the send_sock descriptor defined globally above.
  */
 void setup_send_socket() {
-    struct sockaddr_un send_sockaddr;
-    int path_len = 0;
-    int err = 0;
     if ((send_sock = socket(AF_UNIX, SOCK_DGRAM, 0)) == -1) {
         printf("Could not setup sending socket\n");
         exit(-1);
     }
-
-    send_sockaddr.sun_family = AF_UNIX;
-    strcpy(send_sockaddr.sun_path, TO_CCP_SOCKET);
-
-#ifdef __APPLE__    
-    path_len = SUN_LEN(&send_sockaddr);
-#else
-    path_len = strlen(send_sockaddr.sun_path) + sizeof(send_sockaddr.sun_family);
-#endif 
-
-    if ( (err = (connect(send_sock, (struct sockaddr*)(&send_sockaddr), path_len))) < 0) {
-        perror("connect failed. Error");
-        exit(-1);
-    }
-    unlink(send_sockaddr.sun_path);
 }
+
 
 void setup_ccp_datapath(struct ccp_datapath* dp) {
     dp->set_cwnd = &(mock_datapath_set_cwnd);
@@ -277,11 +271,13 @@ int main(__attribute__((unused))int argc, __attribute__((unused))char **argv) {
     int recv_sock = setup_listening_thread();
     
     // initialize a fake connection; sends create messages
+	// sleep to make sure portus has started
+	sleep(2);
     ccp_conn = init_mock_connection();
 
     // fill in fake values for the primitives
     fill_in_primitives(52, ccp_conn);
-   
+ 
     // loop on reading for messages, or calling ccp_invoke 
     listen_for_messages(recv_sock);
     
