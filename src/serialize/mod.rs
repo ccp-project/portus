@@ -153,6 +153,7 @@ mod test_helper {
 pub mod create;
 pub mod measure;
 pub mod install;
+pub mod changeprog;
 pub mod update_field;
 mod testmsg;
 

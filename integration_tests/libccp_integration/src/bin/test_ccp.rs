@@ -14,7 +14,7 @@ use libccp_integration_test::{TestBasicSerialize, TestTiming, TestUpdateFields, 
 use std::process::{Command, Stdio};
 use portus::ipc::{BackendBuilder, Blocking};
 use portus::ipc::unix::Socket;
-use std::{thread,time};
+use std::thread;
 use std::sync::mpsc;
 use std::env;
 
@@ -64,6 +64,8 @@ fn start_libccp(libccp_location: String) -> std::process::Child {
 // Runs a specific intergration test
 fn run_test(libccp_location: String, log: slog::Logger, test: Test) {
     let (tx, rx) = mpsc::channel();
+    // spawn libccp
+    let mut libccp_process = start_libccp(libccp_location);
     let ccp_handle: portus::CCPHandle = match test {
         Test::TestBasicSerialize => start_ccp::<TestBasicSerialize<Socket<Blocking>>>(log, tx, test),
         Test::TestTiming => start_ccp::<TestTiming<Socket<Blocking>>>(log, tx, test),
@@ -73,10 +75,8 @@ fn run_test(libccp_location: String, log: slog::Logger, test: Test) {
     };
 
     // sleep before spawning mock datapath, so sockets can be setup properly
-    thread::sleep(time::Duration::from_millis(500));
+    //thread::sleep(time::Duration::from_millis(500));
 
-    // spawn libccp
-    let mut libccp_process = start_libccp(libccp_location);
     // wait for program to finish
     let wait_for_done = thread::spawn(move ||{
         let msg = rx.recv().unwrap();
