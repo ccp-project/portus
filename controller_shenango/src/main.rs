@@ -20,8 +20,9 @@ use backend::Backend;
 
 const DEFAULT_SUMMARY_INTERVAL_MS: u32 = 23;
 const DEFAULT_SUMMARY_SLACK_MS: u32 = 2;
-const DEFAULT_BTL_BW_BPS: u32 = (96_000_000 / 8);
+const DEFAULT_BTL_BW_BPS: u32 = (104_000_000 / 8);
 const NS_IN_MS: u32 = 1000000;
+const NS_IN_MS_64: u64 = 1000000;
 
 pub struct Sender {
     addr : SocketAddrV4,
@@ -44,6 +45,8 @@ pub struct Controller {
     num_active_flows: u32,
 
     btl_bw_bps : u32,
+
+    start: u64,
 }
 
 impl Controller {
@@ -56,6 +59,7 @@ impl Controller {
                     active : true,
                     num_active_flows : sum.num_active_flows,
                 });
+                self.num_active_senders += 1;
             }
             Occupied(e) => {
                 let sender = e.into_mut();
@@ -69,7 +73,6 @@ impl Controller {
             }
         }
         self.num_active_flows += sum.num_active_flows;
-        self.num_active_senders += 1;
     }
 
     fn reallocate(&mut self, alloc : &mut Allocation) {
@@ -78,6 +81,7 @@ impl Controller {
                 alloc.id = *id;
                 alloc.rate = ((self.btl_bw_bps as f32) * ((sender.num_active_flows as f32) / (self.num_active_flows as f32))) as u32;
                 alloc.burst = alloc.rate / 200; // mostly arbitrary, needs to be at least rate/HZ and HZ is 250
+                println!("giving {}+{} to {}", alloc.rate, alloc.burst, alloc.id);
                 alloc.next_summary_in_ms = self.summary_interval_ms;
                 match self.socket.send_to(alloc.as_slice(), sender.addr) {
                     Ok(_) => {}
@@ -86,13 +90,13 @@ impl Controller {
                 sender.active = false;
             }
         }
-        self.num_active_senders = 0;
         self.num_active_flows = 0;
     }
 
     fn reset_period(&mut self, now : u64) {
         self.summary_period_start = now + (self.summary_interval_ms * NS_IN_MS) as u64; //- (self.summary_slack_ms * NS_IN_MS);
         self.summary_period_end = now + ((self.summary_interval_ms * NS_IN_MS) + (self.summary_slack_ms * NS_IN_MS)) as u64;
+        println!("new period: ({},{})", (self.summary_period_start-self.start)/NS_IN_MS_64, (self.summary_period_end-self.start)/NS_IN_MS_64)
     }
 
     fn run(&mut self) {
@@ -103,24 +107,36 @@ impl Controller {
 
         loop {
             let now = time::precise_time_ns();
+            let now_ms = (now-self.start)/NS_IN_MS_64;
 
             match self.socket.recv_from(sum.as_mut_slice()) {
                 Ok((amt, ref sender_addr)) => {
                     if amt > 0 {
+                        println!("{}: got summary: {:?}", now_ms, sum);
                         if self.num_active_senders == 0 {
+                            println!("==> first active sender!");
+                            self.start = time::precise_time_ns();
                             self.on_summary(&sum, *sender_addr);
                             self.reallocate(&mut alloc);
                             self.reset_period(now);
                         } else if now >= self.summary_period_start && now <= self.summary_period_end {
+                            println!("==> summary came on time");
                             self.on_summary(&sum, *sender_addr);
+                        } else {
+                            println!("==> summary came outside of expected period!");
                         }
                     }
                 }   
-                Err(ref err) if err.kind() != ErrorKind::WouldBlock => { panic!("UDP socket error: {}", err); }
-                Err(_) => { panic!("UDP socket error: unknown"); }
+                //Err(ref err) if err.kind() != ErrorKind::WouldBlock => { panic!("UDP socket error: {}", err); }
+                Err(e) => { 
+                    if (e.kind() != ErrorKind::WouldBlock) {
+                        panic!("UDP socket error: {:?}", e); 
+                    }
+                }
             }
 
-            if now > self.summary_period_end {
+            if now > self.summary_period_end && self.num_active_senders > 0 {
+                eprintln!("{}: doing reallocation...", now_ms);
                 self.reallocate(&mut alloc);
                 self.reset_period(now);
             }
@@ -180,13 +196,15 @@ fn main() {
             socket,
             summary_interval_ms: DEFAULT_SUMMARY_INTERVAL_MS,
             summary_slack_ms: DEFAULT_SUMMARY_SLACK_MS,
-            summary_period_start: 0,
-            summary_period_end: 0,
+            summary_period_start: u64::max_value(),
+            summary_period_end: u64::max_value(),
 
             senders : HashMap::new(),
             num_active_senders : 0,
             num_active_flows : 0,
             btl_bw_bps : DEFAULT_BTL_BW_BPS,
+
+            start : time::precise_time_ns()
         };
         controller.run();
     });
