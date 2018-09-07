@@ -91,6 +91,9 @@ use cluster_message_types::{summary::Summary, allocation::Allocation};
 use std::sync::{Arc, atomic};
 use std::thread;
 
+const NS_IN_MS: u32 = 1000000;
+const NS_IN_MS_64: u64 = 1000000;
+
 /// CCP custom `Result` type, using `Error` as the `Err` type.
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -702,7 +705,7 @@ where
     U: CongAlg<I> + Aggregator<I> + Slave,
 {
     let mut receive_buf = [0u8; 1024];
-    //let mut allocation_buf = [0u8;1024];
+    let mut allocation_buf = [0u8;1024];
     let mut allocation_msg : Allocation = Default::default();
     let mut summary_buf = [0u8; 128];
     let mut host_aggregator : Option<U> = None;
@@ -723,8 +726,9 @@ where
     let controller_addr_s : SocketAddr = controller_addr.parse().expect("faile to parse remote address");
     let controller = UdpSocket::bind(local_addr_s).expect("failed to bind to udp socket");
     controller.set_nonblocking(true).expect("failed to set non-blocking");
+    let mut start = 0; time::precise_time_ns();
 
-    let mut next_summary_time = 0;
+    let mut next_summary_time = u64::max_value();
     loop {
         if let Some(msg) = b.next_nonblocking() {
             match msg {
@@ -771,9 +775,9 @@ where
                             cfg.clone(),
                             info
                         );
-                        next_summary_time = time::precise_time_ns() + (agg.next_summary_time() as u64 * 1000);
                         host_aggregator = Some(agg);
                     }
+                    next_summary_time = time::precise_time_ns(); // + (agg.next_summary_time() as u64 * 1000);
                 }
                 Msg::Ms(r) => {
                     if let Some(ref mut agg) = host_aggregator {
@@ -790,8 +794,8 @@ where
                             });
                             if send_sum_now {
                                 if let Some(sum) = agg.create_summary() {
-                                    //sum.write_to(&mut summary_buf);
-                                    controller.send_to(sum.as_slice(), controller_addr_s).expect("failed to send immediate summary to controller");
+                                    sum.write_to(&mut summary_buf);
+                                    controller.send_to(&summary_buf, controller_addr_s).expect("failed to send immediate summary to controller");
                                 }
                             }
                         }
@@ -807,12 +811,19 @@ where
                 _ => continue,
             }
         };
-        match controller.recv(allocation_msg.as_mut_slice()) {
+        match controller.recv(&mut allocation_buf) {
             Ok(amt) => {
                 if amt > 0 {
-                    //allocation_msg.read_from(&allocation_buf[..amt]);
+                    allocation_msg.read_from(&allocation_buf[..amt]);
                     if let Some(ref mut agg) = host_aggregator {
                         agg.on_allocation(&allocation_msg);
+						next_summary_time = time::precise_time_ns() + (allocation_msg.next_summary_in_ms * NS_IN_MS) as u64;
+                        if (start == 0) {
+                            start = time::precise_time_ns();
+                        }
+                        cfg.logger.as_ref().map(|log| {
+                            info!(log, "got allocation"; "msg" => format!("{:?}", allocation_msg), "now" => (time::precise_time_ns()-start)/NS_IN_MS_64, "next" => (next_summary_time-start)/NS_IN_MS_64);
+                        });
                     } else {
                         cfg.logger.as_ref().map(|log| {
                             unsafe {warn!(log, "received allocation but aggregate hasn't been created yet!"; "sid" => &allocation_msg.id);}
@@ -823,14 +834,17 @@ where
             Err(ref err) if err.kind() != ErrorKind::WouldBlock => { panic!("UDP socket error: {}", err) }
             Err(_) => {}
         }
-        if next_summary_time > time::precise_time_ns() {
+        if time::precise_time_ns() >= next_summary_time {
             // send summary
             if let Some(ref mut agg) = host_aggregator {
                 if let Some(sum) = agg.create_summary() { 
                     sum.write_to(&mut summary_buf);
+					cfg.logger.as_ref().map(|log| {
+						info!(log, "sending summary"; "now" => (time::precise_time_ns()-start)/NS_IN_MS_64, "next_summary_time" => (next_summary_time-start)/NS_IN_MS_64);
+					});
                     controller.send_to(&summary_buf, controller_addr_s).expect("failed to send immediate summary to controller");
+                    next_summary_time = u64::max_value(); // time::precise_time_ns() + (agg.next_summary_time() as u64 * 1000);f
                 }
-                next_summary_time = time::precise_time_ns() + (agg.next_summary_time() as u64 * 1000);
             } else {
                 cfg.logger.as_ref().map(|log| {
                     warn!(log, "need to send summary but aggregate hasn't been created yet!"; "next_summary_time" => next_summary_time);
