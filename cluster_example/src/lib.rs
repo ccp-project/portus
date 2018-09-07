@@ -144,7 +144,7 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
         let mut s = Self {
             id: info.src_ip,
             logger: cfg.logger,
-            cwnd: info.init_cwnd,
+            cwnd: 500, // info.init_cwnd,
             rate: 0,
             burst: 0,
             init_cwnd: info.init_cwnd,
@@ -210,7 +210,8 @@ impl<T: Ipc> Slave for ClusterExample<T> {
     }
 
     fn on_allocation(&mut self, a: &Allocation) {
-        self.rate = a.rate;
+        // self.rate = a.rate;
+        self.cwnd = (f64::from(a.rate) * f64::from(self.min_rtt)/1.0e6) as u32;
         self.burst = a.burst;
         self.reallocate();
     }
