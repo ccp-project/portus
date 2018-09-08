@@ -3,7 +3,7 @@
 use std::io::prelude::*;
 use {Result, Error};
 use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s, u64_to_u8s};
-use lang::{Reg};
+use lang::Reg;
 
 
 pub(crate) const CHANGEPROG: u8 = 4;
@@ -55,7 +55,7 @@ impl AsRawMsg for Msg {
 
 #[cfg(test)]
 mod tests {
-    use lang::{Bin, Prog, Reg};
+    use lang::Reg;
 
     #[test]
     fn serialize_changeprog_msg() {
