@@ -821,9 +821,9 @@ where
                         if (start == 0) {
                             start = time::precise_time_ns();
                         }
-                        cfg.logger.as_ref().map(|log| {
+                        /*cfg.logger.as_ref().map(|log| {
                             info!(log, "got allocation"; "msg" => format!("{:?}", allocation_msg), "now" => (time::precise_time_ns()-start)/NS_IN_MS_64, "next" => (next_summary_time-start)/NS_IN_MS_64);
-                        });
+                        });*/
                     } else {
                         cfg.logger.as_ref().map(|log| {
                             unsafe {warn!(log, "received allocation but aggregate hasn't been created yet!"; "sid" => &allocation_msg.id);}
@@ -840,7 +840,9 @@ where
                 if let Some(sum) = agg.create_summary() { 
                     sum.write_to(&mut summary_buf);
 					cfg.logger.as_ref().map(|log| {
-						info!(log, "sending summary"; "now" => (time::precise_time_ns()-start)/NS_IN_MS_64, "next_summary_time" => (next_summary_time-start)/NS_IN_MS_64);
+						/*info!(log, "sending summary"; "now" =>
+						 * (time::precise_time_ns()-start)/NS_IN_MS_64, "next_summary_time"
+						 * => (next_summary_time-start)/NS_IN_MS_64);*/
 					});
                     controller.send_to(&summary_buf, controller_addr_s).expect("failed to send immediate summary to controller");
                     next_summary_time = u64::max_value(); // time::precise_time_ns() + (agg.next_summary_time() as u64 * 1000);f

@@ -41,7 +41,7 @@ fn main() {
     let (cfg, ipc, controller_addr) = make_args()
         .map_err(|e| warn!(log, "bad argument"; "err" => ?e))
         .unwrap_or_default();
-    let local_addr = String::from("0.0.0.0:4053");
+    let local_addr = String::from("0.0.0.0:4052");
 
     match ipc.as_str() {
         "unix" => {

@@ -47,6 +47,7 @@ pub struct ClusterExample<T: Ipc> {
     qdisc : Option<Qdisc>,
 
     _summary : Summary,
+		updated: bool,
 }
 
 pub struct SubFlow<T: Ipc> {
@@ -164,6 +165,7 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
             forecast: cfg.config.forecast,
             qdisc: None,
             _summary : Summary { id: info.src_ip, ..Default::default() }, 
+						updated : false,
         };
 
 				if s.allocator.as_str() == "qdisc" {
@@ -191,6 +193,10 @@ impl<T: Ipc> Slave for ClusterExample<T> {
         //     return None;
         // }
 
+				if self.num_flows <= 0 {
+					return None;
+				}
+
         self._summary.num_active_flows = self.num_flows;
         self._summary.bytes_acked = self.bytes_acked;
         self._summary.min_rtt = self.min_rtt;
@@ -210,8 +216,11 @@ impl<T: Ipc> Slave for ClusterExample<T> {
     }
 
     fn on_allocation(&mut self, a: &Allocation) {
-        // self.rate = a.rate;
-        self.cwnd = (f64::from(a.rate) * f64::from(self.min_rtt)/1.0e6) as u32;
+        self.rate = a.rate;
+				println!("rate {}", a.rate);
+        // self.cwnd = (f64::from(a.rate) * f64::from(self.min_rtt)/1.0e6) as u32;
+				// self.cwnd = 1200000;
+				// self.rate = 12750000;
         self.burst = a.burst;
         self.reallocate();
     }
@@ -245,19 +254,21 @@ impl<T: Ipc> Slave for ClusterExample<T> {
 
         // TODO for now ignoring timeouts
 
+/*
         self.logger.as_ref().map(|log| {
             info!(log, "ack";
                 "sid" => sock_id,
                 "acked" => acked / self.mss,
                 "sacked" => sacked,
                 "total_cwnd" => self.cwnd / self.mss,
-                "total_rate" => f64::from(self.rate) / 1.0e6,
+                "total_rate" => f64::from(self.rate) / 1.0e6 * 8.0,
                 "inflight" => inflight,
                 "loss" => loss,
                 "rtt" => rtt,
                 "flows" => self.num_flows,
             );
         });
+				*/
 
         (sacked > 0 || loss > 0)
     }
@@ -288,14 +299,32 @@ impl<T: Ipc> ClusterExample<T> {
             if self.rate > 0 {
                 f.rate = self.rate / self.num_flows;
                 f.cwnd = (f64::from(f.rate) * 1.25 * f64::from(self.min_rtt)/1.0e6) as u32;
+								if self.updated {
+									return;
+								}
+								self.logger.as_ref().map(|log| {
+									info!(log, "setting rate"; "rate"=>f.rate,"cwnd"=>f.cwnd);
+								});
+								if self.min_rtt > 0 {
+									self.updated = true;
+								}
                 if let Err(e) = f.control.update_field(&self.sc, &[("Cwnd", f.cwnd), ("Rate", f.rate)]) {
                     self.logger.as_ref().map(|log| { warn!(log, "failed to update cwnd and rate"; "err" => ?e); });
                 }
             } else {
                 f.cwnd = self.cwnd / self.num_flows;
+								if self.updated {
+									return;
+								}
+								self.logger.as_ref().map(|log| {
+									info!(log, "setting cwnd"; "cwnd"=>f.cwnd);
+								});
                 if let Err(e) = f.control.update_field(&self.sc, &[("Cwnd", f.cwnd)]) {
                     self.logger.as_ref().map(|log| { warn!(log, "failed to update cwnd and rate"; "err" => ?e); });
                 }
+								if self.min_rtt > 0 {
+									self.updated = true;
+								}
             }
         }
     }
