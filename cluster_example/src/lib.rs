@@ -47,7 +47,6 @@ pub struct ClusterExample<T: Ipc> {
     qdisc : Option<Qdisc>,
 
     _summary : Summary,
-		updated: bool,
 }
 
 pub struct SubFlow<T: Ipc> {
@@ -165,7 +164,6 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
             forecast: cfg.config.forecast,
             qdisc: None,
             _summary : Summary { id: info.src_ip, ..Default::default() }, 
-						updated : false,
         };
 
 				if s.allocator.as_str() == "qdisc" {
@@ -299,32 +297,20 @@ impl<T: Ipc> ClusterExample<T> {
             if self.rate > 0 {
                 f.rate = self.rate / self.num_flows;
                 f.cwnd = (f64::from(f.rate) * 1.25 * f64::from(self.min_rtt)/1.0e6) as u32;
-								if self.updated {
-									return;
-								}
 								self.logger.as_ref().map(|log| {
 									info!(log, "setting rate"; "rate"=>f.rate,"cwnd"=>f.cwnd);
 								});
-								if self.min_rtt > 0 {
-									self.updated = true;
-								}
                 if let Err(e) = f.control.update_field(&self.sc, &[("Cwnd", f.cwnd), ("Rate", f.rate)]) {
                     self.logger.as_ref().map(|log| { warn!(log, "failed to update cwnd and rate"; "err" => ?e); });
                 }
             } else {
                 f.cwnd = self.cwnd / self.num_flows;
-								if self.updated {
-									return;
-								}
 								self.logger.as_ref().map(|log| {
 									info!(log, "setting cwnd"; "cwnd"=>f.cwnd);
 								});
                 if let Err(e) = f.control.update_field(&self.sc, &[("Cwnd", f.cwnd)]) {
                     self.logger.as_ref().map(|log| { warn!(log, "failed to update cwnd and rate"; "err" => ?e); });
                 }
-								if self.min_rtt > 0 {
-									self.updated = true;
-								}
             }
         }
     }
