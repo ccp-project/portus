@@ -53,6 +53,9 @@ impl<T: Ipc> CongAlg<T> for TestUpdateFields<T> {
             (when (== Cwnd 42)
                 (report)
             )
+            (when (> Micros 10000000) 
+                (report)
+            )
             ";
 
         let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
