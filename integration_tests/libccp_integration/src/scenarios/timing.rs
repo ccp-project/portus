@@ -1,7 +1,6 @@
-use portus;
 use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
-use portus::lang::{Bin, Scope};
+use portus::lang::Scope;
 use std::time::{Duration, SystemTime};
 
 use super::{ACKED_PRIMITIVE, DONE, TestBase, IntegrationTestConfig};
@@ -39,9 +38,10 @@ impl<T: Ipc> CongAlg<T> for TestTiming<T> {
     fn name() -> String {
         String::from("integration-test")
     }
-    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
 
-        let prog = b" (def (Report.acked 0) (Control.state 0) (Report.cwnd 0) (Report.rate 0))
+		fn init_programs() -> Vec<(String, String)> {
+				vec![(String::from("TestTiming"), String::from("
+						(def (Report.acked 0) (Control.state 0) (Report.cwnd 0) (Report.rate 0))
             (when true
                 (:= Report.acked Ack.bytes_acked)
                 (:= Report.cwnd Cwnd)
@@ -52,9 +52,8 @@ impl<T: Ipc> CongAlg<T> for TestTiming<T> {
                 (:= Control.state 1)
                 (report)
             )
-            ";
-        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
-        Some(vec![(bin, sc, String::from("TestTiming"))]) 
+					")),
+				]
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, TestTiming<T>>, _info: DatapathInfo) -> Self {

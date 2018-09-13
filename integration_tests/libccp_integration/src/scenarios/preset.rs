@@ -1,7 +1,6 @@
-use portus;
 use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
-use portus::lang::{Bin, Scope};
+use portus::lang::Scope;
 use std::time::SystemTime;
 
 use super::{DONE, TestBase, IntegrationTestConfig};
@@ -29,9 +28,8 @@ impl<T: Ipc> CongAlg<T> for TestPresetVars<T> {
         String::from("integration-test")
     }
 
-    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
-        let prog =
-            b"
+    fn init_programs() -> Vec<(String, String)> {
+				vec![(String::from("TestPresetVars"), String::from("
             (def
                 (Report
                     (testFoo 0)
@@ -41,10 +39,8 @@ impl<T: Ipc> CongAlg<T> for TestPresetVars<T> {
             (when true
                 (:= Report.testFoo foo)
                 (report)
-            )";
-
-        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
-        Some(vec![(bin, sc, String::from("TestPresetVars"))])
+						)")),
+				]
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, TestPresetVars<T>>, _info: DatapathInfo) -> Self {

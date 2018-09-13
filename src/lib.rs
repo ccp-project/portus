@@ -31,25 +31,25 @@
 //!     fn name() -> String {
 //!         String::from("My congestion control algorithm")
 //!     }
-//!     fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
-//!         let prog = b"
-//!             (def (Report
-//!                 (volatile minrtt +infinity)
-//!             ))
-//!             (when true
-//!                 (:= Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
-//!             )
-//!             (when (> Micros 42000)
-//!                 (report)
-//!                 (reset)
-//!             )
-//!         ";
-//!         let (bin, sc) = portus::compile_program(prog, None).unwrap();
-//!         Some(vec![(bin, sc, String::from("MyProgram"))])
+//!     fn init_programs() -> Vec<(String, String)> {
+//!         vec![
+//!             (String::from("MyProgram"), String::from("
+//!                 (def (Report
+//!                     (volatile minrtt +infinity)
+//!                 ))
+//!                 (when true
+//!                     (:= Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
+//!                 )
+//!                 (when (> Micros 42000)
+//!                     (report)
+//!                     (reset)
+//!                 )
+//!             ")),
+//!         ]
 //!     }
 //!     fn create(mut control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self {
 //!         let sc = control.set_program(String::from("MyProgram"), None).unwrap();
-//!			MyCongestionControlAlgorithm(sc)
+//!         MyCongestionControlAlgorithm(sc)
 //!     }
 //!     fn on_report(&mut self, sock_id: u32, m: Report) {
 //!         println!("minrtt: {:?}", m.get_field("Report.minrtt", &self.0).unwrap());
@@ -103,14 +103,11 @@ pub fn compile_program(src: &[u8], fields: Option<&[(&str, u32)]>) -> Result<(Bi
 }
 /// A collection of methods to interact with the datapath.
 pub trait DatapathTrait {
-    /// Install a fold function in the datapath.
-    fn send_and_install(&mut self, bin: Bin, sc: Scope, name: String) -> Result<()>;
-    fn install(&mut self, src: &[u8], fields: Option<&[(&str, u32)]>, program_name: String) -> Result<()>;
+    fn get_sock_id(&self) -> u32;
     /// Tell datapath to use a preinstalled program.
     fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope>;
     /// Update the value of a register in an already-installed fold function.
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
-    fn get_sock_id(&self) -> u32;
 }
 
 /// A collection of methods to interact with the datapath.
@@ -123,28 +120,6 @@ pub struct Datapath<T: Ipc>{
 impl<T: Ipc> DatapathTrait for Datapath<T> {
     fn get_sock_id(&self) -> u32 {
         return self.sock_id;
-    }
-
-    // send and install a group of programs
-    fn send_and_install(&mut self, bin: Bin, sc: Scope, _name: String) -> Result<()> {
-        let msg = serialize::install::Msg {
-            sid: self.sock_id,
-            program_uid: sc.program_uid,
-            num_events: bin.events.len() as u32,
-            num_instrs: bin.instrs.len() as u32,
-            instrs: bin,
-        };
-
-        let buf = serialize::serialize(&msg)?;
-        self.sender.send_msg(&buf[..])?;
-        Ok(())
-    }
-    
-    /// pass a vector of (Reg name, value) pairs to be installed automatically
-    /// install a single program from source
-    fn install(&mut self, src: &[u8], fields: Option<&[(&str, u32)]>, program_name: String) -> Result<()> {
-        let (bin, sc) = compile_program(src, fields)?;
-        self.send_and_install(bin, sc, program_name)
     }
 
     fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope> {
@@ -324,9 +299,22 @@ pub trait CongAlg<T: Ipc> {
     /// Implementors use `Config` to define custion configuration parameters.
     type Config: Clone;
     fn name() -> String;
-    // run when initializing portus, can install programs relevant to all flows
-    // optional function (none on default)
-    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> { None } // list of compiled programs, optionally
+    /// This function is expected to return all datapath programs the congestion control algorithm
+    /// may want to use at any point during its execution. It is called only once, when Portus initializes
+    /// ([`portus::run`](./fn.run.html) or [`portus::spawn`](./fn.spawn.html)).
+    ///
+    /// It should return a vector of string tuples, where the first string in each tuple is a unique name
+    /// identifying the program, and the second string is the code for the program itself.
+    ///
+    /// Portus will panic if any of the datapath programs do not compile.
+    ///
+    /// For example,
+    /// ```
+    /// vec![(String::from("prog1"), String::from("...(program)...")),
+    ///      (String::from("prog2"), String::from("...(program)..."))
+    /// ];
+    /// ```
+    fn init_programs() -> Vec<(String, String)>;
     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
     fn on_report(&mut self, sock_id: u32, m: Report);
     fn close(&mut self) {} // default implementation does nothing (optional method)
@@ -406,6 +394,22 @@ where
     }
 }
 
+fn send_and_install<I>(sock_id: u32, sender: BackendSender<I>, bin: Bin, sc: Scope) -> Result<()>
+where
+    I: Ipc
+{
+    let msg = serialize::install::Msg {
+        sid: sock_id,
+        program_uid: sc.program_uid,
+        num_events: bin.events.len() as u32,
+        num_instrs: bin.instrs.len() as u32,
+        instrs: bin,
+    };
+    let buf = serialize::serialize(&msg)?;
+    sender.send_msg(&buf[..])?;
+    Ok(())
+}
+
 // Main execution inner loop of ccp.
 // Blocks "forever", or until the iterator stops iterating.
 //
@@ -433,26 +437,27 @@ where
             "ipc"       => I::name(),
         );
     });
+
     let mut scope_map = Rc::new(HashMap::<String, Scope>::new());
 
-    // run initialize relevant to all flows
-    match U::init_programs() {
-        Some(programs) => {
-            let mut datapath = Datapath {
-                sock_id: 0,
-                sender: backend.clone(),
-                programs: Rc::new(HashMap::<String, Scope>::new()),
-            };
-            let iter = programs.iter();
-            for (bin, sc, prog_name) in iter {
-                match datapath.send_and_install(bin.clone(), sc.clone(), prog_name.to_string()) {
-                    Ok(_) => {Rc::get_mut(&mut scope_map).unwrap().insert(prog_name.to_string(), sc.clone());},
-                    Err(_) => return Err(Error(String::from("Issue installing program"))),
+    let programs = U::init_programs();
+    for (program_name, program) in programs.iter() {
+
+        match lang::compile(program.as_bytes(), &[]) {
+            Ok((bin, sc)) => {
+                match send_and_install(0, backend.clone(), bin, sc.clone()) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return Err(Error(format!("Failed to install datapath program \"{}\": {:?}", program_name, e)));
+                    },
                 }
+                Rc::get_mut(&mut scope_map).unwrap().insert(program_name.to_string(), sc.clone());
             }
-        },
-        None => {}
-    };
+            Err(e) => {
+                return Err(Error(format!("Datapath program \"{}\" failed to compile: {:?}", program_name, e)));
+            }
+        }
+    }
 
     while let Some(msg) = b.next() {
         match msg {

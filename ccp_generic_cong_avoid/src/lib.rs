@@ -252,10 +252,9 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
         A::name()
     }
 
-    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
-        // install all the datapath programs that can be used in the lifetime of this program
-        let programs = vec![
-            (String::from("
+    fn init_programs() -> Vec<(String, String)> {
+        vec![
+            (String::from("DatapathIntervalProg"), String::from("
                 (def
                 (Report
                     (volatile acked 0)
@@ -284,8 +283,8 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
                     (report)
                     (:= Micros 0)
                 )
-            "), String::from("DatapathIntervalProg")),
-            (String::from("
+            ")),
+            (String::from("DatapathIntervalRTTProg"), String::from("
                 (def (Report
                     (volatile acked 0)
                     (volatile sacked 0) 
@@ -311,8 +310,8 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
                     (report)
                     (:= Micros 0)
                 )
-            "), String::from("DatapathIntervalRTTProg")),
-            (String::from("
+            ")),
+            (String::from("AckUpdateProg"), String::from("
                 (def (Report
                     (volatile acked 0)
                     (volatile sacked 0)
@@ -330,8 +329,8 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
                     (:= Report.inflight Flow.packets_in_flight)
                     (report)
                 )
-            "), String::from("AckUpdateProg")),
-            (String::from("
+            ")),
+            (String::from("SSUpdateProg"), String::from("
                 (def (Report
                     (volatile acked 0)
                     (volatile sacked 0)
@@ -354,15 +353,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
                     (report)
                 )
 
-            "), String::from("SSUpdateProg"))];
-        Some(
-            programs.iter()
-                .map(|(prog, prog_name)| {
-                    let (bin, sc) = portus::compile_program(prog.as_bytes(), None).unwrap();
-                    (bin, sc, prog_name.clone())
-                })
-                .collect::<Vec<(_,_,_)>>()
-            )
+            "))]
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, GenericCongAvoid<T, A>>, info: DatapathInfo) -> Self {

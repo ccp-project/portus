@@ -1,7 +1,6 @@
-use portus;
 use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
-use portus::lang::{Bin, Scope};
+use portus::lang::Scope;
 use std::time::SystemTime;
 
 use super::{ACKED_PRIMITIVE, DONE, TestBase, IntegrationTestConfig};
@@ -34,9 +33,10 @@ impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
         String::from("integration-test")
     }
 
-    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
+    fn init_programs() -> Vec<(String, String)> {
         // compile and return any programs to be installed in the datapath
-        let prog = b" (def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))
+        vec![(String::from("TestBasicSerialize"), String::from("
+						(def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))
             (when true
                 (:= Report.acked (+ Report.acked Ack.bytes_acked))
                 (:= Control.num_invoked (+ Control.num_invoked 1))
@@ -47,9 +47,8 @@ impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
             (when (== Control.num_invoked 20)
                 (report)
             )
-            ";
-        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
-        Some(vec![(bin, sc, String::from("TestBasicSerialize"))])
+            ")),
+				]
     } 
 
     fn create(control: Datapath<T>, cfg: Config<T, TestBasicSerialize<T>>, _info: DatapathInfo) -> Self {
