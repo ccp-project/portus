@@ -27,20 +27,20 @@ impl Controller {
     }
 
     fn run(&mut self) {
-        let mut rcv_buf = [0u8; 1024];
+        //let mut rcv_buf = [0u8; 1024];
         let mut sum : Summary = Default::default();
-        let mut send_buf = [0u8; 128];
+        //let mut send_buf = [0u8; 128];
         let mut alloc : Allocation = Default::default();
 
         loop {
-            match self.socket.recv_from(&mut rcv_buf) {
+            match self.socket.recv_from(sum.as_mut_slice()) {
                 Ok((amt, ref sender_addr)) => {
                     if amt > 0 {
-												println!("got summary from {}", sum.id);
-                        sum.read_from(&rcv_buf[..amt]);
+						println!("got summary from {}", sum.id);
+                        //sum.read_from(&rcv_buf[..amt]);
                         self.on_summary(&sum, &mut alloc);
-                        alloc.write_to(&mut send_buf);
-                        match self.socket.send_to(&send_buf, *sender_addr) {
+                        //alloc.write_to(&mut send_buf);
+                        match self.socket.send_to(alloc.as_slice(), *sender_addr) {
                             Ok(_) => {}
                             Err(e) => { println!("send failed! {:?}", e); }
                         }
