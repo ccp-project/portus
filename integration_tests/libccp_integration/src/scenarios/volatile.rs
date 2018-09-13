@@ -1,7 +1,6 @@
-use portus;
 use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 use portus::ipc::Ipc;
-use portus::lang::{Bin, Scope};
+use portus::lang::Scope;
 use std::time::SystemTime;
 
 use super::{DONE, TestBase, IntegrationTestConfig};
@@ -37,9 +36,8 @@ impl<T: Ipc> CongAlg<T> for TestVolatileVars<T> {
         String::from("integration-test")
     }
 
-    fn init_programs() -> Option<Vec<(Bin, Scope, String)>> {
-        let prog =
-            b"
+		fn init_programs() -> Vec<(String, String)> {
+				vec![(String::from("TestVolatileVars"), String::from("
             (def
                 (Report
                     (volatile foo 0)
@@ -53,9 +51,8 @@ impl<T: Ipc> CongAlg<T> for TestVolatileVars<T> {
             (when (== Report.foo 10)
                 (report)
             )
-            ";
-        let (bin, sc) = portus::compile_program(prog, None).unwrap(); // better error handling?
-        Some(vec![(bin, sc, String::from("TestVolatileVars"))])
+					")),
+				]
     }
 
     fn create(control: Datapath<T>, cfg: Config<T, TestVolatileVars<T>>, _info: DatapathInfo) -> Self {
