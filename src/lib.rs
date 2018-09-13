@@ -100,7 +100,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub trait DatapathTrait {
     fn get_sock_id(&self) -> u32;
     /// Tell datapath to use a preinstalled program.
-    fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope>;
+    fn set_program(&self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope>;
     /// Update the value of a register in an already-installed fold function.
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
 }
@@ -117,7 +117,7 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
         return self.sock_id;
     }
 
-    fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope> {
+    fn set_program(&self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope> {
         // if the program with this key exists, return it; otherwise return nothing
         match self.programs.get(&program_name) {
             Some(sc) => {
