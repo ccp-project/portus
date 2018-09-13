@@ -155,8 +155,6 @@ pub mod measure;
 pub mod install;
 pub mod changeprog;
 pub mod update_field;
-pub mod summary;
-pub mod allocation;
 mod testmsg;
 
 /// Serialize a serializable message.
