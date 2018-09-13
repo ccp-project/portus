@@ -96,11 +96,6 @@ use lang::{Reg, Scope, Bin};
 /// CCP custom `Result` type, using `Error` as the `Err` type.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Pass in program string and optional fields, returns bin and scope
-pub fn compile_program(src: &[u8], fields: Option<&[(&str, u32)]>) -> Result<(Bin, Scope)> {
-    let (bin, sc) = lang::compile(src, fields.unwrap_or_else(|| &[]))?;
-    Ok((bin, sc))
-}
 /// A collection of methods to interact with the datapath.
 pub trait DatapathTrait {
     fn get_sock_id(&self) -> u32;
