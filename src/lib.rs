@@ -405,6 +405,32 @@ where
     Ok(())
 }
 
+fn install_programs<I, U>(backend: BackendSender<I>, scope_map: &mut HashMap<String, Scope>) -> Result<()>
+where
+    I: Ipc,
+    U: CongAlg<I>,
+{
+    let programs = U::init_programs();
+    for (program_name, program) in programs.iter() {
+
+        match lang::compile(program.as_bytes(), &[]) {
+            Ok((bin, sc)) => {
+                match send_and_install(0, backend.clone(), bin, sc.clone()) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        return Err(Error(format!("Failed to install datapath program \"{}\": {:?}", program_name, e)));
+                    },
+                }
+                scope_map.insert(program_name.to_string(), sc.clone());
+            }
+            Err(e) => {
+                return Err(Error(format!("Datapath program \"{}\" failed to compile: {:?}", program_name, e)));
+            }
+        }
+    }
+    Ok(())
+}
+
 // Main execution inner loop of ccp.
 // Blocks "forever", or until the iterator stops iterating.
 //
@@ -435,23 +461,9 @@ where
 
     let mut scope_map = Rc::new(HashMap::<String, Scope>::new());
 
-    let programs = U::init_programs();
-    for (program_name, program) in programs.iter() {
-
-        match lang::compile(program.as_bytes(), &[]) {
-            Ok((bin, sc)) => {
-                match send_and_install(0, backend.clone(), bin, sc.clone()) {
-                    Ok(_) => {},
-                    Err(e) => {
-                        return Err(Error(format!("Failed to install datapath program \"{}\": {:?}", program_name, e)));
-                    },
-                }
-                Rc::get_mut(&mut scope_map).unwrap().insert(program_name.to_string(), sc.clone());
-            }
-            Err(e) => {
-                return Err(Error(format!("Datapath program \"{}\" failed to compile: {:?}", program_name, e)));
-            }
-        }
+    match install_programs::<I, U>(backend.clone(), Rc::get_mut(&mut scope_map).unwrap()) {
+        Ok(_) => {}
+        Err(msg) => { return Err(msg) }
     }
 
     while let Some(msg) = b.next() {
