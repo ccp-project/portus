@@ -117,6 +117,26 @@ impl<'a, T: Ipc> Backend<'a, T> {
             return Some(msg);
         }
     }
+
+    pub fn next_nonblocking<'b>(&'b mut self) -> Option<Msg<'b>> {
+        if self.read_until < self.tot_read {
+            let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
+            self.read_until += consumed;
+            return Some(msg);
+        } else {
+            match self.get_next_read_nonblocking() {
+                None => None,
+                Some(read) => {
+                    self.tot_read = read;
+                    self.read_until = 0;
+                    let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
+                    self.read_until += consumed;
+
+                    return Some(msg);
+                }
+            }
+        }
+    }
     
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
@@ -139,6 +159,14 @@ impl<'a, T: Ipc> Backend<'a, T> {
             return Ok(read);
         }
     }
+
+    fn get_next_read_nonblocking<'i>(&mut self) -> Option<usize> {
+        match self.sock.recv(self.receive_buf) {
+            Ok(0) => None,
+            Ok(l) => Some(l),
+            _ => None,
+        }
+    }   
 }
 
 impl<'a, T: Ipc> Drop for Backend<'a, T> {
