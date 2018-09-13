@@ -1,0 +1,2 @@
+all:
+	cargo +nightly b
