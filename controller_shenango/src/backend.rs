@@ -22,10 +22,14 @@ impl Backend {
     pub fn listen_udp(
         &self,
         local_addr: SocketAddrV4,
+        nonblocking: bool,
     ) -> UdpConnection {
         match self {
-            &Backend::Linux =>
-                UdpConnection::Linux(UdpSocket::bind(local_addr).unwrap()),
+            &Backend::Linux => {
+                let sk = UdpSocket::bind(local_addr).unwrap();
+                sk.set_nonblocking(nonblocking).unwrap();
+                UdpConnection::Linux(sk)
+            }
             #[cfg(feature = "iokernel")]
             &Backend::Shenango =>
                 UdpConnection::Shenango(shenango::udp::UdpConnection::listen(local_addr)),
