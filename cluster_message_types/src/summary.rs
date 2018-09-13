@@ -5,7 +5,9 @@
 
 use bytes::{ByteOrder, LittleEndian};
 
-#[derive(Debug, PartialEq, Eq, Default)]
+const SUMMARY_MSG_SIZE: usize = 24;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct Summary {
     pub id: u32,
     pub num_active_flows: u32,
@@ -33,28 +35,67 @@ impl Summary {
         self.rtt = LittleEndian::read_u32(&buf[16..20]);
         self.num_drop_events = LittleEndian::read_u32(&buf[20..24]);
     }
+
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            ::std::slice::from_raw_parts(
+                (self as *const Summary) as *const u8,
+                SUMMARY_MSG_SIZE,
+            )
+        }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8]{
+        unsafe {
+            ::std::slice::from_raw_parts_mut(
+                (self as *const Summary) as *mut u8,
+                SUMMARY_MSG_SIZE
+            )
+        }
+    }
 }
 
 
 #[cfg(test)]
 mod tests {
-    use serialize::summary::Summary;
-    #[test]
-    fn test_summary_1() {
+    use summary::Summary;
 
-        let sum = Summary {
+    fn fake_summary() -> Summary {
+        Summary {
             id: 1,
             num_active_flows: 3,
             bytes_acked: 4344,
             min_rtt: 100000,
             rtt: 123456,
             num_drop_events: 0,
-        };
+        }
+    }
+    #[test]
+    fn test_summary_copy() {
+
+        let sum = fake_summary();
         let mut got : Summary = Default::default();
         let mut send_buf = [0u8;24];
 
         sum.write_to(&mut send_buf);
         got.read_from(&send_buf);
         assert_eq!(sum, got);
+    }
+
+    #[test]
+    fn test_summary_size() {
+        assert_eq!(::std::mem::size_of::<Summary>(), 24)
+    }
+
+    #[test]
+    fn test_summary_zero_copy() {
+        let sum = fake_summary();
+        let _sum_buf: &[u8] = sum.as_slice();
+    }
+
+    #[test]
+    fn test_summary_zero_copy_mut() {
+        let mut sum = fake_summary();
+        let _mut_sum_buf: &mut [u8] = sum.as_mut_slice();  
     }
 }
