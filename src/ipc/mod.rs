@@ -15,6 +15,8 @@ pub mod unix;
 #[cfg(all(target_os = "linux"))]
 /// Character device implementation
 pub mod kp;
+/// Thread-channel implementation
+pub mod chan;
 
 /// IPC mechanisms must implement this trait.
 pub trait Ipc: 'static + Send {
