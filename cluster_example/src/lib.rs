@@ -168,6 +168,7 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
                 (when (> Micros Flow.rtt_sample_us)
                     (report)
                     (:= Micros 0)
+                )
             ")
         )]
     }
