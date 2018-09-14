@@ -88,8 +88,50 @@ fn run_test(log: slog::Logger, test: Test) {
     wait_for_done.join().unwrap();
 }
 
+fn log_commits(log: slog::Logger) {
+    use std::process::Command;
+    let portus_commit = Command::new("git")
+        .arg("rev-parse")
+        .arg("HEAD")
+        .output()
+        .expect("Failed to get portus commit hash")
+        .stdout;
+    let portus_branch = Command::new("git")
+        .arg("rev-parse")
+        .arg("--abbrev-ref")
+        .arg("HEAD")
+        .output()
+        .expect("Failed to get portus branch name")
+        .stdout;
+    info!(log, "portus commit";
+        "commit hash" => std::str::from_utf8(&portus_commit).unwrap().trim_right(),
+        "branch" => std::str::from_utf8(&portus_branch).unwrap().trim_right(),
+    );
+
+    let libccp_commit = Command::new("git")
+        .arg("rev-parse")
+        .arg("HEAD")
+        .current_dir("./libccp")
+        .output()
+        .expect("Failed to get libccp commit hash")
+        .stdout;
+    let libccp_branch = Command::new("git")
+        .arg("rev-parse")
+        .arg("--abbrev-ref")
+        .arg("HEAD")
+        .current_dir("./libccp")
+        .output()
+        .expect("Failed to get libccp branch name")
+        .stdout;
+    info!(log, "libccp commit";
+        "commit hash" => std::str::from_utf8(&libccp_commit).unwrap().trim_right(),
+        "branch" => std::str::from_utf8(&libccp_branch).unwrap().trim_right(),
+    );
+}
+
 fn main() {
     let log = portus::algs::make_logger();
+    log_commits(log.clone());
 
     // run test with various tests
     run_test(log.clone(), Test::TestBasicSerialize);
