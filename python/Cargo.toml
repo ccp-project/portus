@@ -1,6 +1,6 @@
 [package]
 name = "pyportus"
-version = "0.2.0"
+version = "0.3.3"
 authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
 
 [dependencies]

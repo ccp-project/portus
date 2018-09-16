@@ -7,6 +7,7 @@ from . import util, checker
 
 ### Class ### 
 method_signatures = {
+    'init_programs' : ['self'],
     'on_create' : ['self'],
     'on_report' : ['self', 'r']
 }
