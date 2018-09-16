@@ -17,7 +17,7 @@ pub mod unix;
 pub mod kp;
 
 /// IPC mechanisms must implement this trait.
-pub trait Ipc: 'static + Sync + Send {
+pub trait Ipc: 'static + Send {
     /// Returns the name of this IPC mechanism (e.g. "netlink" for Linux netlink sockets)
     fn name() -> String;
     /// Blocking send
