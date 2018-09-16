@@ -1,6 +1,6 @@
 all: build test-portus test-ipc libccp-integration lint algs
 
-travis: build test-portus libccp-integration
+travis: build test-portus libccp-integration bindings
 
 OS := $(shell uname)
 CLIPPY := $(shell cargo --list | grep -c clippy)
@@ -61,3 +61,10 @@ endif
 ifeq ($(OS), Darwin)
 	cd integration_tests/libccp_integration && export DYLD_LIBRARY_PATH=./libccp && cargo run --bin test_ccp
 endif
+
+.PHONY: bindings python
+
+bindings: python
+
+python:
+	$(MAKE) -C python/
