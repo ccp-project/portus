@@ -36,7 +36,7 @@ impl<T: Ipc> CongAlg<T> for TestVolatileVars<T> {
         String::from("integration-test")
     }
 
-		fn init_programs() -> Vec<(String, String)> {
+		fn init_programs(_cfg: Config<T, Self>) -> Vec<(String, String)> {
 				vec![(String::from("TestVolatileVars"), String::from("
             (def
                 (Report

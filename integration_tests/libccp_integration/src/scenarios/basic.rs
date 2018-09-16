@@ -33,7 +33,7 @@ impl<T: Ipc> CongAlg<T> for TestBasicSerialize<T> {
         String::from("integration-test")
     }
 
-    fn init_programs() -> Vec<(String, String)> {
+    fn init_programs(_cfg: Config<T, Self>) -> Vec<(String, String)> {
         // compile and return any programs to be installed in the datapath
         vec![(String::from("TestBasicSerialize"), String::from("
 						(def (Report.acked 0) (Control.num_invoked 0) (Report.cwnd 0) (Report.rate 0))

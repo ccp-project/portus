@@ -252,7 +252,7 @@ impl<T: Ipc, A: GenericCongAvoidAlg> CongAlg<T> for GenericCongAvoid<T, A> {
         A::name()
     }
 
-    fn init_programs() -> Vec<(String, String)> {
+    fn init_programs(_cfg: Config<T, Self>) -> Vec<(String, String)> {
         vec![
             (String::from("DatapathIntervalProg"), String::from("
                 (def

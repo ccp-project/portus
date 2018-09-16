@@ -39,7 +39,7 @@ impl<T: Ipc> CongAlg<T> for TestTiming<T> {
         String::from("integration-test")
     }
 
-		fn init_programs() -> Vec<(String, String)> {
+		fn init_programs(_cfg: Config<T, Self>) -> Vec<(String, String)> {
 				vec![(String::from("TestTiming"), String::from("
 						(def (Report.acked 0) (Control.state 0) (Report.cwnd 0) (Report.rate 0))
             (when true

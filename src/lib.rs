@@ -31,7 +31,7 @@
 //!     fn name() -> String {
 //!         String::from("My congestion control algorithm")
 //!     }
-//!     fn init_programs() -> Vec<(String, String)> {
+//!     fn init_programs(_cfg: Config<T, Self>) -> Vec<(String, String)> {
 //!         vec![
 //!             (String::from("MyProgram"), String::from("
 //!                 (def (Report
@@ -309,7 +309,7 @@ pub trait CongAlg<T: Ipc> {
     ///      (String::from("prog2"), String::from("...(program)..."))
     /// ];
     /// ```
-    fn init_programs() -> Vec<(String, String)>;
+    fn init_programs(cfg: Config<T, Self>) -> Vec<(String, String)>;
     fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
     fn on_report(&mut self, sock_id: u32, m: Report);
     fn close(&mut self) {} // default implementation does nothing (optional method)
@@ -435,7 +435,7 @@ where
 
     let mut scope_map = Rc::new(HashMap::<String, Scope>::new());
 
-    let programs = U::init_programs();
+    let programs = U::init_programs(cfg.clone());
     for (program_name, program) in programs.iter() {
 
         match lang::compile(program.as_bytes(), &[]) {
