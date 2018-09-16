@@ -1,4 +1,4 @@
-#![feature(box_patterns, proc_macro, specialization, const_fn, proc_macro_path_invoc)]
+#![feature(box_patterns, specialization, const_fn)]
 use std::rc::{Rc,Weak};
 
 #[macro_use]
@@ -85,6 +85,60 @@ impl<T: Ipc> CongAlg<T> for PyAlg {
     fn name() -> String {
         // TODO if we want the actual name, need to re-define name() to take &self
         String::from("python")
+    }
+
+    fn init_programs(cfg: Config<T, PyAlg>) -> Vec<(String, String)> {
+        let py = cfg.config.py;
+
+        let py_alg_inst =
+            py_create_flow(py, cfg.config.alg_class).unwrap_or_else(|e| {
+                e.print(py); panic!("Failed to instantiate python class")
+            });
+
+        let programs = match py_alg_inst.call_method0(py, "init_programs") {
+            Ok(ret) => {
+                let list : &PyList = match ret.extract(py) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        e.print(py);
+                        panic!("init_programs() must return a *list* of tuples of (2) strings.\nreturn value was not a list.")
+                    }
+                };
+                let programs : Vec<(String, String)> = list.iter().map(|tuple_obj| {
+                    let tuple : &PyTuple = match tuple_obj.extract() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            e.print(py);
+                            panic!("init_programs() must return a list of *tuples* of (2) strings.\ngot a list, but the elements were not tuples.")
+                        }
+                    };
+                    if tuple.len() != 2 {
+                        panic!(format!("init_programs() must return a list of tuples of *(2)* strings.\ngot a list of tuples, but a tuple had {} elements, not 2.", tuple.len()));
+                    }
+                    let program_name = match PyString::try_from(tuple.get_item(0)) {
+                        Ok(pn) => pn.to_string_lossy().into_owned(),
+                        Err(_) => {
+                            panic!("init_programs() must return a list of tuples of (2) *strings*.\ngot a list of tuples, but the first element was not a string.")
+                        }
+                    };
+                    let program_string = match PyString::try_from(tuple.get_item(1)) {
+                        Ok(ps) => ps.to_string_lossy().into_owned(),
+                        Err(_) => {
+                            panic!("init_programs() must return a list of tuples of (2) *strings*.\ngot a list of tuples, but the second element was not a string.")
+                        }
+                    };
+                    (program_name, program_string)
+                }).collect::<Vec<(String, String)>>();
+                programs
+            }
+            Err(e) => {
+                e.print(py);
+                panic!("error calling init_programs()");
+            }
+        };
+
+        // TODO figure out how to deallocate and clean up instance
+        programs
     }
 
     fn create(control:Datapath<T>, cfg:Config<T, PyAlg>, info:portus::DatapathInfo) -> Self {
@@ -217,6 +271,7 @@ impl<T: Ipc> CongAlg<T> for PyAlg {
             }
         };
     }
+    // TODO implement close, deallocate memory from class
 }
 
 #[py::proto]
@@ -281,7 +336,7 @@ impl PyDatapath {
         };
 
         let ret = {
-            let items : Result<Vec<(String,u32)>, _> = fields.into_iter().map(|tuple_ref| {
+            let items : Vec<(String,u32)> = fields.into_iter().map(|tuple_ref| {
                 let tuple_obj : PyObject = tuple_ref.into();
                 let tuple:&PyTuple = match tuple_obj.extract(py) {
                     Ok(t) => t,
@@ -301,71 +356,68 @@ impl PyDatapath {
                     Err(_) => raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples of the form (string, int|float)")
                 };
                 Ok((name,val))
-            }).collect();
-            items.map(|v| {
-                let args: Vec<(&str,u32)> = v.iter().map(|(s,i)| (&s[..],i.clone())).collect();
-                self.backend.update_field(sc, &args[..])
-            })
+            }).collect::<Result<Vec<(String, u32)>, _>>().unwrap();
+
+            let args: Vec<(&str,u32)> = items.iter().map(|(s,i)| (&s[..],i.clone())).collect();
+            self.backend.update_field(sc, &args[..])
         };
 
         match ret {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => { raise!(Exception, format!("Failed to update fields, err: {:?}", e)) },
-            Err(e)     => { raise!(Exception, format!("Failed to update fields, err: {:?}", e)) },
+            Ok(()) => Ok(()),
+            Err(e) => { raise!(Exception, format!("Failed to update fields, err: {:?}", e)) },
         }
         
     }
 
-    fn install(&mut self, py : Python, prog: String, fields : Option<&PyList>) -> PyResult<()> {
+    fn set_program(&mut self, py : Python, program_name: String, fields : Option<&PyList>) -> PyResult<()> {
         if self.debug {
             self.logger.as_ref().map(|log| {
-                debug!(log, "Installing new datapath program";
+                debug!(log, "switching datapath programs";
                    "sid" => self.sock_id,
+                   "program_name" => program_name.clone(),
                )
             });
         }
 
-        let ret = match fields {
+        let ret : Result<Scope, _> = match fields {
             Some(list) => {
-                let items : Result<Vec<(String,u32)>, _> = list.into_iter().map(|tuple_ref| {
+                let items : Vec<(String,u32)> = list.into_iter().map(|tuple_ref| {
                     let tuple_obj : PyObject = tuple_ref.into();
                     let tuple:&PyTuple = match tuple_obj.extract(py) {
                         Ok(t) => t,
                         Err(_) => {
-                            raise!(TypeError, "second argument to datapath.install must be a list of tuples")
+                            raise!(TypeError, "second argument to datapath.set_program must be a list of tuples")
                         }
                     };
                     if tuple.len() != 2 {
-                        raise!(TypeError, "second argument to datapath.install must be a list of tuples with exactly two values each");
+                        raise!(TypeError, "second argument to datapath.set_program must be a list of tuples with exactly two values each");
                     }
                     let name = match PyString::try_from(tuple.get_item(0)) {
                         Ok(ps) => ps.to_string_lossy().into_owned(),
-                        Err(_) => raise!(TypeError, "second argument to datapath.install must be a list of tuples of the form (string, int|float)"),
+                        Err(_) => raise!(TypeError, "second argument to datapath.set_program must be a list of tuples of the form (string, int|float)"),
                     };
                     let val = match tuple.get_item(1).extract::<u32>() {
                         Ok(v) => v,
-                        Err(_) => raise!(TypeError, "second argument to datapath.install must be a list of tuples of the form (string, int|float)")
+                        Err(_) => raise!(TypeError, "second argument to datapath.set_program must be a list of tuples of the form (string, int|float)")
                     };
                     Ok((name,val))
-                }).collect();
-                items.map(|v| {
-                    let args: Vec<(&str,u32)> = v.iter().map(|(s,i)| (&s[..],i.clone())).collect();
-                    self.backend.install(prog.as_bytes(), Some(&args[..]))
-                })
-            },
-            None => { Ok(self.backend.install(prog.as_bytes(), None)) }
+                }).collect::<Result<Vec<(String, u32)>, _>>().unwrap();
+
+                let args: Vec<(&str, u32)> = items.iter().map(|(s,i)| (&s[..],i.clone())).collect();
+                self.backend.set_program(program_name, Some(&args[..]))
+            }
+            None => {
+                self.backend.set_program(program_name, None)
+            }
         };
 
         match ret {
-            Ok(Ok(sc)) => {
+            Ok(sc) => {
                 self.sc = Some(Rc::new(sc));
                 Ok(())
             }
-            Ok(Err(e)) => {
-                raise!(Exception, format!("Failed to install datapath program: {:?}", e))
-            }
             Err(e) => {
-                raise!(Exception, format!("Failed to install datapath program: {:?}", e))
+                raise!(Exception, format!("Failed to set datapath program: {:?}", e))
             }
         }
     }
@@ -391,6 +443,7 @@ fn init_mod(py:pyo3::Python<'static>, m:&PyModule) -> PyResult<()> {
 
     Ok(())
 }
+
 
 use portus::lang;
 use std::error::Error;

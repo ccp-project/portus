@@ -4,14 +4,9 @@ import portus
 class AIMD(portus.AlgBase):
     INIT_CWND = 10
 
-    def on_create(self):
-        self.init_cwnd = float(self.datapath_info.mss * AIMD.INIT_CWND)
-        self.cwnd = self.init_cwnd
-        self.install_program()
-
-    def install_program(self):
-        self.datapath.install(
-	    """\
+    def init_programs(self):
+        return [
+            ("default", """\
                 (def (Report
                     (volatile acked 0) 
                     (volatile sacked 0) 
@@ -37,11 +32,16 @@ class AIMD(portus.AlgBase):
                     (report)
                     (:= Micros 0)
                 )
-            """.format(self.cwnd)
-	)
+            """),
+        ]
+
+    def on_create(self):
+        self.init_cwnd = float(self.datapath_info.mss * AIMD.INIT_CWND)
+        self.cwnd = self.init_cwnd
+        self.datapath.set_program("default", [("Cwnd", self.cwnd)])
 
     def handle_timeout(self):
-        sys.stdout.write("Timeout! Ignoring...\n")
+        sys.stderr.write("Timeout! Ignoring...\n")
 
     def on_report(self, r):
         if r.timeout:
@@ -55,7 +55,6 @@ class AIMD(portus.AlgBase):
 
         self.cwnd = max(self.cwnd, self.init_cwnd)
         self.datapath.update_field("Cwnd", int(self.cwnd))
-
 
 
 portus.connect("netlink", AIMD, debug=True, blocking=True)

@@ -3,7 +3,7 @@ from setuptools_rust import Binding, RustExtension
 
 setup(
     name='portus',
-    version='0.2',
+    version='0.3.3',
     rust_extensions=[RustExtension(
         'portus.pyportus',
         'Cargo.toml',

@@ -13,23 +13,28 @@ class ProgramFinder(ast.NodeVisitor):
         self.src_file_name = src_file_name
         self.progs = []
 
-    def visit_Call(self, call_node):
-        for child in ast.walk(call_node):
-            if isinstance(child, _ast.Attribute) and child.attr == "install":
-                args = call_node.args
-                if len(args) > 2:
-                    raise ValueError("datapath.install expects a datapath program string and (optionally) a list of tuples of fields to set at the same time")
-                arg = args[0]
-                found_string_arg = False
-                for arg_child in ast.walk(arg):
-                    if isinstance(arg_child, _ast.Str):
-                        self.progs.append(DatapathProgram(arg_child.s, child.lineno))
-                        found_string_arg = True
-                if not found_string_arg:
-                    raise ValueError("datapath.install must be passed a datapath program as a string literal (not a variable defined elsewhere)")
+    def visit_FunctionDef(self, fd_node):
+        if fd_node.name == "init_programs":
+            for elem in fd_node.body:
+                if isinstance(elem, _ast.Return):
+                    ret_node = elem
+                    if not isinstance(ret_node.value, _ast.List):
+                        raise ValueError("init_programs() must return a list")
+                    for prog in ret_node.value.elts:
+                        if not isinstance(prog, _ast.Tuple):
+                            raise ValueError("init_programs() must return a list of *tuples*")
+                        args = prog.elts
+                        if not isinstance(args[1], _ast.Str):
+                            raise ValueError("init_programs() must return a list of tuples of (2) *strings* (must be string literal)")
+                        self.progs.append(DatapathProgram(args[1].s, prog.lineno))
 
 def _find_datapath_programs(cls):
     src_file_name = inspect.getfile(cls)
+    # NOTE: if module is imported, getfile will return the binary (pyc) rather than the source
+    # This is a hack that assumes the source file is in the exact same directory
+    # (i.e. getfile returns /path/to/x.pyc and we hope the source code is in /path/to/x.py)
+    if '.pyc' in src_file_name:
+        src_file_name = src_file_name[:-1]
     f = open(src_file_name)
     src = ''.join(f.readlines())
     f.close()
@@ -48,8 +53,11 @@ class Colors:
     END = '\033[0m'
     BOLD = '\033[1m'
     BOLDRED = '\033[91;1m'
+    BOLDYELLOW = '\033[93;1m'
     UNDERLINE = '\033[4m'
 
+def bold_yellow_text(t):
+    return Colors.BOLDYELLOW + t + Colors.END
 def bold_red_text(t):
     return Colors.BOLDRED + t + Colors.END
 def bold_text(t):
@@ -62,10 +70,10 @@ def _check_datapath_programs(cls):
         ret = _try_compile(prog.code)
         if ret != "":
             any_errors = True
-            sys.stderr.write("Traceback (datapath program compile error):\n  File \"{}\", line {}\n{}\n{}: {}\n".format(
+            sys.stderr.write("Traceback (datapath program compile error):\n  File \"{}\", {}\n{}\n{}: {}\n".format(
                 pf.src_file_name,
-                prog.lineno,
-                prog.code,
+                bold_yellow_text("line " + str(prog.lineno)),
+                "|\n|" + "\n|".join(prog.code.split("\n")),
                 bold_red_text("error"),
                 bold_text(ret)
             ))
