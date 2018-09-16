@@ -2,5 +2,8 @@ language: rust
 rust:
     - nightly
 cache: cargo
+install:
+  - pip install --user setuptools
+  - pip install --user setuptools_rust
 script:
     - make travis
