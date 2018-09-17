@@ -68,7 +68,7 @@ impl<T: Ipc> Clone for BackendSender<T> {
 /// It owns the socket; `BackendSender` holds weak references.
 /// The atomic bool is a way to stop iterating.
 pub struct Backend<'a, T: Ipc> {
-    sock: Rc<T>,
+    pub sock: Rc<T>,
     continue_listening: Arc<atomic::AtomicBool>,
     receive_buf: &'a mut [u8],
     tot_read: usize,
@@ -119,7 +119,14 @@ impl<'a, T: Ipc> Backend<'a, T> {
             return Some(msg);
         }
     }
-    
+
+    pub fn get_next_raw<'b>(&'b mut self) -> Option<&[u8]>
+    {
+        self.tot_read = self.get_next_read().ok()?;
+        Some(&self.receive_buf[0..self.tot_read])
+    }
+
+
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
     fn get_next_read<'i>(&mut self) -> Result<usize> {

@@ -167,7 +167,7 @@ pub fn serialize<T: AsRawMsg>(m: &T) -> Result<Vec<u8>> {
     Ok(msg)
 }
 
-fn deserialize(buf: &[u8]) -> Result<RawMsg> {
+pub fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     let mut buf = Cursor::new(buf);
     let (typ, len, sid) = deserialize_header(&mut buf)?;
     if len < 8 {

@@ -21,6 +21,7 @@ slog-term = "2"
 time = "0.1"
 quote = "0.5"
 walkdir = "2"
+cluster_message_types = { path = "./cluster_message_types" }
 
 [dependencies.syn]
 version = "0.13"
