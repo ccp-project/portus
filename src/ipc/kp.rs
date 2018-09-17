@@ -54,7 +54,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
         Ok(len)
     }
 
-    fn close(&self) -> Result<()> {
+    fn close(&mut self) -> Result<()> {
         Ok(())
     }
 }

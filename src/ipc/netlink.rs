@@ -131,7 +131,7 @@ impl<T> Socket<T> {
             .map_err(Error::from)
     }
     
-    fn __close(&self) -> Result<()> {
+    fn __close(&mut self) -> Result<()> {
         let ok = unsafe { libc::close(self.0) as i32 };
         if ok < 0 {
             Err(Error(format!("could not close netlink socket: {}", ok)))
@@ -156,7 +156,7 @@ impl super::Ipc for Socket<Blocking> {
         self.__send(buf)
     }
 
-    fn close(&self) -> Result<()> {
+    fn close(&mut self) -> Result<()> {
         self.__close()
     }
 }
@@ -175,7 +175,7 @@ impl super::Ipc for Socket<Nonblocking> {
         self.__send(buf)
     }
 
-    fn close(&self) -> Result<()> {
+    fn close(&mut self) -> Result<()> {
         self.__close()
     }
 }

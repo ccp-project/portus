@@ -25,7 +25,7 @@ pub trait Ipc: 'static + Send {
     /// Blocking listen. Return value is how many bytes were read. Should not allocate.
     fn recv(&self, msg: &mut [u8]) -> Result<usize>;
     /// Close the underlying sockets
-    fn close(&self) -> Result<()>;
+    fn close(&mut self) -> Result<()>;
 }
 
 /// Marker type specifying that the IPC socket should make blocking calls to the underlying socket
@@ -143,7 +143,10 @@ impl<'a, T: Ipc> Backend<'a, T> {
 
 impl<'a, T: Ipc> Drop for Backend<'a, T> {
     fn drop(&mut self) {
-        self.sock.close().unwrap_or_else(|e| println!("{:?}", e))
+        Rc::get_mut(&mut self.sock)
+            .ok_or_else(|| Error(String::from("Could not get exclusive ref to socket to close")))
+            .and_then(|s| s.close())
+            .unwrap_or_else(|_| ());
     }
 }
 
