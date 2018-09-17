@@ -31,7 +31,7 @@ impl Ipc for FakeIpc {
         Ok(w)
     }
 
-    fn close(&self) -> Result<(), super::Error> {
+    fn close(&mut self) -> Result<(), super::Error> {
         Ok(())
     }
 }

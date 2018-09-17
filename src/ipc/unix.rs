@@ -62,7 +62,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
         self.sk.recv(msg).map_err(Error::from)
     }
     
-    fn close(&self) -> Result<()> {
+    fn close(&mut self) -> Result<()> {
         use std::net::Shutdown;
         self.sk.shutdown(Shutdown::Both).map_err(Error::from)
     }
