@@ -57,73 +57,50 @@ fn test_ser_over_ipc() {
 
 extern crate test;
 use self::test::Bencher;
+use std::sync::mpsc;
+use ipc::Blocking;
 
 #[bench]
 fn bench_ser_over_ipc(b: &mut Bencher) {
-    let (exp_start_tx, exp_start_rx) = std::sync::mpsc::channel();
-    let (exp_end_tx, exp_end_rx) = std::sync::mpsc::channel();
-    let (tx, rx) = std::sync::mpsc::channel();
-    let sk = ipc::test::FakeIpc::new();
-    let sk1 = sk.clone();
-    thread::spawn(move || {
-        let mut buf = [0u8; 1024];
-        let mut b1 = ipc::Backend::new(
-            sk1, 
-            Arc::new(atomic::AtomicBool::new(true)), 
-            &mut buf[..],
-        );
-        loop {
-            tx.send(true).expect("ready chan send");
-            let msg = b1.next().expect("receive message");
-            assert_eq!(
-                msg,
-                serialize::Msg::Ms(serialize::measure::Msg {
-                    sid: 42,
-                    program_uid: 12,
-                    num_fields: 1,
-                    fields: vec![0],
-                })
-            );
+    let (s1, r1) = mpsc::channel();
+    let (s2, r2) = mpsc::channel();
 
-            if let Err(_) = exp_end_tx.send(true) {
-                break;
-            }
-        }
-    });
+    let mut buf = [0u8; 1024];
+    let sk1 = ipc::chan::Socket::<Blocking>::new(s1, r2).expect("initialize ipc");
+    let mut b1 = ipc::Backend::new(
+        sk1, 
+        Arc::new(atomic::AtomicBool::new(true)), 
+        &mut buf[..],
+    );
 
-    let sk2 = sk.clone();
-    thread::spawn(move || {
-        let mut buf = [0u8; 1024];
-        let b2 = ipc::Backend::new(
-            sk2, 
-            Arc::new(atomic::AtomicBool::new(true)), 
-            &mut buf[..],
-        );
-        let m = serialize::measure::Msg {
-            sid: 42,
-            program_uid: 12,
-            num_fields: 1,
-            fields: vec![0],
-        };
+    let mut buf2 = [0u8; 1024];
+    let sk2 = ipc::chan::Socket::<Blocking>::new(s2, r1).expect("initialize ipc");
+    let b2 = ipc::Backend::new(
+        sk2, 
+        Arc::new(atomic::AtomicBool::new(true)), 
+        &mut buf2[..],
+    );
 
-        loop {
-            let cont = exp_start_rx.recv().expect("exp start");
-            if cont == false {
-                break;
-            }
-
-            rx.recv().expect("ready chan rcv");
-
-            // send a message
-            let buf = serialize::serialize(&m.clone()).expect("serialize");
-            b2.sender().send_msg(&buf[..]).expect("send message");
-        }
-    });
+    let m = serialize::measure::Msg {
+        sid: 42,
+        program_uid: 12,
+        num_fields: 1,
+        fields: vec![0],
+    };
 
     b.iter(|| {
-        exp_start_tx.send(true).expect("next iter send");
-        exp_end_rx.recv().expect("test iter end");
+        // send a message
+        let buf = serialize::serialize(&m.clone()).expect("serialize");
+        b2.sender().send_msg(&buf[..]).expect("send message");
+        let msg = b1.next().expect("receive message");
+        assert_eq!(
+            msg,
+            serialize::Msg::Ms(serialize::measure::Msg {
+                sid: 42,
+                program_uid: 12,
+                num_fields: 1,
+                fields: vec![0],
+            })
+        );
     });
-
-    exp_start_tx.send(false).expect("shutdown");
 }
