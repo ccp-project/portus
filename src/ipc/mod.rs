@@ -62,6 +62,11 @@ impl<T: Ipc> Clone for BackendSender<T> {
     }
 }
 
+// TODO this
+// https://play.rust-lang.org/?gist=9dd88882518831bc9381b051044fb82b&version=nightly&mode=debug&edition=2015
+// need extra fake trait because of this
+// https://github.com/rust-lang/rfcs/blob/master/text/1210-impl-specialization.md#inherent-impls
+
 /// Backend will yield incoming IPC messages forever via `next()`.
 /// It owns the socket; `BackendSender` holds weak references.
 /// The atomic bool is a way to stop iterating.
