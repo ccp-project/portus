@@ -1,3 +1,4 @@
+use std;
 use std::sync::mpsc;
 
 use super::Error;
@@ -50,7 +51,7 @@ impl super::Ipc for Socket<Blocking> {
 
     fn recv(&self, msg: &mut [u8]) -> Result<usize> {
         let r = self.recv.as_ref().ok_or_else(|| Error(String::from("Receive channel side missing")))?;
-        let buf = r.recv()?;
+        let buf = r.recv_timeout(std::time::Duration::from_secs(1))?;
         msg[..buf.len()].copy_from_slice(&buf);
         Ok(buf.len())
     }
