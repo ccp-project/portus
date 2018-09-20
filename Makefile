@@ -56,10 +56,10 @@ integration_tests/libccp_integration/libccp/ccp.h:
 
 libccp-integration: integration_tests/libccp_integration/libccp/ccp.h
 ifeq ($(OS), Linux)
-	cd integration_tests/libccp_integration && export LD_LIBRARY_PATH=./libccp && cargo +nightly run --bin test_ccp
+	cd integration_tests/libccp_integration && export LD_LIBRARY_PATH=./libccp && cargo +nightly test -- --test-threads=1
 endif
 ifeq ($(OS), Darwin)
-	cd integration_tests/libccp_integration && export DYLD_LIBRARY_PATH=./libccp && cargo run --bin test_ccp
+	cd integration_tests/libccp_integration && export DYLD_LIBRARY_PATH=./libccp && cargo +nightly test -- --test-threads=1
 endif
 
 .PHONY: bindings python

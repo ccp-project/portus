@@ -15,6 +15,7 @@ extern crate clap;
 extern crate time;
 #[macro_use]
 extern crate slog;
+extern crate slog_term;
 extern crate portus;
 #[macro_use]
 extern crate failure;

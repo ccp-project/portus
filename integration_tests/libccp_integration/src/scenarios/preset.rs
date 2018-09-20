@@ -1,35 +1,20 @@
-use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
+use portus::{Config, DatapathTrait, Report};
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 use std::time::SystemTime;
+use slog;
 
-use super::{DONE, TestBase, IntegrationTestConfig};
+use super::{TestBase, IntegrationTest};
 
-pub struct TestPresetVars<T: Ipc>(TestBase<T>);
+pub struct TestPresetVars;
 
-impl<T: Ipc> TestPresetVars<T> {
-    fn install_test(&mut self) -> Option<Scope> {
-        // fold function that only reports when Cwnd is set to 42
-        self.0.control_channel.set_program(String::from("TestPresetVars"), Some(&[("foo", 52)][..])).ok()
+impl<T: Ipc> IntegrationTest<T> for TestPresetVars {
+    fn new() -> Self {
+        TestPresetVars{}
     }
 
-    fn check_test(&mut self, m: &Report) -> bool {
-        let sc = self.0.sc.as_ref().expect("scope should be initialized");
-        let foo = m.get_field("Report.testFoo", sc).expect("get Report.testFoo");
-
-        assert_eq!(foo, 52, "Foo should be installed automaticaly as 52.");
-        true
-    }
-}
-
-impl<T: Ipc> CongAlg<T> for TestPresetVars<T> {
-    type Config = IntegrationTestConfig;
-    fn name() -> String {
-        String::from("integration-test")
-    }
-
-    fn init_programs(_cfg: Config<T, Self>) -> Vec<(String, String)> {
-				vec![(String::from("TestPresetVars"), String::from("
+    fn init_programs(_cfg: Config<T, TestBase<T, Self>>) -> Vec<(String, String)> {
+        vec![(String::from("TestPresetVars"), String::from("
             (def
                 (Report
                     (testFoo 0)
@@ -39,30 +24,37 @@ impl<T: Ipc> CongAlg<T> for TestPresetVars<T> {
             (when true
                 (:= Report.testFoo foo)
                 (report)
-						)")),
-				]
+            )")),
+        ]
     }
 
-    fn create(control: Datapath<T>, cfg: Config<T, TestPresetVars<T>>, _info: DatapathInfo) -> Self {
-        let mut s = Self {
-            0: TestBase {
-                control_channel: control,
-                sc: Default::default(),
-                logger: cfg.logger,
-                test_start: SystemTime::now(),
-                sender: cfg.config.sender.clone(),
-            }
-        };
-
-        s.0.test_start = SystemTime::now();
-        s.0.sc = s.install_test();
-        s
+    fn install_test<D: DatapathTrait>(&self, dp: &mut D) -> Option<Scope> {
+        // fold function that only reports when Cwnd is set to 42
+        dp.set_program(String::from("TestPresetVars"), Some(&[("foo", 52)][..])).ok()
     }
 
-    fn on_report(&mut self, _sock_id: u32, m: Report) {
-        let done = self.check_test(&m);
-        if done {
-            self.0.sender.send(String::from(DONE)).unwrap();
-        }
+    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, m: &Report) -> bool {
+        let foo = m.get_field("Report.testFoo", sc).expect("get Report.testFoo");
+
+        assert_eq!(foo, 52, "Foo should be installed automaticaly as 52.");
+        info!(log, "Passed preset vars test");
+        true
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use slog;
+    use slog::Drain;
+    use slog_term;
+    use ::scenarios::{log_commits, run_test};
+
+    #[test]
+    fn test() {
+        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
+        let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
+        let log = slog::Logger::root(human_drain, o!());
+        log_commits(log.clone());
+        run_test::<super::TestPresetVars>(log);
     }
 }
