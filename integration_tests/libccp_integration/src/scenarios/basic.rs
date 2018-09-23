@@ -35,7 +35,7 @@ impl<T: Ipc> IntegrationTest<T> for TestBasicSerialize {
         dp.set_program(String::from("TestBasicSerialize"), None).ok()
     }
 
-    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, m: &Report) -> bool {
+    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, _sock_id: u32, m: &Report) -> bool {
         let acked = m.get_field("Report.acked", sc).expect(
             "expected acked field in returned measurement"
          ) as u32;
@@ -60,6 +60,6 @@ mod test {
         let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
         let log = slog::Logger::root(human_drain, o!());
         log_commits(log.clone());
-        run_test::<super::TestBasicSerialize>(log);
+        run_test::<super::TestBasicSerialize>(log, 1);
     }
 }

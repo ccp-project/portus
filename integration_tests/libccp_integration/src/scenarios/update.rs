@@ -38,7 +38,7 @@ impl<T: Ipc> IntegrationTest<T> for TestUpdateFields {
         Some(sc)
     }
 
-    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, m: &Report) -> bool {
+    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, _sock_id: u32, m: &Report) -> bool {
         let cwnd = m.get_field("Report.cwnd", sc).expect(
             "expected datapath cwnd field in returned measurement"
         ) as u32;
@@ -69,6 +69,6 @@ mod test {
         let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
         let log = slog::Logger::root(human_drain, o!());
         log_commits(log.clone());
-        run_test::<super::TestUpdateFields>(log);
+        run_test::<super::TestUpdateFields>(log, 1);
     }
 }

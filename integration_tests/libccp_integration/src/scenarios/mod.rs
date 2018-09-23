@@ -19,7 +19,7 @@ pub trait IntegrationTest<T: Ipc>: Sized {
     fn new() -> Self;
     fn init_programs(cfg: Config<T, TestBase<T, Self>>) -> Vec<(String, String)>;
     fn install_test<D: DatapathTrait>(&self, dp: &mut D) -> Option<Scope>;
-    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, t: SystemTime, m: &Report) -> bool;
+    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, t: SystemTime, sock_id: u32, m: &Report) -> bool;
 }
 
 pub struct TestBase<I: Ipc, T: IntegrationTest<I>> {
@@ -55,17 +55,20 @@ impl<I: Ipc, T: IntegrationTest<I>> CongAlg<I> for TestBase<I, T> {
         tb
     }
     
-    fn on_report(&mut self, _sock_id: u32, m: Report) {
+    fn on_report(&mut self, sock_id: u32, m: Report) {
         let sc = self.sc.as_ref().unwrap();
         let l = self.logger.as_ref().unwrap();
-        self.t.check_test(sc, l, self.test_start, &m);
-        self.sender.send(String::from(DONE)).unwrap();
+        let done = self.t.check_test(sc, l, self.test_start, sock_id, &m);
+        if done {
+            self.sender.send(String::from(DONE)).unwrap();
+        }
     }
 }
 
 mod basic;
 mod preset;
 mod timing;
+mod twoflow;
 mod update;
 mod volatile;
 
@@ -96,7 +99,7 @@ fn start_ccp<T>(sk: Socket<Blocking>, log: slog::Logger, tx: mpsc::Sender<String
 }
 
 // Runs a specific intergration test
-pub fn run_test<T: IntegrationTest<Socket<Blocking>> + 'static>(log: slog::Logger) {
+pub fn run_test<T: IntegrationTest<Socket<Blocking>> + 'static>(log: slog::Logger, num_flows: usize) {
     let (tx, rx) = mpsc::channel();
 
     // Channel for IPC
@@ -108,7 +111,7 @@ pub fn run_test<T: IntegrationTest<Socket<Blocking>> + 'static>(log: slog::Logge
     let (mock_dp_done_tx, mock_dp_done_rx) = mpsc::channel();
     let dp_log = log.clone();
     thread::spawn(move || {
-        ::mock_datapath::start(mock_dp_done_rx, mock_dp_ready_tx, s1, r2, 1, dp_log);
+        ::mock_datapath::start(mock_dp_done_rx, mock_dp_ready_tx, s1, r2, num_flows, dp_log);
     });
 
     use scenarios::TestBase;

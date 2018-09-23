@@ -33,7 +33,7 @@ impl<T: Ipc> IntegrationTest<T> for TestTiming {
         dp.set_program(String::from("TestTiming"), None).ok()
     }
 
-    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, t: SystemTime, m: &Report) -> bool {
+    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, t: SystemTime, _sock_id: u32, m: &Report) -> bool {
         let acked = m.get_field("Report.acked", sc).expect(
             "expected acked field in returned measurement"
          ) as u32;
@@ -70,6 +70,6 @@ mod test {
         let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
         let log = slog::Logger::root(human_drain, o!());
         log_commits(log.clone());
-        run_test::<super::TestTiming>(log);
+        run_test::<super::TestTiming>(log, 1);
     }
 }

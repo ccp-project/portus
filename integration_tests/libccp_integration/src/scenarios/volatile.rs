@@ -35,7 +35,7 @@ impl<T: Ipc> IntegrationTest<T> for TestVolatileVars {
         dp.set_program(String::from("TestVolatileVars"), None).ok()
     }
 
-    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, m: &Report) -> bool {
+    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, _sock_id: u32, m: &Report) -> bool {
         let foo = m.get_field("Report.foo", sc).expect("get Report.foo");
         let bar = m.get_field("Report.bar", sc).expect("get Report.bar");
 
@@ -63,6 +63,6 @@ mod test {
         let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
         let log = slog::Logger::root(human_drain, o!());
         log_commits(log.clone());
-        run_test::<super::TestVolatileVars>(log);
+        run_test::<super::TestVolatileVars>(log, 1);
     }
 }

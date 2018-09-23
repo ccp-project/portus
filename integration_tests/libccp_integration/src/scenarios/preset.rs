@@ -33,7 +33,7 @@ impl<T: Ipc> IntegrationTest<T> for TestPresetVars {
         dp.set_program(String::from("TestPresetVars"), Some(&[("foo", 52)][..])).ok()
     }
 
-    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, m: &Report) -> bool {
+    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, _sock_id: u32, m: &Report) -> bool {
         let foo = m.get_field("Report.testFoo", sc).expect("get Report.testFoo");
 
         assert_eq!(foo, 52, "Foo should be installed automaticaly as 52.");
@@ -55,6 +55,6 @@ mod test {
         let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
         let log = slog::Logger::root(human_drain, o!());
         log_commits(log.clone());
-        run_test::<super::TestPresetVars>(log);
+        run_test::<super::TestPresetVars>(log, 1);
     }
 }
