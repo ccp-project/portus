@@ -3,7 +3,7 @@ all: build test-portus test-ipc libccp-integration lint algs
 travis: build test-portus libccp-integration bindings
 
 OS := $(shell uname)
-CLIPPY := $(shell cargo --list | grep -c clippy)
+CLIPPY := $(shell rustup component list --toolchain nightly | grep "clippy" | grep -c "installed")
 
 build:
 	cargo +nightly build --all
