@@ -22,7 +22,7 @@ pub struct mock_state {
 }
 
 #[repr(C)]
-pub struct dp_impl(pub mpsc::Sender<Vec<u8>>);
+pub struct dp_impl(pub std::os::unix::net::UnixDatagram);
 
 static mut TIME_ZERO: u64 = 0;
 
@@ -76,7 +76,7 @@ extern "C" fn mock_datapath_send_msg(
 ) -> std::os::raw::c_int { unsafe {
     let sk = std::mem::transmute::<*mut std::os::raw::c_void, *mut dp_impl>((*dp).impl_);
     let buf = std::slice::from_raw_parts(msg as *const u8, msg_size as usize);
-    match (*sk).0.send(buf.to_vec()) {
+    match (*sk).0.send_to(buf, "/tmp/ccp/0/in") {
         Err(_) => return -1,
         _ => return buf.len() as std::os::raw::c_int,
     }
@@ -99,7 +99,7 @@ unsafe fn mock_primitives(i: u32, ccp_conn: *mut ccp_connection) {
     (*ccp_conn).prims.snd_rate = (*curr_conn_state).mock_rate as u64;
 }
 
-unsafe fn setup_mock_ccp_datapath(send_sk: mpsc::Sender<Vec<u8>>) -> Option<ccp_datapath> {
+unsafe fn setup_mock_ccp_datapath(send_sk: std::os::unix::net::UnixDatagram) -> Option<ccp_datapath> {
     let sk_holder = Box::new(dp_impl(send_sk));
     let mut dp = ccp_datapath {
         set_cwnd: Some(mock_datapath_set_cwnd),
@@ -173,7 +173,7 @@ impl minion::Cancellable for ccpInvokeService {
     } }
 }
 
-struct readMsgService(Option<mpsc::Sender<()>>, mpsc::Receiver<Vec<u8>>, slog::Logger);
+struct readMsgService(Option<mpsc::Sender<()>>, std::os::unix::net::UnixDatagram, Vec<u8>, slog::Logger);
 
 impl minion::Cancellable for readMsgService {
     type Error = failure::Error;
@@ -183,12 +183,12 @@ impl minion::Cancellable for readMsgService {
             s.send(()).unwrap();
         }
 
-        let mut read = match self.1.recv_timeout(std::time::Duration::from_millis(1000)) {
+        let read = match self.1.recv(&mut self.2) {
             Ok(r) => r,
             _ => return Ok(minion::LoopState::Continue),
         };
 
-        let ok = unsafe { ccp_read_msg(read.as_mut_ptr() as *mut std::os::raw::c_char, read.len() as i32) };
+        let ok = unsafe { ccp_read_msg(self.2[..read].as_mut_ptr() as *mut std::os::raw::c_char, read as i32) };
         if ok < 0 {
             bail!("ccp_read_msg could not parse message: {}", ok);
         }
@@ -200,7 +200,7 @@ impl minion::Cancellable for readMsgService {
 fn listen_and_run(
     stop: mpsc::Receiver<()>, 
     ready: mpsc::Sender<()>,
-    recv_sk: mpsc::Receiver<Vec<u8>>,
+    recv_sk: std::os::unix::net::UnixDatagram,
     ccp_conns: &[*mut ccp_connection], 
     log: slog::Logger,
 ) {
@@ -212,6 +212,7 @@ fn listen_and_run(
     let msg_reader = readMsgService(
         Some(msg_reader_ready_tx), 
         recv_sk, 
+        vec![0u8; 1024],
         log.clone(),
     ).spawn();
     let (ccp_invoker_ready_tx, ccp_invoker_ready_rx) = mpsc::channel();
@@ -250,13 +251,13 @@ fn listen_and_run(
 pub fn start(
     stop: mpsc::Receiver<()>, 
     ready: mpsc::Sender<()>, 
-    send_msg: mpsc::Sender<Vec<u8>>,
-    recv_msg: mpsc::Receiver<Vec<u8>>,
+    recv_sk: std::os::unix::net::UnixDatagram,
     num_connections: usize, 
     log: slog::Logger,
 ) {
     unsafe { TIME_ZERO = current_time(); }
-    unsafe { setup_mock_ccp_datapath(send_msg).unwrap(); }
+    let send_sk = std::os::unix::net::UnixDatagram::unbound().unwrap();
+    unsafe { setup_mock_ccp_datapath(send_sk).unwrap(); }
 
     let mut ccp_conns = vec![];
     for _ in 0..num_connections {
@@ -267,5 +268,5 @@ pub fn start(
         })
     }
 
-    listen_and_run(stop, ready, recv_msg, &ccp_conns, log);
+    listen_and_run(stop, ready, recv_sk, &ccp_conns, log);
 }

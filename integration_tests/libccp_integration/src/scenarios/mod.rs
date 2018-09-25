@@ -75,7 +75,8 @@ mod volatile;
 use std;
 use std::thread;
 use portus::ipc::{BackendBuilder, Blocking};
-use portus::ipc::chan::Socket;
+//use portus::ipc::chan::Socket;
+use portus::ipc::unix::Socket;
 
 // Spawn userspace ccp
 fn start_ccp<T>(sk: Socket<Blocking>, log: slog::Logger, tx: mpsc::Sender<String>) -> portus::CCPHandle
@@ -103,21 +104,27 @@ pub fn run_test<T: IntegrationTest<Socket<Blocking>> + 'static>(log: slog::Logge
     let (tx, rx) = mpsc::channel();
 
     // Channel for IPC
-    let (s1, r1) = mpsc::channel();
-    let (s2, r2) = mpsc::channel();
+    //let (s1, r1) = mpsc::channel();
+    //let (s2, r2) = mpsc::channel();
+    // make UnixDatagram receiver
+    std::fs::remove_file("/tmp/ccp/0/out").unwrap_or_else(|_| ());
+    std::fs::create_dir_all("/tmp/ccp/0").unwrap();
+    let recv_sk = std::os::unix::net::UnixDatagram::bind("/tmp/ccp/0/out").expect("make unix dp listener");
+    recv_sk.set_read_timeout(Some(std::time::Duration::from_millis(1000))).unwrap();
 
     // spawn libccp
     let (mock_dp_ready_tx, mock_dp_ready_rx) = mpsc::channel();
     let (mock_dp_done_tx, mock_dp_done_rx) = mpsc::channel();
     let dp_log = log.clone();
     thread::spawn(move || {
-        ::mock_datapath::start(mock_dp_done_rx, mock_dp_ready_tx, s1, r2, num_flows, dp_log);
+        ::mock_datapath::start(mock_dp_done_rx, mock_dp_ready_tx, recv_sk, num_flows, dp_log);
     });
 
     use scenarios::TestBase;
     // wait for mock datapath to spawn
     mock_dp_ready_rx.recv().unwrap();
-    let sk = Socket::new(s2, r1).expect("ipc initialization");
+    //let sk = Socket::new(s2, r1).expect("ipc initialization");
+    let sk = Socket::<Blocking>::new("in", "out").unwrap();
     let ccp_handle = start_ccp::<TestBase<Socket<Blocking>, T>>(sk, log.clone(), tx);
 
     // wait for program to finish
