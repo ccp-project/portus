@@ -1,5 +1,6 @@
 *target*
 **/*.rs.bk
+**/*.swp
 Cargo.lock
 *.o
 *.ko

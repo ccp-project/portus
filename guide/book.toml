@@ -1,0 +1,5 @@
+[book]
+authors = ["Frank Cangialosi"]
+multilingual = false
+src = "src"
+title = "CCP Guide"
