@@ -45,8 +45,9 @@ endif
 clean:
 	cargo clean
 	cd ccp_generic_cong_avoid && cargo clean
-	cd integration_tests/libccp_integration && make clean
+	$(MAKE) -C integration_tests/libccp_integration/libccp clean
 	cd integration_tests/libccp_integration && cargo clean
+	$(MAKE) -C src/ipc/test-char-dev/ccp-kernel clean
 
 integration-test:
 	python integration_tests/algorithms/compare.py reference-trace
