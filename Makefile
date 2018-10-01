@@ -1,4 +1,4 @@
-all: build test-portus test-ipc libccp-integration lint algs
+all: build test-portus test-ipc libccp-integration lint
 
 travis: build test-portus libccp-integration bindings
 
@@ -32,19 +32,8 @@ ipc_latency: build
 
 bench: cargo_bench ipc_latency
 
-algs: generic
-
-generic:
-	cd ccp_generic_cong_avoid && cargo +nightly build
-ifeq ($(CLIPPY), 1)
-	cd ccp_generic_cong_avoid && cargo +nightly clippy
-else
-	$(warning clippy not installed, skipping...)
-endif
-
 clean:
 	cargo clean
-	cd ccp_generic_cong_avoid && cargo clean
 	$(MAKE) -C integration_tests/libccp_integration/libccp clean
 	cd integration_tests/libccp_integration && cargo clean
 	$(MAKE) -C src/ipc/test-char-dev/ccp-kernel clean
