@@ -11,6 +11,7 @@ slog = { version = "2" }
 slog-async = "2"
 slog-term = "2"
 time = "0.1"
+generic_cong_avoid = { git = "https://github.com/ccp-project/generic-cong-avoid" }
 
 [dependencies.pyo3]
 version = "0.2.7"

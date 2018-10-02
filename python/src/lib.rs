@@ -11,6 +11,15 @@ use portus::ipc;
 use portus::ipc::{BackendBuilder, Ipc};
 use portus::lang::Scope;
 
+extern crate generic_cong_avoid;
+use generic_cong_avoid::{
+    GenericCongAvoidAlg,
+    GenericCongAvoidMeasurements,
+    GenericCongAvoidConfig,
+    GenericCongAvoidConfigReport,
+    GenericCongAvoidConfigSS,
+};
+
 extern crate pyo3;
 use pyo3::prelude::*;
 
@@ -24,11 +33,30 @@ macro_rules! raise {
     );
 }
 
+macro_rules! py_none {
+    ($py:expr) => (PyTuple::empty($py).into_ptr())
+}
+
+macro_rules! py_config_get {
+    ($dict:expr, $key:expr) => (
+        pyo3::FromPyObject::extract($dict.get_item($key).unwrap_or_else(|| {
+            panic!("config missing required key '{}'", $key)
+        })).unwrap_or_else(|e| {
+            panic!("type mismatch for key '{}': {:?}", $key, e)
+        })
+    )
+}
 
 pub struct PyAlg {
     logger          : Option<slog::Logger>,
     config          : PyAlgConfig,
     // Instance of the flow in python
+    py_alg_inst     : PyObject,
+}
+
+pub struct PyGenericCongAvoidAlg {
+    logger          : Option<slog::Logger>,
+    config          : PyAlgConfig,
     py_alg_inst     : PyObject,
 }
 
@@ -39,6 +67,15 @@ pub struct PyAlgConfig {
     debug     : bool,
 }
 
+impl Default for PyAlgConfig {
+    fn default() -> PyAlgConfig { unsafe {
+        PyAlgConfig {
+            py : Python::assume_gil_acquired(),
+            alg_class : std::ptr::null_mut(),
+            debug : false,
+        } }
+    }
+}
 // Convenience wrapper around datapath struct,
 // python keeps a pointer to this for talking to the datapath
 #[py::class(gc,weakref,dict)]
@@ -69,6 +106,24 @@ pub struct DatapathInfo {
     pub dst_port: u32,
 }
 
+#[py::class(gc,weakref,dict)]
+pub struct Measurements {
+    #[prop(get)]
+    pub acked:       u32,
+    #[prop(get)]
+    pub was_timeout: bool,
+    #[prop(get)]
+    pub sacked:      u32,
+    #[prop(get)]
+    pub loss:        u32,
+    #[prop(get)]
+    pub rtt:         u32,
+    #[prop(get)]
+    pub inflight:    u32,
+}
+
+
+
 // Convenience wrapper around the Report struct for sending to python,
 // keeps a copy of the scope so the python user doesn't need to manage it 
 #[py::class(gc,weakref,dict)]
@@ -77,7 +132,136 @@ struct PyReport {
     sc     : Weak<Scope>,
 }
 
+impl GenericCongAvoidAlg for PyGenericCongAvoidAlg {
+    type Config = PyAlgConfig;
 
+    fn name() -> String {
+        String::from("python+generic-cong-avoid")
+    }
+
+    fn new(cfg: Self::Config, logger: Option<slog::Logger>, init_cwnd: u32, mss: u32) -> Self {
+        let py = cfg.py;
+
+        if cfg.debug {
+            logger.as_ref().map(|log| {
+                debug!(log, "new flow")
+            });
+        };
+
+        let py_alg_inst = py_create_flow(
+            cfg.py,
+            cfg.alg_class,
+            PyTuple::new(py, &[init_cwnd, mss]).into_ptr(),
+            py_none!(py),
+        ).unwrap_or_else(|e| {
+            e.print(py); panic!("failed to instantiate python class")
+        });
+
+        Self {
+            logger : logger,
+            config : cfg,
+            py_alg_inst,
+        }
+    }
+
+    fn curr_cwnd(&self) -> u32 {
+        let py = self.config.py;
+        match self.py_alg_inst.call_method0(py, "curr_cwnd") {
+            Ok(ret) => {
+                ret.extract(py).unwrap_or_else(|e| {
+                    e.print(py); panic!("curr_cwnd must return a u32")
+                })
+            }
+            Err(e)  => {
+                e.print(py); panic!("call to curr_cwnd failed")
+            }
+        }
+    }
+
+    fn set_cwnd(&mut self, cwnd: u32) {
+        let py = self.config.py;
+        if self.config.debug {
+            self.logger.as_ref().map(|log| {
+                debug!(log, "set_cwnd()"; "cwnd" => cwnd)
+            });
+        }
+        let args = PyTuple::new(py, &[cwnd]);
+        match self.py_alg_inst.call_method1(py, "set_cwnd", args) {
+            Ok(_) => {}
+            Err(e) => {
+                e.print(py); panic!("call to set_cwnd failed")
+            }
+        };
+    }
+
+    fn reset(&mut self) {
+        let py = self.config.py;
+        if self.config.debug {
+            self.logger.as_ref().map(|log| {
+                debug!(log, "reset()")
+            });
+        }
+        match self.py_alg_inst.call_method0(py, "reset") {
+            Ok(_) => {}
+            Err(e) => {
+                e.print(py); panic!("call to reset failed")
+            }
+        };
+    }
+
+    fn increase(&mut self, m: &GenericCongAvoidMeasurements) {
+        let py = self.config.py;
+        if self.config.debug {
+            self.logger.as_ref().map(|log| {
+                debug!(log, "increase()"; "acked" => m.acked, "was_timeout" => m.was_timeout, "sacked" => m.sacked, "loss" => m.loss, "rtt" => m.rtt, "inflight" => m.inflight)
+            });
+        }
+        let m_wrapper = py.init(|_t| Measurements {
+            acked : m.acked,
+            was_timeout : m.was_timeout,
+            sacked : m.sacked,
+            loss : m.loss,
+            rtt : m.rtt,
+            inflight : m.inflight
+        }).unwrap_or_else(|e| {
+            e.print(py); panic!("increase(): failed to create Measurements object")
+        });
+        let args = PyTuple::new(py, &[m_wrapper]);
+        match self.py_alg_inst.call_method1(py, "increase", args) {
+            Ok(_) => {}
+            Err(e) => {
+                e.print(py); panic!("call to increase failed")
+            }
+        };
+    }
+
+    fn reduction(&mut self, m: &GenericCongAvoidMeasurements) {
+        let py = self.config.py;
+        if self.config.debug {
+            self.logger.as_ref().map(|log| {
+                debug!(log, "reduction()"; "acked" => m.acked, "was_timeout" => m.was_timeout, "sacked" => m.sacked, "loss" => m.loss, "rtt" => m.rtt, "inflight" => m.inflight)
+            });
+        }
+        let m_wrapper = py.init(|_t| Measurements {
+            acked : m.acked,
+            was_timeout : m.was_timeout,
+            sacked : m.sacked,
+            loss : m.loss,
+            rtt : m.rtt,
+            inflight : m.inflight
+        }).unwrap_or_else(|e| {
+            e.print(py); panic!("increase(): failed to create Measurements object")
+        });
+        let args = PyTuple::new(py, &[m_wrapper]);
+        match self.py_alg_inst.call_method1(py, "reduction", args) {
+            Ok(_) => {}
+            Err(e) => {
+                e.print(py); panic!("call to reduction failed")
+            }
+        };
+
+    }
+}
 
 impl<T: Ipc> CongAlg<T> for PyAlg {
     type Config = PyAlgConfig;
@@ -91,7 +275,7 @@ impl<T: Ipc> CongAlg<T> for PyAlg {
         let py = cfg.config.py;
 
         let py_alg_inst =
-            py_create_flow(py, cfg.config.alg_class).unwrap_or_else(|e| {
+            py_create_flow(py, cfg.config.alg_class, py_none!(py), py_none!(py)).unwrap_or_else(|e| {
                 e.print(py); panic!("Failed to instantiate python class")
             });
 
@@ -175,6 +359,8 @@ impl<T: Ipc> CongAlg<T> for PyAlg {
         let py_alg_inst = py_create_flow(
             cfg.config.py, 
             cfg.config.alg_class,
+            py_none!(py),
+            py_none!(py),
         ).unwrap_or_else(|e| {
             e.print(py); panic!("Failed to instantiate python class")
         });
@@ -428,8 +614,8 @@ impl PyDatapath {
 fn init_mod(py:pyo3::Python<'static>, m:&PyModule) -> PyResult<()> {
 
     #[pyfn(m, "_connect")]
-    fn _py_connect(py:pyo3::Python<'static>, ipc_str:String, alg:&PyObjectRef, blocking:bool, debug:bool) -> PyResult<i32> {
-        py_connect(py, ipc_str, alg, blocking, debug)
+    fn _py_connect(py:pyo3::Python<'static>, ipc_str:String, alg:&PyObjectRef, debug:bool, config:&PyDict) -> PyResult<i32> {
+        py_connect(py, ipc_str, alg, debug, config)
     }
 
     #[pyfn(m, "_try_compile")]
@@ -455,7 +641,7 @@ fn py_try_compile(_py:pyo3::Python<'static>, prog:String) -> PyResult<String> {
 }
 
 use std::ffi::CStr;
-fn py_connect(py:pyo3::Python<'static>, ipc:String, alg:&PyObjectRef, blocking:bool, debug:bool) -> PyResult<i32> {
+fn py_connect(py:pyo3::Python<'static>, ipc:String, alg:&PyObjectRef, debug:bool, config:&PyDict) -> PyResult<i32> {
 
     let log = portus::algs::make_logger();
 
@@ -479,105 +665,126 @@ fn py_connect(py:pyo3::Python<'static>, ipc:String, alg:&PyObjectRef, blocking:b
     // equivalent to "class.__name__"
     let alg_name = unsafe { CStr::from_ptr((*alg_class).tp_name).to_string_lossy().into_owned() };
 
-    info!(log, "Starting CCP";
-        "algorithm" => format!("python.{}", alg_name),
-        "ipc" => ipc.clone(),
-        "debug" => debug.clone(),
-        "blocking" => blocking.clone(),
-    );
-
     let cfg = PyAlgConfig {
         py,
         alg_class,
         debug,
     };
 
-    match blocking {
-	    true => match ipc.as_str() {
+    let use_generic_ca = config.len() > 0;
 
-	        "unix" => {
-	            use portus::ipc::unix::Socket;
-	            let b = Socket::<ipc::Blocking>::new("in", "out")
-	                .map(|sk| BackendBuilder {sock: sk})
-	                .expect("create unix socket");
-	            portus::run::<_, PyAlg>(
-	                b,
-	                &portus::Config {
-	                    logger: Some(log),
-	                    config: cfg, 
-	                }
-	            ).unwrap();
-	        }
+    info!(log, "connected";
+        "bindings" => "python",
+        "class" => alg_name,
+        "debug" => debug.clone(),
+        "config" => ?config.clone(),
+    );
 
-	        #[cfg(all(target_os = "linux"))]
-	        "netlink" => {
-	            use portus::ipc::netlink::Socket;
-	            let b = Socket::<ipc::Blocking>::new()
-	                .map(|sk| BackendBuilder {sock: sk})
-	                .expect("create netlink socket");
+    if use_generic_ca {
 
-	            portus::run::<_, PyAlg>(
-	                b,
-	                &portus::Config {
-	                    logger: Some(log),
-	                    config: cfg,
-	                }
-	            ).unwrap();
+        let generic_cfg = GenericCongAvoidConfig {
+            ss_thresh : py_config_get!(config, "ss_thresh"),
+            init_cwnd : py_config_get!(config, "init_cwnd"),
+            report    : match py_config_get!(config, "report") {
+                "ack" => GenericCongAvoidConfigReport::Ack,
+                "rtt" => GenericCongAvoidConfigReport::Rtt,
+                val   => GenericCongAvoidConfigReport::Interval(
+                            time::Duration::milliseconds(val.parse::<i64>().unwrap_or_else(|e| {
+                                panic!("'report' key must either be 'ack', 'rtt', or an i64 representing the report interval in milliseconds. we detected that the key was not 'ack' or 'rtt', but failed to convert it to an i64: {:?}", e)
+                            }))
+                        )
+            },
+            ss        : match py_config_get!(config, "ss") {
+                "datapath" => GenericCongAvoidConfigSS::Datapath,
+                "ccp"      => GenericCongAvoidConfigSS::Ccp,
+                _          => panic!("'ss' key must either be 'datapath' or 'ccp'")
+            },
+            use_compensation : py_config_get!(config, "use_compensation"),
+            deficit_timeout : py_config_get!(config, "deficit_timeout"),
+            inner_cfg : cfg,
+        };
+        generic_cong_avoid::start::<PyGenericCongAvoidAlg>(ipc.as_str(), log, generic_cfg);
+        Ok(0)
+    } else {
+        match ipc.as_str() {
+            "unix" => {
+                use portus::ipc::unix::Socket;
+                let b = Socket::<ipc::Blocking>::new("in", "out")
+                    .map(|sk| BackendBuilder {sock: sk})
+                    .expect("create unix socket");
+                portus::run::<_, PyAlg>(
+                    b,
+                    &portus::Config {
+                        logger: Some(log),
+                        config: cfg,
+                    }
+                ).unwrap();
+            }
+            #[cfg(all(target_os = "linux"))]
+            "netlink" => {
+                use portus::ipc::netlink::Socket;
+                let b = Socket::<ipc::Blocking>::new()
+                    .map(|sk| BackendBuilder {sock: sk})
+                    .expect("create netlink socket");
 
-	        }
+                portus::run::<_, PyAlg>(
+                    b,
+                    &portus::Config {
+                        logger: Some(log),
+                        config: cfg,
+                    }
+                ).unwrap();
 
-	        _ => unreachable!()
-
-	    }
-	    false => match ipc.as_str() {
-
-	        "unix" => {
-	            use portus::ipc::unix::Socket;
-	            let b = Socket::<ipc::Nonblocking>::new("in", "out")
-	                .map(|sk| BackendBuilder {sock: sk})
-	                .expect("create unix socket");
-	            portus::run::<_, PyAlg>(
-	                b,
-	                &portus::Config {
-	                    logger: Some(log),
-	                    config: cfg, 
-	                }
-	            ).unwrap();
-	        }
-
-	        #[cfg(all(target_os = "linux"))]
-	        "netlink" => {
-	            use portus::ipc::netlink::Socket;
-	            let b = Socket::<ipc::Nonblocking>::new()
-	                .map(|sk| BackendBuilder {sock: sk})
-	                .expect("create netlink socket");
-
-	            portus::run::<_, PyAlg>(
-	                b,
-	                &portus::Config {
-	                    logger: Some(log),
-	                    config: cfg,
-	                }
-	            ).unwrap();
-
-	        }
-
-	        _ => unreachable!()
-
-	    }
+            }
+            _ => unreachable!()
+        }
     }
+    /*
+    false => match ipc.as_str() {
+
+        "unix" => {
+            use portus::ipc::unix::Socket;
+            let b = Socket::<ipc::Nonblocking>::new("in", "out")
+                .map(|sk| BackendBuilder {sock: sk})
+                .expect("create unix socket");
+            portus::run::<_, PyAlg>(
+                b,
+                &portus::Config {
+                    logger: Some(log),
+                    config: cfg, 
+                }
+            ).unwrap();
+        }
+
+        #[cfg(all(target_os = "linux"))]
+        "netlink" => {
+            use portus::ipc::netlink::Socket;
+            let b = Socket::<ipc::Nonblocking>::new()
+                .map(|sk| BackendBuilder {sock: sk})
+                .expect("create netlink socket");
+
+            portus::run::<_, PyAlg>(
+                b,
+                &portus::Config {
+                    logger: Some(log),
+                    config: cfg,
+                }
+            ).unwrap();
+
+        }
+
+        _ => unreachable!()
+    */
 }
 
 use std::os::raw::c_int;
 // Creates an instance of cls and calls __init__(self, datapath, info)
 // Returns a pointer to the instance
-fn py_create_flow(py : Python, cls :*mut pyo3::ffi::PyTypeObject) -> PyResult<PyObject> {
-    let args = PyTuple::empty(py).into_ptr(); 
-    let kwargs = PyTuple::empty(py).into_ptr();
+fn py_create_flow(py : Python, cls :*mut pyo3::ffi::PyTypeObject, args : *mut pyo3::ffi::PyObject, kwargs : *mut pyo3::ffi::PyObject) -> PyResult<PyObject> {
     unsafe {
         match (*cls).tp_new {
             Some(tp_new) => {
-                let obj = pyo3::PyObject::from_owned_ptr(py, tp_new(cls, args, kwargs));
+                let obj = pyo3::PyObject::from_owned_ptr(py, tp_new(cls, py_none!(py), py_none!(py)));
                 match (*cls).tp_init {
                     Some(tp_init) => {
                         let p = (&obj).into_ptr();
