@@ -5,7 +5,7 @@ import sys
 import inspect
 from . import util, checker
 
-### Class ### 
+### Class ###
 method_signatures = {
     'init_programs' : ['self'],
     'on_create' : ['self'],
@@ -104,7 +104,6 @@ def start(ipc, cls, config={}, debug=False):
         }
         default_config.update(config)
         GenericCongAvoidBase.assert_implements_interface(cls)
-        GenericCongAvoidBase.register(cls)
         return _connect(ipc, cls, debug, default_config)
     else:
         raise Exception(cls.__name__ + " must be a subclass of portus.AlgBase or portus.GenericCongAvoidBase")
