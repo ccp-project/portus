@@ -20,6 +20,9 @@ use generic_cong_avoid::{
     GenericCongAvoidConfigSS,
 };
 
+extern crate simple_signal;
+use simple_signal::{Signal};
+
 extern crate pyo3;
 use pyo3::prelude::*;
 
@@ -615,6 +618,9 @@ fn init_mod(py:pyo3::Python<'static>, m:&PyModule) -> PyResult<()> {
 
     #[pyfn(m, "_connect")]
     fn _py_connect(py:pyo3::Python<'static>, ipc_str:String, alg:&PyObjectRef, debug:bool, config:&PyDict) -> PyResult<i32> {
+        simple_signal::set_handler(&[Signal::Int, Signal::Term], move |_signals| {
+            ::std::process::exit(1);
+        });
         py_connect(py, ipc_str, alg, debug, config)
     }
 
