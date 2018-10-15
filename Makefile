@@ -1,4 +1,4 @@
-all: build test-portus test-ipc lint algs
+all: build test-portus test-ipc algs
 
 travis: build test-portus libccp-integration
 
@@ -15,7 +15,7 @@ test-portus: build
 test-ipc: build
 ifeq ($(OS), Linux)
 	sudo ./target/debug/nltest
-	sudo ./target/debug/kptest
+	#sudo ./target/debug/kptest
 endif
 
 lint:
@@ -33,7 +33,7 @@ algs: generic
 
 generic:
 	cd ccp_generic_cong_avoid && cargo +nightly build
-	cd ccp_generic_cong_avoid && cargo +nightly clippy
+	#cd ccp_generic_cong_avoid && cargo +nightly clippy
 
 clean:
 	cargo clean
