@@ -203,6 +203,23 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
     }
 }
 
+fn send_and_install<I>(sock_id: u32, sender: BackendSender<I>, bin: Bin, sc: Scope) -> Result<()>
+where
+    I: Ipc
+{
+    let msg = serialize::install::Msg {
+        sid: sock_id,
+        program_uid: sc.program_uid,
+        num_events: bin.events.len() as u32,
+        num_instrs: bin.instrs.len() as u32,
+        instrs: bin,
+    };
+    let buf = serialize::serialize(&msg)?;
+    sender.send_msg(&buf[..])?;
+    Ok(())
+}
+
+
 /// Defines a `slog::Logger` to use for (optional) logging 
 /// and a custom `CongAlg::Config` to pass into algorithms as new flows
 /// are created.
@@ -387,22 +404,6 @@ where
             run_inner(backend_builder, &cfg, stop_signal.clone())
         }),
     }
-}
-
-fn send_and_install<I>(sock_id: u32, sender: BackendSender<I>, bin: Bin, sc: Scope) -> Result<()>
-where
-    I: Ipc
-{
-    let msg = serialize::install::Msg {
-        sid: sock_id,
-        program_uid: sc.program_uid,
-        num_events: bin.events.len() as u32,
-        num_instrs: bin.instrs.len() as u32,
-        instrs: bin,
-    };
-    let buf = serialize::serialize(&msg)?;
-    sender.send_msg(&buf[..])?;
-    Ok(())
 }
 
 // Main execution inner loop of ccp.
