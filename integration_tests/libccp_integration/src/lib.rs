@@ -3,7 +3,7 @@
 //! 1. A struct IntegrationTest<T: Ipc>, along with the Impl.
 //!     This could be a tuple struct around TestBase, declared as:
 //!     pub struct IntegrationTest<T: Ipc>(TestBase<T>)
-//! 2. Any additional structs for use with struct IntegrationTest, 
+//! 2. Any additional structs for use with struct IntegrationTest,
 //!     such as an IntegrationTestMeasurements struct
 //! 3. impl<T: Ipc> CongAlg<T> for IntegrationTest<T>
 //!     - This contains the onCreate() and onReport().
@@ -12,14 +12,15 @@
 //!     on_report MUST send "Done" on the channel to end the test properly.
 
 extern crate clap;
+extern crate fnv;
 extern crate time;
 #[macro_use]
 extern crate slog;
-extern crate slog_term;
 extern crate portus;
+extern crate slog_term;
 #[macro_use]
 extern crate failure;
 extern crate minion;
 
-pub mod scenarios;
 pub mod mock_datapath;
+pub mod scenarios;

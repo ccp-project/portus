@@ -1,14 +1,32 @@
 import sys
 import portus
 
-class AIMD(portus.AlgBase):
+class AIMDFlow():
     INIT_CWND = 10
 
-    def init_programs(self):
-        return [
-            ("default", """\
+    def __init__(self, datapath, datapath_info):
+        self.datapath = datapath
+        self.datapath_info = datapath_info
+        self.init_cwnd = float(self.datapath_info.mss * AIMDFlow.INIT_CWND)
+        self.cwnd = self.init_cwnd
+        self.datapath.set_program("default", [("Cwnd", self.cwnd)])
+
+    def on_report(self, r):
+        if r.loss > 0 or r.sacked > 0:
+            self.cwnd /= 2
+        else:
+            self.cwnd += (self.datapath_info.mss * (r.acked / self.cwnd))
+        self.cwnd = max(self.cwnd, self.init_cwnd)
+        self.datapath.update_field("Cwnd", int(self.cwnd))
+
+
+class AIMD(portus.AlgBase):
+
+    def datapath_programs(self):
+        return {
+                "default" : """\
                 (def (Report
-                    (volatile acked 0) 
+                    (volatileeacked 0) 
                     (volatile sacked 0) 
                     (volatile loss 0) 
                     (volatile timeout false)
@@ -32,29 +50,11 @@ class AIMD(portus.AlgBase):
                     (report)
                     (:= Micros 0)
                 )
-            """),
-        ]
+            """
+        }
 
-    def on_create(self):
-        self.init_cwnd = float(self.datapath_info.mss * AIMD.INIT_CWND)
-        self.cwnd = self.init_cwnd
-        self.datapath.set_program("default", [("Cwnd", self.cwnd)])
-
-    def handle_timeout(self):
-        sys.stderr.write("Timeout! Ignoring...\n")
-
-    def on_report(self, r):
-        if r.timeout:
-            self.handle_timeout()
-            return
-
-        if r.loss > 0 or r.sacked > 0:
-            self.cwnd /= 2
-        else:
-            self.cwnd += (self.datapath_info.mss * (r.acked / self.cwnd))
-
-        self.cwnd = max(self.cwnd, self.init_cwnd)
-        self.datapath.update_field("Cwnd", int(self.cwnd))
+    def new_flow(self, datapath, datapath_info):
+        return AIMDFlow(datapath, datapath_info)
 
 
-portus.connect("netlink", AIMD, debug=True, blocking=True)
+portus.start("netlink", AIMD, debug=True)

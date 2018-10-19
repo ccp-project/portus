@@ -1,20 +1,24 @@
-use portus::{Config, DatapathTrait, Report};
-use portus::ipc::Ipc;
-use portus::lang::Scope;
 use std::time::SystemTime;
+
+use fnv::FnvHashMap as HashMap;
+use portus::lang::Scope;
+use portus::{DatapathTrait, Report};
 use slog;
 
-use super::{TestBase, IntegrationTest};
+use super::IntegrationTest;
 
 pub struct TestVolatileVars;
 
-impl<T: Ipc> IntegrationTest<T> for TestVolatileVars {
+impl IntegrationTest for TestVolatileVars {
     fn new() -> Self {
-        TestVolatileVars{}
+        TestVolatileVars {}
     }
 
-    fn init_programs(_cfg: Config<T, TestBase<T, Self>>) -> Vec<(String, String)> {
-        vec![(String::from("TestVolatileVars"), String::from("
+    fn datapath_programs() -> HashMap<&'static str, String> {
+        let mut h = HashMap::default();
+        h.insert(
+            "TestVolatileVars",
+            "
             (def
                 (Report
                     (volatile foo 0)
@@ -27,15 +31,24 @@ impl<T: Ipc> IntegrationTest<T> for TestVolatileVars {
             )
             (when (== Report.foo 10)
                 (report)
-            )")),
-        ]
+            )"
+            .to_owned(),
+        );
+        h
     }
 
     fn install_test<D: DatapathTrait>(&self, dp: &mut D) -> Option<Scope> {
-        dp.set_program(String::from("TestVolatileVars"), None).ok()
+        dp.set_program("TestVolatileVars", None).ok()
     }
 
-    fn check_test(&mut self, sc: &Scope, log: &slog::Logger, _t: SystemTime, _sock_id: u32, m: &Report) -> bool {
+    fn check_test(
+        &mut self,
+        sc: &Scope,
+        log: &slog::Logger,
+        _t: SystemTime,
+        _sock_id: u32,
+        m: &Report,
+    ) -> bool {
         let foo = m.get_field("Report.foo", sc).expect("get Report.foo");
         let bar = m.get_field("Report.bar", sc).expect("get Report.bar");
 
@@ -52,15 +65,18 @@ impl<T: Ipc> IntegrationTest<T> for TestVolatileVars {
 
 #[cfg(test)]
 mod test {
+    use scenarios::{log_commits, run_test};
     use slog;
     use slog::Drain;
     use slog_term;
-    use ::scenarios::{log_commits, run_test};
 
     #[test]
     fn test() {
         let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
+        let human_drain = slog_term::FullFormat::new(decorator)
+            .build()
+            .filter_level(slog::Level::Debug)
+            .fuse();
         let log = slog::Logger::root(human_drain, o!());
         log_commits(log.clone());
         run_test::<super::TestVolatileVars>(log, 1);
