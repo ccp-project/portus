@@ -14,19 +14,19 @@ class ProgramFinder(ast.NodeVisitor):
         self.progs = []
 
     def visit_FunctionDef(self, fd_node):
-        if fd_node.name == "init_programs":
+        if fd_node.name == "datapath_programs":
             for elem in fd_node.body:
                 if isinstance(elem, _ast.Return):
                     ret_node = elem
-                    if not isinstance(ret_node.value, _ast.List):
-                        raise ValueError("init_programs() must return a list")
-                    for prog in ret_node.value.elts:
-                        if not isinstance(prog, _ast.Tuple):
-                            raise ValueError("init_programs() must return a list of *tuples*")
-                        args = prog.elts
-                        if not isinstance(args[1], _ast.Str):
-                            raise ValueError("init_programs() must return a list of tuples of (2) *strings* (must be string literal)")
-                        self.progs.append(DatapathProgram(args[1].s, prog.lineno))
+                    if not isinstance(ret_node.value, _ast.Dict):
+                        raise ValueError("datapath_programs() must return a dict")
+                    for key in ret_node.value.keys:
+                        if not isinstance(key, _ast.Str):
+                            raise ValueError("datapath_programs() must return a dict of **string**->string")
+                    for prog in ret_node.value.values:
+                        if not isinstance(prog, _ast.Str):
+                            raise ValueError("datapath_programs() must return a dict of string->**string**")
+                        self.progs.append(DatapathProgram(prog.s, prog.lineno))
 
 def _find_datapath_programs(cls):
     src_file_name = inspect.getfile(cls)
@@ -66,6 +66,8 @@ def bold_text(t):
 def _check_datapath_programs(cls):
     any_errors = False
     pf = _find_datapath_programs(cls)
+    if not pf.progs or len(pf.progs) < 1:
+        raise ValueError("datapath_programs() must return at least one program!")
     for prog in pf.progs:
         ret = _try_compile(prog.code)
         if ret != "":

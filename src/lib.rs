@@ -12,28 +12,32 @@
 //!
 //! Example
 //! =======
-//! 
+//!
 //! The following congestion control algorithm sets the congestion window to `42`, and prints the
 //! minimum RTT observed over 42 millisecond intervals.
 //!
 //! ```
+//! extern crate fnv;
 //! extern crate portus;
-//! use portus::{CongAlg, Config, Datapath, DatapathInfo, DatapathTrait, Report};
+//! use fnv::FnvHashMap as HashMap;
+//! use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 //! use portus::ipc::Ipc;
 //! use portus::lang::Scope;
 //! use portus::lang::Bin;
-//! struct MyCongestionControlAlgorithm(Scope);
-//! #[derive(Clone)]
-//! struct MyEmptyConfig;
 //!
-//! impl<T: Ipc> CongAlg<T> for MyCongestionControlAlgorithm {
-//!     type Config = MyEmptyConfig;
-//!     fn name() -> String {
-//!         String::from("My congestion control algorithm")
+//! #[derive(Clone, Default)]
+//! struct MyCongestionControlAlgorithm(Scope);
+//!
+//! impl<I: Ipc> CongAlg<I> for MyCongestionControlAlgorithm {
+//!     type Flow = Self;
+//!
+//!     fn name() -> &'static str {
+//!         "My congestion control algorithm"
 //!     }
-//!     fn init_programs(_cfg: Config<T, Self>) -> Vec<(String, String)> {
-//!         vec![
-//!             (String::from("MyProgram"), String::from("
+//!     fn datapath_programs(&self) -> HashMap<&'static str, String> {
+//!         let mut h = HashMap::default();
+//!         h.insert(
+//!             "MyProgram", "
 //!                 (def (Report
 //!                     (volatile minrtt +infinity)
 //!                 ))
@@ -44,13 +48,16 @@
 //!                     (report)
 //!                     (reset)
 //!                 )
-//!             ")),
-//!         ]
+//!             ".to_owned(),
+//!         );
+//!         h
 //!     }
-//!     fn create(mut control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self {
-//!         let sc = control.set_program(String::from("MyProgram"), None).unwrap();
+//!     fn new_flow(&self, mut control: Datapath<I>, info: DatapathInfo) -> Self::Flow {
+//!         let sc = control.set_program("MyProgram", None).unwrap();
 //!         MyCongestionControlAlgorithm(sc)
 //!     }
+//! }
+//! impl Flow for MyCongestionControlAlgorithm {
 //!     fn on_report(&mut self, sock_id: u32, m: Report) {
 //!         println!("minrtt: {:?}", m.get_field("Report.minrtt", &self.0).unwrap());
 //!     }
@@ -64,6 +71,7 @@
 
 extern crate bytes;
 extern crate clap;
+extern crate fnv;
 extern crate libc;
 extern crate nix;
 #[macro_use]
@@ -75,6 +83,11 @@ extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
 
+use fnv::FnvHashMap as HashMap;
+use std::rc::Rc;
+use std::sync::{atomic, Arc};
+use std::thread;
+
 pub mod ipc;
 pub mod lang;
 pub mod serialize;
@@ -84,14 +97,10 @@ pub mod algs;
 mod errors;
 pub use errors::*;
 
-use std::collections::HashMap;
-use std::rc::Rc;
 use ipc::Ipc;
-use ipc::{BackendSender, BackendBuilder};
+use ipc::{BackendBuilder, BackendSender};
+use lang::{Bin, Reg, Scope};
 use serialize::Msg;
-use std::sync::{Arc, atomic};
-use std::thread;
-use lang::{Reg, Scope, Bin};
 
 /// CCP custom `Result` type, using `Error` as the `Err` type.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -100,16 +109,30 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub trait DatapathTrait {
     fn get_sock_id(&self) -> u32;
     /// Tell datapath to use a preinstalled program.
-    fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope>;
+    fn set_program(
+        &mut self,
+        program_name: &'static str,
+        fields: Option<&[(&str, u32)]>,
+    ) -> Result<Scope>;
     /// Update the value of a register in an already-installed fold function.
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
 }
 
 /// A collection of methods to interact with the datapath.
-pub struct Datapath<T: Ipc>{
+pub struct Datapath<T: Ipc> {
     sock_id: u32,
     sender: BackendSender<T>,
     programs: Rc<HashMap<String, Scope>>,
+}
+
+impl<T: Ipc> Clone for Datapath<T> {
+    fn clone(&self) -> Self {
+        Self {
+            sock_id: self.sock_id,
+            sender:  self.sender.clone(),
+            programs : self.programs.clone()
+        }
+    }
 }
 
 impl<T: Ipc> DatapathTrait for Datapath<T> {
@@ -117,23 +140,28 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
         return self.sock_id;
     }
 
-    fn set_program(&mut self, program_name: String, fields: Option<&[(&str, u32)]>) -> Result<Scope> {
+    fn set_program(
+        &mut self,
+        program_name: &'static str,
+        fields: Option<&[(&str, u32)]>,
+    ) -> Result<Scope> {
         // if the program with this key exists, return it; otherwise return nothing
-        match self.programs.get(&program_name) {
+        match self.programs.get(program_name) {
             Some(sc) => {
                 // apply optional updates to values of registers in this scope
-                let fields : Vec<(Reg, u64)> = fields.unwrap_or_else(|| &[]).iter().map(
-                    |&(reg_name, new_value)| {
+                let fields: Vec<(Reg, u64)> = fields
+                    .unwrap_or_else(|| &[])
+                    .iter()
+                    .map(|&(reg_name, new_value)| {
                         if reg_name.starts_with("__") {
-                            return Err(Error(
-                                format!("Cannot update reserved field: {:?}", reg_name)
-                            ));
+                            return Err(Error(format!(
+                                "Cannot update reserved field: {:?}",
+                                reg_name
+                            )));
                         }
 
                         sc.get(reg_name)
-                            .ok_or_else(|| Error(
-                                format!("Unknown field: {:?}", reg_name)
-                            ))
+                            .ok_or_else(|| Error(format!("Unknown field: {:?}", reg_name)))
                             .and_then(|reg| match *reg {
                                 Reg::Control(idx, ref t) => {
                                     Ok((Reg::Control(idx, t.clone()), u64::from(new_value)))
@@ -141,42 +169,40 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
                                 Reg::Implicit(idx, ref t) if idx == 4 || idx == 5 => {
                                     Ok((Reg::Implicit(idx, t.clone()), u64::from(new_value)))
                                 }
-                                _ => Err(Error(
-                                    format!("Cannot update field: {:?}", reg_name),
-                                )),
+                                _ => Err(Error(format!("Cannot update field: {:?}", reg_name))),
                             })
-                    }
-                ).collect::<Result<_>>()?;
+                    })
+                    .collect::<Result<_>>()?;
                 let msg = serialize::changeprog::Msg {
                     sid: self.sock_id,
                     program_uid: sc.program_uid,
                     num_fields: fields.len() as u32,
-                    fields
+                    fields,
                 };
                 let buf = serialize::serialize(&msg)?;
                 self.sender.send_msg(&buf[..])?;
                 Ok(sc.clone())
-            },
-            _ => Err(Error(
-                format!("Map does not contain datapath program with key: {:?}", program_name),
-            )),
+            }
+            _ => Err(Error(format!(
+                "Map does not contain datapath program with key: {:?}",
+                program_name
+            ))),
         }
     }
 
-
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()> {
-        let fields : Vec<(Reg, u64)> = update.iter().map(
-            |&(reg_name, new_value)| {
+        let fields: Vec<(Reg, u64)> = update
+            .iter()
+            .map(|&(reg_name, new_value)| {
                 if reg_name.starts_with("__") {
-                    return Err(Error(
-                        format!("Cannot update reserved field: {:?}", reg_name)
-                    ));
+                    return Err(Error(format!(
+                        "Cannot update reserved field: {:?}",
+                        reg_name
+                    )));
                 }
 
                 sc.get(reg_name)
-                    .ok_or_else(|| Error(
-                        format!("Unknown field: {:?}", reg_name)
-                    ))
+                    .ok_or_else(|| Error(format!("Unknown field: {:?}", reg_name)))
                     .and_then(|reg| match *reg {
                         Reg::Control(idx, ref t) => {
                             Ok((Reg::Control(idx, t.clone()), u64::from(new_value)))
@@ -184,17 +210,15 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
                         Reg::Implicit(idx, ref t) if idx == 4 || idx == 5 => {
                             Ok((Reg::Implicit(idx, t.clone()), u64::from(new_value)))
                         }
-                        _ => Err(Error(
-                            format!("Cannot update field: {:?}", reg_name),
-                        )),
+                        _ => Err(Error(format!("Cannot update field: {:?}", reg_name))),
                     })
-            }
-        ).collect::<Result<_>>()?;
+            })
+            .collect::<Result<_>>()?;
 
-        let msg = serialize::update_field::Msg{
+        let msg = serialize::update_field::Msg {
             sid: self.sock_id,
             num_fields: fields.len() as u8,
-            fields
+            fields,
         };
 
         let buf = serialize::serialize(&msg)?;
@@ -205,7 +229,7 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
 
 fn send_and_install<I>(sock_id: u32, sender: BackendSender<I>, bin: Bin, sc: Scope) -> Result<()>
 where
-    I: Ipc
+    I: Ipc,
 {
     let msg = serialize::install::Msg {
         sid: sock_id,
@@ -219,50 +243,17 @@ where
     Ok(())
 }
 
-
-/// Defines a `slog::Logger` to use for (optional) logging 
-/// and a custom `CongAlg::Config` to pass into algorithms as new flows
-/// are created.
-pub struct Config<I, U: ?Sized>
-where
-    I: Ipc,
-    U: CongAlg<I> + 'static,
-{
+/// Configuration parameters for the portus runtime.
+/// Defines a `slog::Logger` to use for (optional) logging
+#[derive(Clone, Default)]
+pub struct Config {
     pub logger: Option<slog::Logger>,
-    pub config: U::Config,
 }
 
-unsafe impl<I, U: ?Sized> Sync for Config<I, U>
-where
-    I: Ipc,
-    U: CongAlg<I> + 'static{}
-
-
-unsafe impl<I, U: ?Sized> Send for Config<I, U>
-where
-    I: Ipc,
-    U: CongAlg<I> {}
-
-// Cannot #[derive(Clone)] on Config because the compiler does not realize
-// we are not using I or U, only U::Config.
-// https://github.com/rust-lang/rust/issues/26925
-impl<I, U> Clone for Config<I, U>
-where
-    I: Ipc,
-    U: CongAlg<I> + 'static,
-{
-    fn clone(&self) -> Self {
-        Config {
-            logger: self.logger.clone(),
-            config: self.config.clone(),
-        }
-    }
-}
-
-#[derive(Clone)]
 /// The set of information passed by the datapath to CCP
 /// when a connection starts. It includes a unique 5-tuple (CCP socket id + source and destination
 /// IP and port), the initial congestion window (`init_cwnd`), and flow MSS.
+#[derive(Clone)]
 pub struct DatapathInfo {
     pub sock_id: u32,
     pub init_cwnd: u32,
@@ -276,64 +267,97 @@ pub struct DatapathInfo {
 /// Contains the values of the pre-defined Report struct from the fold function.
 /// Use `get_field` to query its values using the names defined in the fold function.
 pub struct Report {
-    pub program_uid: u32, 
-        fields: Vec<u64>,
+    pub program_uid: u32,
+    fields: Vec<u64>,
 }
 
 impl Report {
-    /// Uses the `Scope` returned by `lang::compile` (or `install`) to query 
+    /// Uses the `Scope` returned by `lang::compile` (or `install`) to query
     /// the `Report` for its values.
     pub fn get_field(&self, field: &str, sc: &Scope) -> Result<u64> {
         if sc.program_uid != self.program_uid {
-            return Err(Error::from(StaleProgramError))
+            return Err(Error::from(StaleProgramError));
         }
 
         match sc.get(field) {
-            Some(r) => {
-                match *r {
-                    Reg::Report(idx, _, _) => {
-                        if idx as usize >= self.fields.len() {
-                            Err(Error::from(InvalidReportError))
-                        } else {
-                            Ok(self.fields[idx as usize])
-                        }
-                    },
-                    _ => Err(Error::from(InvalidRegTypeError)),
+            Some(r) => match *r {
+                Reg::Report(idx, _, _) => {
+                    if idx as usize >= self.fields.len() {
+                        Err(Error::from(InvalidReportError))
+                    } else {
+                        Ok(self.fields[idx as usize])
+                    }
                 }
+                _ => Err(Error::from(InvalidRegTypeError)),
             },
             None => Err(Error::from(FieldNotFoundError)),
         }
     }
 }
 
-/// Implement this trait to define a CCP congestion control algorithm.
-pub trait CongAlg<T: Ipc> {
-    /// Implementors use `Config` to define custion configuration parameters.
-    type Config: Clone;
-    fn name() -> String;
-    /// This function is expected to return all datapath programs the congestion control algorithm
-    /// may want to use at any point during its execution. It is called only once, when Portus initializes
+/// Implement this trait and [`portus::CongAlg`](./trait.CongAlg.html) to define a CCP congestion control algorithm.
+/// Instances of this type implement functionality specific to an individual flow.
+pub trait Flow {
+    /// This callback specifies the algorithm's behavior when it receives a report
+    /// of measurements from the datapath.
+    fn on_report(&mut self, sock_id: u32, m: Report);
+
+    /// Optionally specify what the algorithm should do when the flow ends,
+    /// e.g., clean up any external resources.
+    /// The default implementation does nothing.
+    fn close(&mut self) {}
+}
+
+impl<T> Flow for Box<T>
+where
+    T: Flow + ?Sized,
+{
+    fn on_report(&mut self, sock_id: u32, m: Report) {
+        T::on_report(self, sock_id, m)
+    }
+
+    fn close(&mut self) {
+        T::close(self)
+    }
+}
+
+/// Implement this trait and [`portus::Flow`](./trait.Flow.html) to define a CCP congestion control algorithm.
+/// Instances of this type implement functionality which applies to a given
+/// algorithm as a whole.
+pub trait CongAlg<I: Ipc> {
+    /// A type which implements the [`portus::Flow`](./trait.Flow.html) trait, to manage
+    /// an individual connection.
+    type Flow: Flow;
+
+    /// A unique name for the algorithm.
+    fn name() -> &'static str;
+
+    /// `datapath_programs` returns all datapath programs the congestion control algorithm
+    /// will to use during its execution. It is called once, when Portus initializes
     /// ([`portus::run`](./fn.run.html) or [`portus::spawn`](./fn.spawn.html)).
     ///
     /// It should return a vector of string tuples, where the first string in each tuple is a unique name
     /// identifying the program, and the second string is the code for the program itself.
     ///
-    /// Portus will panic if any of the datapath programs do not compile.
+    /// The Portus runtime will panic if any of the datapath programs do not compile.
     ///
     /// For example,
     /// ```
-    /// vec![(String::from("prog1"), String::from("...(program)...")),
-    ///      (String::from("prog2"), String::from("...(program)..."))
-    /// ];
+    /// extern crate fnv;
+    /// use fnv::FnvHashMap as HashMap;
+    /// let mut h = HashMap::default();
+    /// h.insert("prog1", "...(program)...".to_string());
+    /// h.insert("prog2", "...(program)...".to_string());
     /// ```
-    fn init_programs(cfg: Config<T, Self>) -> Vec<(String, String)>;
-    fn create(control: Datapath<T>, cfg: Config<T, Self>, info: DatapathInfo) -> Self;
-    fn on_report(&mut self, sock_id: u32, m: Report);
-    fn close(&mut self) {} // default implementation does nothing (optional method)
+    fn datapath_programs(&self) -> HashMap<&'static str, String>;
+
+    /// Create a new instance of the CongAlg to manage a new flow.
+    /// Optionally copy any configuration parameters from `&self`.
+    fn new_flow(&self, control: Datapath<I>, info: DatapathInfo) -> Self::Flow;
 }
 
-#[derive(Debug)]
 /// A handle to manage running instances of the CCP execution loop.
+#[derive(Debug)]
 pub struct CCPHandle {
     pub continue_listening: Arc<atomic::AtomicBool>,
     pub join_handle: thread::JoinHandle<Result<()>>,
@@ -342,7 +366,8 @@ pub struct CCPHandle {
 impl CCPHandle {
     /// Instruct the execution loop to exit.
     pub fn kill(&self) {
-       self.continue_listening.store(false, atomic::Ordering::SeqCst);
+        self.continue_listening
+            .store(false, atomic::Ordering::SeqCst);
     }
 
     // TODO: join_handle.join() returns an Err instead of Ok, because
@@ -371,13 +396,18 @@ impl CCPHandle {
 /// Run() or spawn() create arc<AtomicBool> objects,
 /// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
 /// boolean to kill the thread.
-pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: &Config<I, U>) -> Result<!>
+pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> Result<!>
 where
     I: Ipc,
     U: CongAlg<I>,
 {
     // call run_inner
-    match run_inner(backend_builder, cfg, Arc::new(atomic::AtomicBool::new(true))) {
+    match run_inner(
+        Arc::new(atomic::AtomicBool::new(true)),
+        backend_builder,
+        cfg,
+        alg,
+    ) {
         Ok(_) => unreachable!(),
         Err(e) => Err(e),
     }
@@ -392,17 +422,15 @@ where
 /// 3. The caller calls `CCPHandle::kill()`
 ///
 /// See [`run`](./fn.run.html) for more information.
-pub fn spawn<I, U>(backend_builder: BackendBuilder<I>, cfg: Config<I, U>) -> CCPHandle
+pub fn spawn<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> CCPHandle
 where
     I: Ipc,
-    U: CongAlg<I>,
+    U: CongAlg<I> + 'static + Send,
 {
     let stop_signal = Arc::new(atomic::AtomicBool::new(true));
     CCPHandle {
         continue_listening: stop_signal.clone(),
-        join_handle: thread::spawn(move || {
-            run_inner(backend_builder, &cfg, stop_signal.clone())
-        }),
+        join_handle: thread::spawn(move || run_inner(stop_signal, backend_builder, cfg, alg)),
     }
 }
 
@@ -417,14 +445,19 @@ where
 // It returns any error, either from:
 // 1. the IPC channel failing
 // 2. Receiving an install control message (only the datapath should receive these).
-fn run_inner<I, U>(backend_builder: BackendBuilder<I>, cfg: &Config<I, U>, continue_listening: Arc<atomic::AtomicBool>)  -> Result<()>
+fn run_inner<I, U>(
+    continue_listening: Arc<atomic::AtomicBool>,
+    backend_builder: BackendBuilder<I>,
+    cfg: Config,
+    alg: U,
+) -> Result<()>
 where
     I: Ipc,
     U: CongAlg<I>,
 {
     let mut receive_buf = [0u8; 1024];
-    let mut  b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
-    let mut flows = HashMap::<u32, U>::new();
+    let mut b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
+    let mut flows = HashMap::<u32, U::Flow>::default();
     let backend = b.sender();
 
     cfg.logger.as_ref().map(|log| {
@@ -434,22 +467,30 @@ where
         );
     });
 
-    let mut scope_map = Rc::new(HashMap::<String, Scope>::new());
+    let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
 
-    let programs = U::init_programs(cfg.clone());
+    let programs = alg.datapath_programs();
     for (program_name, program) in programs.iter() {
         match lang::compile(program.as_bytes(), &[]) {
             Ok((bin, sc)) => {
                 match send_and_install(0, backend.clone(), bin, sc.clone()) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
-                        return Err(Error(format!("Failed to install datapath program \"{}\": {:?}", program_name, e)));
-                    },
+                        return Err(Error(format!(
+                            "Failed to install datapath program \"{}\": {:?}",
+                            program_name, e
+                        )));
+                    }
                 }
-                Rc::get_mut(&mut scope_map).unwrap().insert(program_name.to_string(), sc.clone());
+                Rc::get_mut(&mut scope_map)
+                    .unwrap()
+                    .insert(program_name.to_string(), sc.clone());
             }
             Err(e) => {
-                return Err(Error(format!("Datapath program \"{}\" failed to compile: {:?}", program_name, e)));
+                return Err(Error(format!(
+                    "Datapath program \"{}\" failed to compile: {:?}",
+                    program_name, e
+                )));
             }
         }
     }
@@ -475,13 +516,12 @@ where
                     );
                 });
 
-                let alg = U::create(
-                    Datapath{
-                        sock_id: c.sid, 
+                let f = alg.new_flow(
+                    Datapath {
+                        sock_id: c.sid,
                         sender: backend.clone(),
                         programs: scope_map.clone(),
                     },
-                    cfg.clone(),
                     DatapathInfo {
                         sock_id: c.sid,
                         init_cwnd: c.init_cwnd,
@@ -492,7 +532,7 @@ where
                         dst_port: c.dst_port,
                     },
                 );
-                flows.insert(c.sid, alg);
+                flows.insert(c.sid, f);
             }
             Msg::Ms(m) => {
                 if flows.contains_key(&m.sid) {
@@ -501,10 +541,13 @@ where
                         alg.close();
                     } else {
                         let alg = flows.get_mut(&m.sid).unwrap();
-                        alg.on_report(m.sid, Report {
-                            program_uid: m.program_uid,
-                            fields: m.fields 
-                        })
+                        alg.on_report(
+                            m.sid,
+                            Report {
+                                program_uid: m.program_uid,
+                                fields: m.fields,
+                            },
+                        )
                     }
                 } else {
                     cfg.logger.as_ref().map(|log| {
@@ -527,5 +570,6 @@ where
         Err(Error(String::from("The IPC channel has closed.")))
     }
 }
+
 #[cfg(test)]
 mod test;

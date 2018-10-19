@@ -1,18 +1,19 @@
 [package]
 name = "pyportus"
-version = "0.3.3"
+version = "0.4.0"
 authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
 
 [dependencies]
 bytes = "0.4.5"
 clap = "2.29"
+fnv = "1"
+generic_cong_avoid = { git = "https://github.com/ccp-project/generic-cong-avoid" }
 portus = { path = ".." }
+simple-signal = "1"
 slog = { version = "2" }
 slog-async = "2"
 slog-term = "2"
 time = "0.1"
-generic_cong_avoid = { git = "https://github.com/ccp-project/generic-cong-avoid" }
-simple-signal = "1"
 
 [dependencies.pyo3]
 version = "0.2.7"
