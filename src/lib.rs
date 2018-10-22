@@ -438,7 +438,6 @@ where
 
     let programs = U::init_programs(cfg.clone());
     for (program_name, program) in programs.iter() {
-
         match lang::compile(program.as_bytes(), &[]) {
             Ok((bin, sc)) => {
                 match send_and_install(0, backend.clone(), bin, sc.clone()) {
@@ -514,7 +513,7 @@ where
                 }
             }
             Msg::Ins(_) => {
-                unimplemented!()
+                unreachable!()
                 //return Err(Error(String::from("The start() listener should never receive an install \
                 //    message, since it is on the CCP side.")));
             }
