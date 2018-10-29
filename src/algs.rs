@@ -105,7 +105,7 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 macro_rules! start {
     ($ipc:expr, $log:expr, $alg: expr) => {{
         use $crate::ipc::Blocking;
-        $crate::start!($ipc, $log, $alg, Blocking);
+        $crate::start!($ipc, $log, $alg, Blocking)
     }};
     ($ipc:expr, $log:expr, $alg: expr, $blk: ty) => {{
         use $crate::ipc::BackendBuilder;
