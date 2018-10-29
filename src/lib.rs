@@ -6,8 +6,10 @@
 //! 2. A [compiler](lang/index.html) for datapath programs.
 //! 3. An IPC and serialization [layer](ipc/index.html) for communicating with libccp-compliant datapaths.
 //!
-//! The entry points into portus are [run](./fn.run.html) and [spawn](./fn.spawn.html), which start
-//! the CCP algorithm runtime. This runtime listens for datapath messages and dispatches calls to
+//! The entry points into portus are [`run`](./fn.run.html) and [`spawn`](./fn.spawn.html), which start
+//! the CCP algorithm runtime. There is also the convenience macro [`start`](./macro.start.html).
+//!
+//! The runtime listens for datapath messages and dispatches calls to
 //! the appropriate congestion control methods.
 //!
 //! Example
@@ -129,8 +131,8 @@ impl<T: Ipc> Clone for Datapath<T> {
     fn clone(&self) -> Self {
         Self {
             sock_id: self.sock_id,
-            sender:  self.sender.clone(),
-            programs : self.programs.clone()
+            sender: self.sender.clone(),
+            programs: self.programs.clone(),
         }
     }
 }
