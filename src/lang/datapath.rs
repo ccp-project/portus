@@ -1,10 +1,8 @@
-use super::{Error, Result};
 use super::ast::{Expr, Op, Prim};
 use super::prog::Prog;
+use super::{Error, Result};
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     Bool(Option<bool>),
     Name(String),
@@ -14,19 +12,17 @@ pub enum Type {
 
 pub(crate) fn check_atom_type(e: &Expr) -> Result<Type> {
     match *e {
-        Expr::Atom(ref t) => {
-            match *t {
-                Prim::Bool(t) => Ok(Type::Bool(Some(t))),
-                Prim::Name(ref name) => Ok(Type::Name(name.clone())),
-                Prim::Num(n) => Ok(Type::Num(Some(n))),
-            }
-        }
+        Expr::Atom(ref t) => match *t {
+            Prim::Bool(t) => Ok(Type::Bool(Some(t))),
+            Prim::Name(ref name) => Ok(Type::Name(name.clone())),
+            Prim::Num(n) => Ok(Type::Num(Some(n))),
+        },
         _ => Err(Error::from(format!("not an atom: {:?}", e))),
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-/// A datapath register. 
+/// A datapath register.
 pub enum Reg {
     Control(u8, Type),
     ImmNum(u64),
@@ -42,15 +38,15 @@ pub enum Reg {
 impl Reg {
     fn get_type(&self) -> Result<Type> {
         match *self {
-            Reg::ImmNum(n)           => Ok(Type::Num(Some(n))),
-            Reg::ImmBool(b)          => Ok(Type::Bool(Some(b))),
-            Reg::Control(_, ref t)   |
-            Reg::Implicit(_, ref t)  |
-            Reg::Local(_, ref t)     |
-            Reg::Primitive(_, ref t) | 
-            Reg::Tmp(_, ref t)       | 
-            Reg::Report(_, ref t, _)    => Ok(t.clone()),
-            Reg::None                => Ok(Type::None),
+            Reg::ImmNum(n) => Ok(Type::Num(Some(n))),
+            Reg::ImmBool(b) => Ok(Type::Bool(Some(b))),
+            Reg::Control(_, ref t)
+            | Reg::Implicit(_, ref t)
+            | Reg::Local(_, ref t)
+            | Reg::Primitive(_, ref t)
+            | Reg::Tmp(_, ref t)
+            | Reg::Report(_, ref t, _) => Ok(t.clone()),
+            Reg::None => Ok(Type::None),
         }
     }
 }
@@ -99,75 +95,80 @@ impl Bin {
         // this is ugly
         // there might be some way to do this without all the intermediate `.collect()`
         // to turn Vec<Result<_>> into Result<Vec<_>>.
-        let ls: Result<Vec<(Event, Vec<Instr>)>> = p.0
-            .iter()
-            .map(|ev| {
-                scope.clear_tmps();
-                let flag_instrs = compile_expr(&ev.flag, &mut scope).and_then(|t| {
-                    let (mut instrs, res) = t;
-                    // assign the flag value to the EventFlag reg.
-                    let flag_reg = scope.get("__eventFlag").unwrap();
-                    match res {
-                        Reg::Tmp(_, Type::Bool(_)) => {
-                            if let Some(last) = instrs.last_mut() {
-                                (*last).res = flag_reg.clone();
-                            } else {
-                                return Err(Error(String::from("Empty instruction list")));
+        let ls: Result<Vec<(Event, Vec<Instr>)>> =
+            p.0.iter()
+                .map(|ev| {
+                    scope.clear_tmps();
+                    let flag_instrs = compile_expr(&ev.flag, &mut scope).and_then(|t| {
+                        let (mut instrs, res) = t;
+                        // assign the flag value to the EventFlag reg.
+                        let flag_reg = scope.get("__eventFlag").unwrap();
+                        match res {
+                            Reg::Tmp(_, Type::Bool(_)) => {
+                                if let Some(last) = instrs.last_mut() {
+                                    (*last).res = flag_reg.clone();
+                                } else {
+                                    return Err(Error(String::from("Empty instruction list")));
+                                }
+
+                                Ok(instrs)
                             }
-                                
-                            Ok(instrs)
-                        }
-                        Reg::ImmBool(_) => {
-                            instrs.push(
-                                Instr{
+                            Reg::ImmBool(_) => {
+                                instrs.push(Instr {
                                     res: flag_reg.clone(),
                                     op: Op::Bind,
                                     left: flag_reg.clone(),
                                     right: res,
-                                }
-                            );
+                                });
 
-                            Ok(instrs)
+                                Ok(instrs)
+                            }
+                            Reg::Report(_, _, _) => unreachable!(),
+                            x => Err(Error::from(format!(
+                                "Flag expression must result in bool: {:?}",
+                                x
+                            ))),
                         }
-                        Reg::Report(_, _, _) => unreachable!(),
-                        x => {
-                            Err(Error::from(format!("Flag expression must result in bool: {:?}", x)))
-                        }
-                    }
-                })?;
-                let num_flag_instrs = flag_instrs.len() as u32;
+                    })?;
+                    let num_flag_instrs = flag_instrs.len() as u32;
 
-                let body_instrs_nested: Result<Vec<Vec<Instr>>> = ev.body.iter().map(|expr| {
-                    scope.clear_tmps();
-                    compile_expr(expr, &mut scope).map(|t| t.0) // Result<Vec<Instr>>
-                }).collect(); // do this intermediate collect to go from Vec<Result<Vec<Instr>>> -> Result<Vec<Vec<Instr>>>
+                    let body_instrs_nested: Result<Vec<Vec<Instr>>> = ev
+                        .body
+                        .iter()
+                        .map(|expr| {
+                            scope.clear_tmps();
+                            compile_expr(expr, &mut scope).map(|t| t.0) // Result<Vec<Instr>>
+                        })
+                        .collect(); // do this intermediate collect to go from Vec<Result<Vec<Instr>>> -> Result<Vec<Vec<Instr>>>
 
-                // flatten the Vec<Vec<Instr>>
-                let body_instrs: Vec<Instr> = body_instrs_nested?
-                    .into_iter()
-                    .flat_map(|x| x.into_iter())
-                    .collect();
+                    // flatten the Vec<Vec<Instr>>
+                    let body_instrs: Vec<Instr> = body_instrs_nested?
+                        .into_iter()
+                        .flat_map(|x| x.into_iter())
+                        .collect();
 
-                let new_event = Event{
-                    flag_idx: curr_idx,
-                    num_flag_instrs,
-                    body_idx: curr_idx + num_flag_instrs,
-                    num_body_instrs: body_instrs.len() as u32,
-                };
+                    let new_event = Event {
+                        flag_idx: curr_idx,
+                        num_flag_instrs,
+                        body_idx: curr_idx + num_flag_instrs,
+                        num_body_instrs: body_instrs.len() as u32,
+                    };
 
-                curr_idx += new_event.num_flag_instrs + new_event.num_body_instrs;
-                Ok((
-                    new_event,
-                    flag_instrs.into_iter().chain(body_instrs).collect()
-                ))
-            }).collect();
+                    curr_idx += new_event.num_flag_instrs + new_event.num_body_instrs;
+                    Ok((
+                        new_event,
+                        flag_instrs.into_iter().chain(body_instrs).collect(),
+                    ))
+                })
+                .collect();
 
         let (evs, instrs): (Vec<_>, Vec<_>) = ls?.into_iter().unzip();
-        Ok(Bin{
+        Ok(Bin {
             events: evs,
-            instrs: def_instrs.into_iter().chain(
-                instrs.into_iter().flat_map(|x| x.into_iter())
-            ).collect(),
+            instrs: def_instrs
+                .into_iter()
+                .chain(instrs.into_iter().flat_map(|x| x.into_iter()))
+                .collect(),
         })
     }
 }
@@ -181,23 +182,21 @@ impl Bin {
 /// The left argument is evaluated first.
 fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
     match *e {
-        Expr::Atom(ref t) => {
-            match *t {
-                Prim::Bool(b) => Ok((vec![], Reg::ImmBool(b))),
-                Prim::Name(ref name) => {
-                    if scope.has(name) {
-                        let reg = scope.get(name).unwrap();
-                        Ok((vec![], reg.clone()))
-                    } else {
-                        Ok((
-                            vec![],
-                            scope.new_local(name.clone(), Type::Name(name.clone())),
-                        ))
-                    }
+        Expr::Atom(ref t) => match *t {
+            Prim::Bool(b) => Ok((vec![], Reg::ImmBool(b))),
+            Prim::Name(ref name) => {
+                if scope.has(name) {
+                    let reg = scope.get(name).unwrap();
+                    Ok((vec![], reg.clone()))
+                } else {
+                    Ok((
+                        vec![],
+                        scope.new_local(name.clone(), Type::Name(name.clone())),
+                    ))
                 }
-                Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
             }
-        }
+            Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
+        },
         Expr::Cmd(_) | Expr::None => unreachable!(),
         Expr::Sexp(ref o, box ref left_expr, box ref right_expr) => {
             let (mut instrs, mut left) = compile_expr(left_expr, &mut scope)?;
@@ -213,9 +212,10 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     match right.get_type() {
                         Ok(Type::Num(_)) => (),
                         x => {
-                            return Err(Error::from(
-                                format!("{:?} expected Num, got {:?}: {:?}", o, x, scope),
-                            ))
+                            return Err(Error::from(format!(
+                                "{:?} expected Num, got {:?}: {:?}",
+                                o, x, scope
+                            )))
                         }
                     }
 
@@ -245,8 +245,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                         res: res.clone(),
                         op: match *o {
                             Op::And => Op::Mul,
-                            Op::Or  => Op::Add,
-                            _       => unreachable!(),
+                            Op::Or => Op::Add,
+                            _ => unreachable!(),
                         },
                         left,
                         right,
@@ -287,7 +287,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left must be a mutable register
                     // and if right is a Reg::None, we have to replace it
                     match (&left, &right) {
-                        (&Reg::Report(_, _, _), &Reg::None) | (&Reg::Control(_,_), &Reg::None) => {
+                        (&Reg::Report(_, _, _), &Reg::None) | (&Reg::Control(_, _), &Reg::None) => {
                             let last_instr = instrs.last_mut().map(|last| {
                                 // Double-check that the instruction being replaced
                                 // actually is a Reg::None before we go replace it
@@ -308,11 +308,11 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                             "cannot bind stateful instruction to Reg::Tmp: {:?}",
                             right_expr,
                         ))),
-                        (&Reg::Implicit(_, _), _)  |
-                        (&Reg::Control(_, _), _)   |
-                        (&Reg::Local(_, _), _)     |
-                        (&Reg::Report(_, _, _), _) |
-                        (&Reg::Tmp(_, _), _) => {
+                        (&Reg::Implicit(_, _), _)
+                        | (&Reg::Control(_, _), _)
+                        | (&Reg::Local(_, _), _)
+                        | (&Reg::Report(_, _, _), _)
+                        | (&Reg::Tmp(_, _), _) => {
                             instrs.push(Instr {
                                 res: left.clone(),
                                 op: *o,
@@ -361,10 +361,13 @@ impl RegFile {
     }
 
     fn insert(&mut self, name: String, r: Reg) {
-        if let Some((idx, _)) = self.0.iter()
+        if let Some((idx, _)) = self
+            .0
+            .iter()
             .enumerate()
             .skip_while(|&(_, &(ref s, _))| *s < name)
-            .next() {
+            .next()
+        {
             self.0.insert(idx, (name, r));
         } else {
             self.0.push((name, r));
@@ -372,11 +375,17 @@ impl RegFile {
     }
 
     fn get<'a>(&'a self, name: &str) -> Option<&'a Reg> {
-        self.0.iter().find(|&&(ref s, _)| s == name).map(|&(_, ref r)| r)
+        self.0
+            .iter()
+            .find(|&&(ref s, _)| s == name)
+            .map(|&(_, ref r)| r)
     }
 
     fn get_mut<'a>(&'a mut self, name: &str) -> Option<&'a mut Reg> {
-        self.0.iter_mut().find(|&&mut (ref s, _)| s == name).map(|&mut(_, ref mut r)| r)
+        self.0
+            .iter_mut()
+            .find(|&&mut (ref s, _)| s == name)
+            .map(|&mut (_, ref mut r)| r)
     }
 }
 
@@ -384,7 +393,7 @@ impl RegFile {
 /// A mapping from variable names defined in the datapath program to their
 /// datapath register representations.
 pub struct Scope {
-    pub        program_uid: u32,
+    pub program_uid: u32,
     pub(crate) named: RegFile,
     pub(crate) num_control: u8,
     pub(crate) num_local: u8,
@@ -393,37 +402,36 @@ pub struct Scope {
 }
 
 macro_rules! add_reg {
-    ($scope:ident, $name:expr, $rtyp:ident, $idx:expr, $typ:expr) => ({
-        $scope.named.insert(
-            String::from($name),
-            Reg::$rtyp($idx, $typ),
-        );
-    })
+    ($scope:ident, $name:expr, $rtyp:ident, $idx:expr, $typ:expr) => {{
+        $scope
+            .named
+            .insert(String::from($name), Reg::$rtyp($idx, $typ));
+    }};
 }
 
 macro_rules! expand_reg {
     (
-        $scope:ident; 
-        $reg:ident; 
-        $count:expr; 
+        $scope:ident;
+        $reg:ident;
+        $count:expr;
         $headname:expr => $headtype:expr
     ) => (
         {add_reg!($scope, $headname, $reg, $count, $headtype); $count + 1}
     );
     (
-        $scope:ident; 
-        $reg:ident; 
-        $count:expr; 
-        $headname:expr => $headtype:expr, 
+        $scope:ident;
+        $reg:ident;
+        $count:expr;
+        $headname:expr => $headtype:expr,
         $( $restname:expr => $resttype:expr ),*
     ) => ({
         add_reg!($scope, $headname, $reg, $count, $headtype);
         expand_reg!($scope; $reg; $count+1; $( $restname => $resttype ),* )
     });
     (
-        $scope:ident; 
-        $reg:ident; 
-        $headname:expr => $headtype:expr, 
+        $scope:ident;
+        $reg:ident;
+        $headname:expr => $headtype:expr,
         $( $restname:expr => $resttype:expr ),*
     ) => ({
         add_reg!($scope, $headname, $reg, 0, $headtype);
@@ -431,11 +439,12 @@ macro_rules! expand_reg {
     });
 }
 
-
 use std::sync::atomic::{AtomicU32, Ordering};
-static ID_COUNTER : AtomicU32 = AtomicU32::new(0);
+static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 macro_rules! get_next_uid {
-    () => (ID_COUNTER.fetch_add(1, Ordering::SeqCst) + 1)
+    () => {
+        ID_COUNTER.fetch_add(1, Ordering::SeqCst) + 1
+    };
 }
 
 impl Scope {
@@ -486,7 +495,7 @@ impl Scope {
             "Cwnd"           => Type::Num(None),
             "Rate"           => Type::Num(None)
         );
-        
+
         sc
     }
 
@@ -520,7 +529,7 @@ impl Scope {
         self.named.insert(name, r.clone());
         r
     }
-    
+
     pub(crate) fn new_local(&mut self, name: String, t: Type) -> Reg {
         let id = self.num_local;
         self.num_local += 1;
@@ -553,7 +562,6 @@ impl Scope {
                     old_reg
                 ))),
             })
-
     }
 
     pub(crate) fn clear_tmps(&mut self) {
@@ -578,8 +586,7 @@ impl Iterator for ScopeDefInstrIter {
         loop {
             let (_, reg) = self.v.next()?;
             match reg {
-                Reg::Report(_, Type::Num(Some(n)), _) |
-                Reg::Control(_, Type::Num(Some(n))) => {
+                Reg::Report(_, Type::Num(Some(n)), _) | Reg::Control(_, Type::Num(Some(n))) => {
                     return Some(Instr {
                         res: reg.clone(),
                         op: Op::Def,
@@ -587,8 +594,7 @@ impl Iterator for ScopeDefInstrIter {
                         right: Reg::ImmNum(n),
                     })
                 }
-                Reg::Report(_, Type::Bool(Some(b)), _) |
-                Reg::Control(_, Type::Bool(Some(b))) => {
+                Reg::Report(_, Type::Bool(Some(b)), _) | Reg::Control(_, Type::Bool(Some(b))) => {
                     return Some(Instr {
                         res: reg.clone(),
                         op: Op::Def,
@@ -607,15 +613,17 @@ impl IntoIterator for Scope {
     type IntoIter = ScopeDefInstrIter;
 
     fn into_iter(self) -> ScopeDefInstrIter {
-        ScopeDefInstrIter{ v: self.named.0.into_iter() }
+        ScopeDefInstrIter {
+            v: self.named.0.into_iter(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{Bin, Event, Instr, Reg, Type};
     use lang::ast::Op;
     use lang::prog::Prog;
-    use super::{Bin, Event, Instr, Reg, Type};
     #[test]
     fn primitives() {
         let foo = b"
@@ -623,36 +631,102 @@ mod tests {
         (when true # this is a comment
             (bind Report.foo 4)
         )";
-        
+
         let (_, sc) = Prog::new_with_scope(foo).unwrap();
 
         // check that the registers are where they're supposed to be so we can just get from scope after this test
         // primitive
-        assert_eq!(sc.get("Ack.bytes_acked"       ).unwrap().clone(), Reg::Primitive(0, Type::Num(None)));
-        assert_eq!(sc.get("Ack.bytes_misordered"  ).unwrap().clone(), Reg::Primitive(1, Type::Num(None)));
-        assert_eq!(sc.get("Ack.ecn_bytes"         ).unwrap().clone(), Reg::Primitive(2, Type::Num(None)));
-        assert_eq!(sc.get("Ack.ecn_packets"       ).unwrap().clone(), Reg::Primitive(3, Type::Num(None)));
-        assert_eq!(sc.get("Ack.lost_pkts_sample"  ).unwrap().clone(), Reg::Primitive(4, Type::Num(None)));
-        assert_eq!(sc.get("Ack.now"               ).unwrap().clone(), Reg::Primitive(5, Type::Num(None)));
-        assert_eq!(sc.get("Ack.packets_acked"     ).unwrap().clone(), Reg::Primitive(6, Type::Num(None)));
-        assert_eq!(sc.get("Ack.packets_misordered").unwrap().clone(), Reg::Primitive(7, Type::Num(None)));
-        assert_eq!(sc.get("Flow.bytes_in_flight"  ).unwrap().clone(), Reg::Primitive(8, Type::Num(None)));
-        assert_eq!(sc.get("Flow.bytes_pending"    ).unwrap().clone(), Reg::Primitive(9, Type::Num(None)));
-        assert_eq!(sc.get("Flow.packets_in_flight").unwrap().clone(), Reg::Primitive(10, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rate_incoming"    ).unwrap().clone(), Reg::Primitive(11, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rate_outgoing"    ).unwrap().clone(), Reg::Primitive(12, Type::Num(None)));
-        assert_eq!(sc.get("Flow.rtt_sample_us"    ).unwrap().clone(), Reg::Primitive(13, Type::Num(None)));
-        assert_eq!(sc.get("Flow.was_timeout"      ).unwrap().clone(), Reg::Primitive(14, Type::Bool(None)));
+        assert_eq!(
+            sc.get("Ack.bytes_acked").unwrap().clone(),
+            Reg::Primitive(0, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Ack.bytes_misordered").unwrap().clone(),
+            Reg::Primitive(1, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Ack.ecn_bytes").unwrap().clone(),
+            Reg::Primitive(2, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Ack.ecn_packets").unwrap().clone(),
+            Reg::Primitive(3, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Ack.lost_pkts_sample").unwrap().clone(),
+            Reg::Primitive(4, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Ack.now").unwrap().clone(),
+            Reg::Primitive(5, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Ack.packets_acked").unwrap().clone(),
+            Reg::Primitive(6, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Ack.packets_misordered").unwrap().clone(),
+            Reg::Primitive(7, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Flow.bytes_in_flight").unwrap().clone(),
+            Reg::Primitive(8, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Flow.bytes_pending").unwrap().clone(),
+            Reg::Primitive(9, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Flow.packets_in_flight").unwrap().clone(),
+            Reg::Primitive(10, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Flow.rate_incoming").unwrap().clone(),
+            Reg::Primitive(11, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Flow.rate_outgoing").unwrap().clone(),
+            Reg::Primitive(12, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Flow.rtt_sample_us").unwrap().clone(),
+            Reg::Primitive(13, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Flow.was_timeout").unwrap().clone(),
+            Reg::Primitive(14, Type::Bool(None))
+        );
 
-        assert_eq!(sc.get("__eventFlag"     ).unwrap().clone(), Reg::Implicit(0, Type::Bool(None)));
-        assert_eq!(sc.get("__shouldContinue").unwrap().clone(), Reg::Implicit(1, Type::Bool(None)));
-        assert_eq!(sc.get("__shouldReport"  ).unwrap().clone(), Reg::Implicit(2, Type::Bool(None)));
-        assert_eq!(sc.get("Micros"          ).unwrap().clone(), Reg::Implicit(3, Type::Num(None)));
-        assert_eq!(sc.get("Cwnd"            ).unwrap().clone(), Reg::Implicit(4, Type::Num(None)));
-        assert_eq!(sc.get("Rate"            ).unwrap().clone(), Reg::Implicit(5, Type::Num(None)));
+        assert_eq!(
+            sc.get("__eventFlag").unwrap().clone(),
+            Reg::Implicit(0, Type::Bool(None))
+        );
+        assert_eq!(
+            sc.get("__shouldContinue").unwrap().clone(),
+            Reg::Implicit(1, Type::Bool(None))
+        );
+        assert_eq!(
+            sc.get("__shouldReport").unwrap().clone(),
+            Reg::Implicit(2, Type::Bool(None))
+        );
+        assert_eq!(
+            sc.get("Micros").unwrap().clone(),
+            Reg::Implicit(3, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Cwnd").unwrap().clone(),
+            Reg::Implicit(4, Type::Num(None))
+        );
+        assert_eq!(
+            sc.get("Rate").unwrap().clone(),
+            Reg::Implicit(5, Type::Num(None))
+        );
 
         // state
-        assert_eq!(sc.get("Report.foo").unwrap().clone(), Reg::Report(0, Type::Num(Some(0)), false));
+        assert_eq!(
+            sc.get("Report.foo").unwrap().clone(),
+            Reg::Report(0, Type::Num(Some(0)), false)
+        );
     }
 
     #[test]
@@ -666,11 +740,11 @@ mod tests {
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
-        
+
         assert_eq!(
             b,
-            Bin{
-                events: vec![Event{
+            Bin {
+                events: vec![Event {
                     flag_idx: 1,
                     num_flag_instrs: 1,
                     body_idx: 2,
@@ -711,7 +785,7 @@ mod tests {
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
-        
+
         // check for underscored state variable
         let foo2 = b"
         (def (Report.foo_bar 0))
@@ -719,7 +793,7 @@ mod tests {
             (bind Report.foo_bar 4)
         )
         ";
-        
+
         let (p2, mut sc2) = Prog::new_with_scope(foo2).unwrap();
         let b2 = Bin::compile_prog(&p2, &mut sc2).unwrap();
         assert_eq!(b2, b);
@@ -741,8 +815,8 @@ mod tests {
 
         assert_eq!(
             b,
-            Bin{
-                events: vec![Event{
+            Bin {
+                events: vec![Event {
                     flag_idx: 1,
                     num_flag_instrs: 1,
                     body_idx: 2,
@@ -787,8 +861,8 @@ mod tests {
 
         assert_eq!(
             b,
-            Bin{
-                events: vec![Event{
+            Bin {
+                events: vec![Event {
                     flag_idx: 1,
                     num_flag_instrs: 1,
                     body_idx: 2,
@@ -823,7 +897,7 @@ mod tests {
             }
         );
     }
-    
+
     #[test]
     fn control_def() {
         let foo = b"
@@ -840,8 +914,8 @@ mod tests {
 
         assert_eq!(
             b,
-            Bin{
-                events: vec![Event{
+            Bin {
+                events: vec![Event {
                     flag_idx: 1,
                     num_flag_instrs: 1,
                     body_idx: 2,
@@ -891,8 +965,8 @@ mod tests {
         let control_foo_reg = sc.get("controlFoo").unwrap().clone();
         assert_eq!(
             b,
-            Bin{
-                events: vec![Event{
+            Bin {
+                events: vec![Event {
                     flag_idx: 1,
                     num_flag_instrs: 1,
                     body_idx: 2,
@@ -950,8 +1024,8 @@ mod tests {
 
         assert_eq!(
             b,
-            Bin{
-                events: vec![Event{
+            Bin {
+                events: vec![Event {
                     flag_idx: 1,
                     num_flag_instrs: 1,
                     body_idx: 2,
@@ -1009,8 +1083,8 @@ mod tests {
 
         assert_eq!(
             b,
-            Bin{
-                events: vec![Event{
+            Bin {
+                events: vec![Event {
                     flag_idx: 1,
                     num_flag_instrs: 2,
                     body_idx: 3,
@@ -1078,7 +1152,7 @@ mod tests {
 
     #[test]
     fn bool_ops() {
-        let foo =  b" 
+        let foo = b" 
 		(def (Report.acked 0) (Control.state 0))
 		(when true
 			(:= Report.acked (+ Report.acked Ack.bytes_acked))
@@ -1089,7 +1163,7 @@ mod tests {
 			(report)
 		)
 		";
-        
+
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
         let evflag_reg = sc.get("__eventFlag").unwrap().clone();
@@ -1099,83 +1173,93 @@ mod tests {
 
         assert_eq!(
             b,
-            Bin{ 
+            Bin {
                 events: vec![
-                    Event { flag_idx: 2, num_flag_instrs: 1, body_idx: 3, num_body_instrs: 3 }, 
-                    Event { flag_idx: 6, num_flag_instrs: 3, body_idx: 9, num_body_instrs: 2 }
-                ], 
+                    Event {
+                        flag_idx: 2,
+                        num_flag_instrs: 1,
+                        body_idx: 3,
+                        num_body_instrs: 3
+                    },
+                    Event {
+                        flag_idx: 6,
+                        num_flag_instrs: 3,
+                        body_idx: 9,
+                        num_body_instrs: 2
+                    }
+                ],
                 instrs: vec![
-                    Instr { 
-                        res: state_reg.clone(), 
-                        op: Op::Def, 
-                        left: state_reg.clone(), 
+                    Instr {
+                        res: state_reg.clone(),
+                        op: Op::Def,
+                        left: state_reg.clone(),
                         right: Reg::ImmNum(0),
-                    }, 
-                    Instr { 
+                    },
+                    Instr {
                         res: acked_reg.clone(),
-                        op: Op::Def, 
+                        op: Op::Def,
                         left: acked_reg.clone(),
                         right: Reg::ImmNum(0),
-                    }, 
-                    Instr { 
+                    },
+                    Instr {
                         res: evflag_reg.clone(),
                         op: Op::Bind,
                         left: evflag_reg.clone(),
                         right: Reg::ImmBool(true),
-                    }, 
-                    Instr { 
+                    },
+                    Instr {
                         res: Reg::Tmp(0, Type::Num(None)),
                         op: Op::Add,
                         left: acked_reg.clone(),
                         right: sc.get("Ack.bytes_acked").unwrap().clone(),
-                    }, 
-                    Instr { 
+                    },
+                    Instr {
                         res: acked_reg.clone(),
                         op: Op::Bind,
                         left: acked_reg.clone(),
                         right: Reg::Tmp(0, Type::Num(None)),
-                    }, 
-                    Instr { 
+                    },
+                    Instr {
                         res: continue_reg.clone(),
                         op: Op::Bind,
                         left: continue_reg.clone(),
                         right: Reg::ImmBool(true),
-                    }, 
-                    Instr { 
+                    },
+                    Instr {
                         res: Reg::Tmp(0, Type::Bool(None)),
                         op: Op::Gt,
                         left: sc.get("Micros").unwrap().clone(),
-                        right: Reg::ImmNum(3000000) 
-                    }, 
-                    Instr { 
+                        right: Reg::ImmNum(3000000)
+                    },
+                    Instr {
                         res: Reg::Tmp(1, Type::Bool(None)),
                         op: Op::Equiv,
                         left: state_reg.clone(),
-                        right: Reg::ImmNum(0) 
-                    }, 
-                    Instr { 
+                        right: Reg::ImmNum(0)
+                    },
+                    Instr {
                         res: evflag_reg.clone(),
                         op: Op::Mul,
                         left: Reg::Tmp(0, Type::Bool(None)),
-                        right: Reg::Tmp(1, Type::Bool(None)) 
-                    }, 
-                    Instr { 
+                        right: Reg::Tmp(1, Type::Bool(None))
+                    },
+                    Instr {
                         res: state_reg.clone(),
                         op: Op::Bind,
                         left: state_reg.clone(),
-                        right: Reg::ImmNum(1) 
-                    }, 
-                    Instr { 
+                        right: Reg::ImmNum(1)
+                    },
+                    Instr {
                         res: sc.get("__shouldReport").unwrap().clone(),
                         op: Op::Bind,
                         left: sc.get("__shouldReport").unwrap().clone(),
-                        right: Reg::ImmBool(true) 
+                        right: Reg::ImmBool(true)
                     },
                 ],
             },
         );
     }
-    
+
     #[test]
     fn multiple_events() {
         let foo = b"
@@ -1191,18 +1275,18 @@ mod tests {
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
         let foo_reg = sc.get("Report.foo").unwrap().clone();
-        
+
         assert_eq!(
             b,
-            Bin{
+            Bin {
                 events: vec![
-                    Event{
+                    Event {
                         flag_idx: 1,
                         num_flag_instrs: 1,
                         body_idx: 2,
                         num_body_instrs: 1,
                     },
-                    Event{
+                    Event {
                         flag_idx: 3,
                         num_flag_instrs: 1,
                         body_idx: 4,
@@ -1265,15 +1349,15 @@ mod tests {
 
         assert_eq!(
             b,
-            Bin{
+            Bin {
                 events: vec![
-                    Event{
+                    Event {
                         flag_idx: 1,
                         num_flag_instrs: 1,
                         body_idx: 2,
                         num_body_instrs: 2,
                     },
-                    Event{
+                    Event {
                         flag_idx: 4,
                         num_flag_instrs: 1,
                         body_idx: 5,

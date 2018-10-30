@@ -1,18 +1,18 @@
-extern crate syn;
-extern crate quote;
-extern crate walkdir;
 extern crate portus;
+extern crate quote;
+extern crate syn;
+extern crate walkdir;
 
 use std::env::args;
 use std::fs::File;
 use std::io::Read;
 
-use syn::visit::Visit;
-use syn::{Expr,Item::Impl,Expr::Lit,Expr::MethodCall,Lit::ByteStr,Lit::Str};
-use syn::punctuated::{Pair::Punctuated,Pair::End};
-use quote::ToTokens;
-use walkdir::{DirEntry, WalkDir};
 use portus::lang;
+use quote::ToTokens;
+use syn::punctuated::{Pair::End, Pair::Punctuated};
+use syn::visit::Visit;
+use syn::{Expr, Expr::Lit, Expr::MethodCall, Item::Impl, Lit::ByteStr, Lit::Str};
+use walkdir::{DirEntry, WalkDir};
 
 const ESC: &str = "\u{1B}";
 const RED: &str = "\031";
@@ -20,16 +20,24 @@ const GREEN: &str = "\032";
 const BLUE: &str = "\034";
 
 macro_rules! bold_red {
-    ($s:expr) => { format!("{}[{};1m{}{}[0m", ESC, RED, $s, ESC) }
+    ($s:expr) => {
+        format!("{}[{};1m{}{}[0m", ESC, RED, $s, ESC)
+    };
 }
 macro_rules! bold_blue {
-    ($s:expr) => { format!("{}[{};1m{}{}[0m", ESC, BLUE, $s, ESC) }
+    ($s:expr) => {
+        format!("{}[{};1m{}{}[0m", ESC, BLUE, $s, ESC)
+    };
 }
 macro_rules! bold_green {
-    ($s:expr) => { format!("{}[{};1m{}{}[0m", ESC, GREEN, $s, ESC) }
+    ($s:expr) => {
+        format!("{}[{};1m{}{}[0m", ESC, GREEN, $s, ESC)
+    };
 }
 macro_rules! bold {
-    ($s:expr) => { format!("{}[1m{}{}[0m", ESC, $s, ESC) }
+    ($s:expr) => {
+        format!("{}[1m{}{}[0m", ESC, $s, ESC)
+    };
 }
 
 struct FastPathProgramFinder {
@@ -49,44 +57,51 @@ impl FastPathProgramFinder {
     }
 }
 impl<'v> Visit<'v> for FastPathProgramFinder {
-    fn visit_expr(&mut self, e : &Expr) {
-        match e {
-            &MethodCall(ref emc) => {
-                let method_name = emc.method.to_string();
-                if method_name == "install" {
-                    match emc.args.first() {
-                        Some(Punctuated(&Lit(ref l), _)) | Some(End(&Lit(ref l))) => { 
-                            let compile_result = match l.lit {
+    fn visit_expr(&mut self, e: &Expr) {
+        if let MethodCall(ref emc) = *e {
+            let method_name = emc.method.to_string();
+            if method_name == "install" {
+                match emc.args.first() {
+                    Some(Punctuated(&Lit(ref l), _)) | Some(End(&Lit(ref l))) => {
+                        let compile_result = match l.lit {
                                 ByteStr(ref ls) => { lang::compile(&ls.value(), &[]) }
                                 Str(ref ls)     => { lang::compile(ls.value().as_bytes(), &[]) }
                                 _           => { panic!("Non-string passed to install(). This shouldn't have compiled in the first place...") }
                             };
-                            self.total += 1;
-                            match compile_result {
-                                Ok(_)  => {}
-                                Err(e) => { 
-                                    self.failed += 1;
-                                    eprintln!("{}{}", bold_red!("error"), bold!(format!(": {:?}", e)));
-                                    eprintln!("{} {}", bold_blue!("-->"), self.filename);
-                                    eprintln!("{} {}", bold_blue!("-->"), self.impl_str);
-                                    let prog_src = l.into_tokens().to_string();
-                                    eprintln!("{}\n\n", prog_src.split("\n")
-                                                    .enumerate().map(|(i,l)|format!("{} {}", bold_blue!(format!("{:3} |", i)), l))
-                                                    .collect::<Vec<String>>()
-                                                    .join("\n"));
-                                }
+                        self.total += 1;
+                        match compile_result {
+                            Ok(_) => {}
+                            Err(e) => {
+                                self.failed += 1;
+                                eprintln!("{}{}", bold_red!("error"), bold!(format!(": {:?}", e)));
+                                eprintln!("{} {}", bold_blue!("-->"), self.filename);
+                                eprintln!("{} {}", bold_blue!("-->"), self.impl_str);
+                                let prog_src = l.into_tokens().to_string();
+                                eprintln!(
+                                    "{}\n\n",
+                                    prog_src
+                                        .split('\n')
+                                        .enumerate()
+                                        .map(|(i, l)| format!(
+                                            "{} {}",
+                                            bold_blue!(format!("{:3} |", i)),
+                                            l
+                                        ))
+                                        .collect::<Vec<String>>()
+                                        .join("\n")
+                                );
                             }
                         }
-                        Some(Punctuated(&MethodCall(ref mcmc), _)) | Some(End(&MethodCall(ref mcmc))) => {
-                            self.visit_expr(&mcmc.receiver);
-                        }
-                        _ => {}
                     }
+                    Some(Punctuated(&MethodCall(ref mcmc), _))
+                    | Some(End(&MethodCall(ref mcmc))) => {
+                        self.visit_expr(&mcmc.receiver);
+                    }
+                    _ => {}
                 }
-                self.visit_expr(&emc.receiver)
             }
-            _ => {}
-        }   
+            self.visit_expr(&emc.receiver)
+        }
     }
 }
 
@@ -125,27 +140,40 @@ fn main() {
             opts.next().unwrap()
         } else {
             "./src".to_string()
-        }        
+        }
     };
 
     let walker = WalkDir::new(path.clone()).into_iter();
     fn is_hidden(entry: &DirEntry) -> bool {
-        entry.file_name().to_str().map(|s| s.starts_with(".")).unwrap_or(false)
+        entry
+            .file_name()
+            .to_str()
+            .map(|s| s.starts_with('.'))
+            .unwrap_or(false)
     }
     fn is_dir(entry: &DirEntry) -> bool {
         entry.file_type().is_dir()
     }
     fn is_rs(entry: &DirEntry) -> bool {
-        entry.file_name().to_str().unwrap().to_string().split(".").last().unwrap_or("") == "rs"
+        entry
+            .file_name()
+            .to_str()
+            .unwrap()
+            .to_string()
+            .split('.')
+            .last()
+            .unwrap_or("")
+            == "rs"
     }
 
     let mut total = 0;
     let mut failed = 0;
 
-    for entry in walker.filter_entry(|e| !is_hidden(&e))
-                       .filter(|e| e.is_ok())
-                       .map(|e| e.unwrap())
-                       .filter(|e| !is_dir(e) && is_rs(e))
+    for entry in walker
+        .filter_entry(|e| !is_hidden(&e))
+        .filter(|e| e.is_ok())
+        .map(|e| e.unwrap())
+        .filter(|e| !is_dir(e) && is_rs(e))
     {
         let filepath = &entry.path();
         let mut file = File::open(&filepath).expect("Unable to open file");
@@ -167,26 +195,39 @@ fn main() {
                         Some(tn) => format!("impl {} for {}", tn, struct_name),
                         None => format!("impl {}", struct_name),
                     };
-                    let mut pf = FastPathProgramFinder::new(impl_str, filepath.display().to_string());
+                    let mut pf =
+                        FastPathProgramFinder::new(impl_str, filepath.display().to_string());
                     for imp_item in imp.items {
                         pf.visit_impl_item(&imp_item);
                     }
                     total += pf.total;
                     failed += pf.failed;
-                },
+                }
                 _ => continue,
             }
-
         }
     }
     if total > 0 {
         if failed > 0 {
             eprintln!("{}{}", bold_red!("error"), bold!(format!(": {}/{} fast-path programs failed to compile.\n       You should resolve these issues before running the CCP.", failed, total)))
         } else {
-            println!("       {} {} fast-path programs in {}", bold_green!("Found"), total, path);
-            println!("{} {}", bold_green!("    Verified"), format!("{} programs compile successfully", total));
+            println!(
+                "       {} {} fast-path programs in {}",
+                bold_green!("Found"),
+                total,
+                path
+            );
+            println!(
+                "{} {}",
+                bold_green!("    Verified"),
+                format!("{} programs compile successfully", total)
+            );
         }
     } else {
-        println!("       {} 0 fast-path programs in {}", bold_green!("Found"), path);
+        println!(
+            "       {} 0 fast-path programs in {}",
+            bold_green!("Found"),
+            path
+        );
     }
 }

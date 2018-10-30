@@ -1,15 +1,13 @@
-//! CCP sends this message containing a datapath program. 
+//! CCP sends this message containing a datapath program.
 
+use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
+use lang::Bin;
 use std::io::prelude::*;
 use Result;
-use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};
-use lang::Bin;
 
 pub(crate) const INSTALL: u8 = 2;
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Msg {
     pub sid: u32,
     pub program_uid: u32,
@@ -65,25 +63,26 @@ mod tests {
 
         let (p, mut sc) = Prog::new_with_scope(foo).unwrap();
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
-        let m = super::Msg{
+        let m = super::Msg {
             sid: 1,
             program_uid: 7,
             num_events: 1,
             num_instrs: 3,
-            instrs: b
+            instrs: b,
         };
 
         let buf: Vec<u8> = ::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
         assert_eq!(
             buf,
             vec![
-                2, 0,                                           // INSTALL
-                84, 0,                                          // length = 84
-                1, 0, 0, 0,                                     // sock_id = 1
-                7, 0, 0, 0,                                     // program_uid = 7
-                1, 0, 0, 0,                                     // num_events = 1
-                3, 0, 0, 0,                                     // num_instrs = 3
-                1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0,  // event { flag-idx=1, num-flag=1, body-idx=2, num-body=1 }
+                2, 0, // INSTALL
+                84, 0, // length = 84
+                1, 0, 0, 0, // sock_id = 1
+                7, 0, 0, 0, // program_uid = 7
+                1, 0, 0, 0, // num_events = 1
+                3, 0, 0, 0, // num_instrs = 3
+                1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0,
+                0, // event { flag-idx=1, num-flag=1, body-idx=2, num-body=1 }
                 2, 5, 0, 0, 0, 0, 5, 0, 0, 0, 0, 1, 0, 0, 0, 0, // (def (Report.foo 0))
                 1, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 1, 0, 0, 0, // (when true
                 1, 5, 0, 0, 0, 0, 5, 0, 0, 0, 0, 1, 4, 0, 0, 0, //     (bind Report.foo 4))

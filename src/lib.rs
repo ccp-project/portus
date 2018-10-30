@@ -139,7 +139,7 @@ impl<T: Ipc> Clone for Datapath<T> {
 
 impl<T: Ipc> DatapathTrait for Datapath<T> {
     fn get_sock_id(&self) -> u32 {
-        return self.sock_id;
+        self.sock_id
     }
 
     fn set_program(
@@ -229,7 +229,7 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
     }
 }
 
-fn send_and_install<I>(sock_id: u32, sender: BackendSender<I>, bin: Bin, sc: Scope) -> Result<()>
+fn send_and_install<I>(sock_id: u32, sender: &BackendSender<I>, bin: Bin, sc: &Scope) -> Result<()>
 where
     I: Ipc,
 {
@@ -462,12 +462,12 @@ where
     let mut flows = HashMap::<u32, U::Flow>::default();
     let backend = b.sender();
 
-    cfg.logger.as_ref().map(|log| {
+    if let Some(log) = cfg.logger.as_ref() {
         info!(log, "starting CCP";
             "algorithm" => U::name(),
             "ipc"       => I::name(),
         );
-    });
+    }
 
     let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
 
@@ -475,7 +475,7 @@ where
     for (program_name, program) in programs.iter() {
         match lang::compile(program.as_bytes(), &[]) {
             Ok((bin, sc)) => {
-                match send_and_install(0, backend.clone(), bin, sc.clone()) {
+                match send_and_install(0, &backend, bin, &sc) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(Error(format!(
@@ -501,12 +501,12 @@ where
         match msg {
             Msg::Cr(c) => {
                 if flows.remove(&c.sid).is_some() {
-                    cfg.logger.as_ref().map(|log| {
+                    if let Some(log) = cfg.logger.as_ref() {
                         debug!(log, "re-creating already created flow"; "sid" => c.sid);
-                    });
+                    }
                 }
 
-                cfg.logger.as_ref().map(|log| {
+                if let Some(log) = cfg.logger.as_ref() {
                     debug!(log, "creating new flow"; 
                            "sid" => c.sid, 
                            "init_cwnd" => c.init_cwnd,
@@ -516,7 +516,7 @@ where
                            "dst_ip"  =>  c.dst_ip,
                            "dst_port"  =>  c.dst_port,
                     );
-                });
+                }
 
                 let f = alg.new_flow(
                     Datapath {
@@ -551,10 +551,8 @@ where
                             },
                         )
                     }
-                } else {
-                    cfg.logger.as_ref().map(|log| {
-                        debug!(log, "measurement for unknown flow"; "sid" => m.sid);
-                    });
+                } else if let Some(log) = cfg.logger.as_ref() {
+                    debug!(log, "measurement for unknown flow"; "sid" => m.sid);
                 }
             }
             Msg::Ins(_) => {

@@ -2,17 +2,17 @@ extern crate libc;
 extern crate nix;
 
 use std;
-use std::fs::OpenOptions;
 use std::fs::File;
+use std::fs::OpenOptions;
+use std::marker::PhantomData;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
-use std::marker::PhantomData;
 
 use super::Error;
 use super::Result;
 
 pub struct Socket<T> {
-    fd : File,
+    fd: File,
     _phantom: PhantomData<T>,
 }
 
@@ -26,7 +26,7 @@ impl<T> Socket<T> {
     fn open(options: std::fs::OpenOptions) -> Result<Self> {
         let file = options.open("/dev/ccpkp")?;
         Ok(Socket {
-            fd : file,
+            fd: file,
             _phantom: PhantomData,
         })
     }
@@ -37,7 +37,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
         String::from("char")
     }
 
-    fn send(&self, buf:&[u8]) -> Result<()> {
+    fn send(&self, buf: &[u8]) -> Result<()> {
         nix::unistd::write(self.fd.as_raw_fd(), buf)
             .map(|_| ())
             .map_err(Error::from)

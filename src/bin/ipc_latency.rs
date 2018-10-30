@@ -9,8 +9,8 @@ extern crate time;
 use bytes::{ByteOrder, LittleEndian};
 use clap::Arg;
 use portus::ipc::{Backend, BackendSender, Blocking, Ipc, Nonblocking};
+use std::sync::{atomic, Arc};
 use time::Duration;
-use std::sync::{Arc, atomic};
 
 struct TimeMsg(time::Timespec);
 
@@ -44,22 +44,16 @@ impl portus::serialize::AsRawMsg for TimeMsg {
     }
 }
 
-use std::sync::mpsc;
 use portus::serialize::AsRawMsg;
-fn bench<T: Ipc>(
-    b: &BackendSender<T>,
-    mut l: Backend<T>,
-    iter: u32,
-) -> Vec<Duration> {
+use std::sync::mpsc;
+fn bench<T: Ipc>(b: &BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Duration> {
     (0..iter)
         .map(|_| {
             let then = time::get_time();
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
 
-            if let portus::serialize::Msg::Other(raw) =
-                l.next().expect("receive echo")
-            {
+            if let portus::serialize::Msg::Other(raw) = l.next().expect("receive echo") {
                 let then = TimeMsg::from_raw_msg(raw).expect("get time from raw");
                 time::get_time() - then.0
             } else {
@@ -70,7 +64,7 @@ fn bench<T: Ipc>(
 }
 
 macro_rules! netlink_bench {
-    ($name: ident, $mode: ident) => (
+    ($name: ident, $mode: ident) => {
         #[cfg(target_os = "linux")] // netlink is linux-only
         fn $name(iter: u32) -> Vec<Duration> {
             use std::process::Command;
@@ -100,7 +94,9 @@ macro_rules! netlink_bench {
             let c1 = thread::spawn(move || {
                 let mut buf = [0u8; 1024];
                 let nl = portus::ipc::netlink::Socket::<$mode>::new()
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
+                    .map(|sk| {
+                        Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..])
+                    })
                     .expect("nl ipc initialization");
                 tx.send(vec![]).expect("ok to insmod");
                 tx.send(bench(&nl.sender(), nl, iter)).expect("report rtts");
@@ -122,20 +118,19 @@ macro_rules! netlink_bench {
                 .expect("rmmod failed");
             rx.recv().expect("get rtts")
         }
-        
+
         #[cfg(not(target_os = "linux"))] // netlink is linux-only
         fn $name(_: u32) -> Vec<Duration> {
             vec![]
         }
-    )
+    };
 }
 
 netlink_bench!(netlink_blocking, Blocking);
 netlink_bench!(netlink_nonblocking, Nonblocking);
 
-
 macro_rules! kp_bench {
-    ($name: ident, $mode: ident) => (
+    ($name: ident, $mode: ident) => {
         #[cfg(target_os = "linux")] // kp is linux-only
         fn $name(iter: u32) -> Vec<Duration> {
             use std::process::Command;
@@ -169,7 +164,13 @@ macro_rules! kp_bench {
             let c1 = thread::spawn(move || {
                 let mut receive_buf = [0u8; 1024];
                 let kp = portus::ipc::kp::Socket::<$mode>::new()
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut receive_buf[..]))
+                    .map(|sk| {
+                        Backend::new(
+                            sk,
+                            Arc::new(atomic::AtomicBool::new(true)),
+                            &mut receive_buf[..],
+                        )
+                    })
                     .expect("kp ipc initialization");
                 tx.send(bench(&kp.sender(), kp, iter)).expect("report rtts");
             });
@@ -187,15 +188,14 @@ macro_rules! kp_bench {
         fn $name(_: u32) -> Vec<Duration> {
             vec![]
         }
-    )
+    };
 }
 
 kp_bench!(kp_blocking, Blocking);
 kp_bench!(kp_nonblocking, Nonblocking);
 
-
 macro_rules! unix_bench {
-    ($name: ident, $mode: ident) => (
+    ($name: ident, $mode: ident) => {
         fn $name(iter: u32) -> Vec<Duration> {
             let (tx, rx) = mpsc::channel::<Vec<Duration>>();
             let (ready_tx, ready_rx) = mpsc::channel::<bool>();
@@ -204,18 +204,22 @@ macro_rules! unix_bench {
             let c1 = thread::spawn(move || {
                 let mut receive_buf = [0u8; 1024];
                 let unix = portus::ipc::unix::Socket::<$mode>::new("in", "out")
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut receive_buf[..]))
+                    .map(|sk| {
+                        Backend::new(
+                            sk,
+                            Arc::new(atomic::AtomicBool::new(true)),
+                            &mut receive_buf[..],
+                        )
+                    })
                     .expect("unix ipc initialization");
                 ready_rx.recv().expect("sync");
-                tx.send(bench(&unix.sender(), unix, iter)).expect(
-                    "report rtts",
-                );
+                tx.send(bench(&unix.sender(), unix, iter))
+                    .expect("report rtts");
             });
 
             // echo-er
             let c2 = thread::spawn(move || {
-                let sk = portus::ipc::unix::Socket::<Blocking>::new("out","in")
-                    .expect("sk init");
+                let sk = portus::ipc::unix::Socket::<Blocking>::new("out", "in").expect("sk init");
                 let mut buf = [0u8; 1024];
                 ready_tx.send(true).expect("sync");
                 for _ in 0..iter {
@@ -228,7 +232,7 @@ macro_rules! unix_bench {
             c2.join().expect("join echo thread");
             rx.recv().expect("get rtts")
         }
-    )
+    };
 }
 
 unix_bench!(unix_blocking, Blocking);
@@ -239,37 +243,44 @@ fn main() {
         .version("0.1.0")
         .author("Akshay Narayan <akshayn@mit.edu>")
         .about("Benchmark of IPC Latency")
-        .arg(Arg::with_name("iterations")
-             .long("iterations")
-             .short("i")
-             .help("Specifies how many trials to run (default 100)")
-             .default_value("100"))
+        .arg(
+            Arg::with_name("iterations")
+                .long("iterations")
+                .short("i")
+                .help("Specifies how many trials to run (default 100)")
+                .default_value("100"),
+        )
         .get_matches();
 
-    let trials = u32::from_str_radix(matches.value_of("iterations").unwrap(), 10).expect("iterations must be integral");
+    let trials = u32::from_str_radix(matches.value_of("iterations").unwrap(), 10)
+        .expect("iterations must be integral");
 
     for t in unix_nonblocking(trials)
         .iter()
-        .map(|d| d.num_nanoseconds().unwrap()) {
+        .map(|d| d.num_nanoseconds().unwrap())
+    {
         println!("unix_nonblk {:?}", t);
     }
 
     for t in unix_blocking(trials)
         .iter()
-        .map(|d| d.num_nanoseconds().unwrap()) {
+        .map(|d| d.num_nanoseconds().unwrap())
+    {
         println!("unix_blk {:?}", t);
     }
 
     if cfg!(target_os = "linux") {
         for t in netlink_nonblocking(trials)
             .iter()
-            .map(|d| d.num_nanoseconds().unwrap()) {
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
             println!("nl_nonblk {:?}", t);
         }
 
         for t in netlink_blocking(trials)
             .iter()
-            .map(|d| d.num_nanoseconds().unwrap()) {
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
             println!("nl_blk {:?}", t);
         }
     }
@@ -277,13 +288,15 @@ fn main() {
     if cfg!(target_os = "linux") {
         for t in kp_nonblocking(trials)
             .iter()
-            .map(|d| d.num_nanoseconds().unwrap()) {
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
             println!("kp_nonblk {:?}", t);
         }
 
         for t in kp_blocking(trials)
             .iter()
-            .map(|d| d.num_nanoseconds().unwrap()) {
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
             println!("kp_blk {:?}", t);
         }
     }

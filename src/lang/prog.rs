@@ -1,8 +1,8 @@
 use nom;
 
+use super::ast::{atom, comment, expr, exprs, name, Expr};
+use super::datapath::{check_atom_type, Scope, Type};
 use super::{Error, Result};
-use super::ast::{atom, comment, expr, Expr, exprs, name};
-use super::datapath::{Scope, Type, check_atom_type};
 
 /// An `Event` is a condition expression and a sequence of execution expressions.
 /// If the condition expression evaluates to `true`, the execution expressions are
@@ -30,8 +30,10 @@ named_complete!(
     ws!(delimited!(
         tag!("("),
         tuple!(
-            map!(opt!(tag!("volatile")), |v: Option<nom::types::CompleteByteSlice>| v.is_some()),
-            map!(name, |n: String| Type::Name(n)),
+            map!(opt!(tag!("volatile")), |v: Option<
+                nom::types::CompleteByteSlice,
+            >| v.is_some()),
+            map!(name, Type::Name),
             map_res!(atom, |a: Result<Expr>| a.and_then(|i| check_atom_type(&i)))
         ),
         tag!(")")
@@ -41,11 +43,7 @@ named_complete!(
     report_struct<Vec<(bool, Type, Type)>>,
     ws!(delimited!(
         tag!("("),
-        do_parse!(
-            tag!("Report") >>
-            d: many1!(decl) >> 
-            (d)
-        ),
+        do_parse!(tag!("Report") >> d: many1!(decl) >> (d)),
         tag!(")")
     ))
 );
@@ -57,34 +55,31 @@ named_complete!(
     ws!(delimited!(
         tag!("("),
         do_parse!(
-            tag!("def") >> 
-            defs1 : many0!(decl) >>
-            reports : opt!(report_struct) >>
-            defs2 :  many0!(decl) >>
-            (
-                reports.into_iter().flat_map(|v| v.into_iter())
-                    .filter_map(|(is_volatile, name, init_val)| {
-                        match name {
-                            Type::Name(name) => Some(Type::Name(format!("Report.{}", name))),
-                            _ => None
-                        }.map(|full_name| 
-                            match init_val {
-                                x@ Type::Num(_) | x@ Type::Bool(_) => (is_volatile, full_name, x),
-                                _ => (is_volatile, full_name, Type::None)
-                            }
-                        )
-                    })
+            tag!("def")
+                >> defs1: many0!(decl)
+                >> reports: opt!(report_struct)
+                >> defs2: many0!(decl)
+                >> (reports
+                    .into_iter()
+                    .flat_map(|v| v.into_iter())
+                    .filter_map(|(is_volatile, name, init_val)| match name {
+                        Type::Name(name) => Some(Type::Name(format!("Report.{}", name))),
+                        _ => None,
+                    }
+                    .map(|full_name| match init_val {
+                        x @ Type::Num(_) | x @ Type::Bool(_) => (is_volatile, full_name, x),
+                        _ => (is_volatile, full_name, Type::None),
+                    }))
                     .chain(
-                        defs1.into_iter()
+                        defs1
+                            .into_iter()
                             .chain(defs2)
-                            .map(|(is_volatile, name, init_val)| {
-                            match init_val {
-                                x@ Type::Num(_) | x@ Type::Bool(_) => (is_volatile, name, x),
-                                _ => (is_volatile, name, Type::None)
-                            } 
-                        })
-                    ).collect()
-            )
+                            .map(|(is_volatile, name, init_val)| match init_val {
+                                x @ Type::Num(_) | x @ Type::Bool(_) => (is_volatile, name, x),
+                                _ => (is_volatile, name, Type::None),
+                            })
+                    )
+                    .collect())
         ),
         tag!(")")
     ))
@@ -100,41 +95,38 @@ named_complete!(
     ws!(delimited!(
         tag!("("),
         do_parse!(
-            tag!("when") >>
-            c : expr >>
-            body : exprs >>
-            (
-                c.and_then(|cond| {
+            tag!("when")
+                >> c: expr
+                >> body: exprs
+                >> (c.and_then(|cond| {
                     let exps: Result<Vec<Expr>> = body.into_iter().collect();
-                    Ok(Event{
+                    Ok(Event {
                         flag: cond,
                         body: exps?,
                     })
-                })
-            )
+                }))
         ),
         tag!(")")
     ))
 );
 named_complete!(
     events<Vec<Result<Event>>>,
-    many1!(do_parse!(
-        opt!(comment) >>
-        e: event >>
-        (e)
-    ))
+    many1!(do_parse!(opt!(comment) >> e: event >> (e)))
 );
 
 impl Prog {
     /// Turn raw bytes into an AST representation, including implementing syntactic sugar features
-    /// such as `(report)` and `(fallthrough)`. 
+    /// such as `(report)` and `(fallthrough)`.
     pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
-        use nom::Needed;
         use nom::types::CompleteByteSlice;
+        use nom::Needed;
         let body = match defs(CompleteByteSlice(source)) {
             Ok((rest, flow_state)) => {
-                let (reports, controls): (Vec<(bool, String, Type)>, Vec<(bool, String, Type)>) = flow_state
+                let (reports, controls): (
+                    Vec<(bool, String, Type)>,
+                    Vec<(bool, String, Type)>,
+                ) = flow_state
                     .into_iter()
                     .map(|(is_volatile, var, typ)| match var {
                         Type::Name(v) => (is_volatile, v, typ),
@@ -143,7 +135,7 @@ impl Prog {
                     .partition(|&(_, ref var, _)| var.starts_with("Report."));
 
                 for (is_volatile, var, typ) in reports {
-                    scope.new_report(is_volatile, var, typ); 
+                    scope.new_report(is_volatile, var, typ);
                 }
 
                 for (_is_volatile, var, typ) in controls {
@@ -152,22 +144,22 @@ impl Prog {
 
                 Ok(rest)
             }
-            Err(nom::Err::Error(e)) |
-            Err(nom::Err::Failure(e)) => Err(Error::from(e)),
-            Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from(String::from("need more src"))),
-            Err(nom::Err::Incomplete(Needed::Size(s))) => Err(
-                Error::from(format!("need {} more bytes", s)),
-            ),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(Error::from(e)),
+            Err(nom::Err::Incomplete(Needed::Unknown)) => {
+                Err(Error::from(String::from("need more src")))
+            }
+            Err(nom::Err::Incomplete(Needed::Size(s))) => {
+                Err(Error::from(format!("need {} more bytes", s)))
+            }
         }?;
 
         let evs = match events(body) {
             Ok((_, me)) => me.into_iter().collect(),
-            Err(nom::Err::Error(e)) |
-            Err(nom::Err::Failure(e)) => Err(Error::from(e)),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(Error::from(e)),
             Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from("need more src")),
-            Err(nom::Err::Incomplete(Needed::Size(s))) => Err(
-                Error::from(format!("need {} more bytes", s)),
-            ),
+            Err(nom::Err::Incomplete(Needed::Size(s))) => {
+                Err(Error::from(format!("need {} more bytes", s)))
+            }
         }?;
 
         let mut p = Prog(evs);
@@ -176,11 +168,11 @@ impl Prog {
         // TODO make Expr::new return Iter, make self wrap an iter also
         Ok((p, scope))
     }
-    
+
     fn desugar(&mut self) {
-        self.0.iter_mut()
-            .for_each(|v| v.body.iter_mut()
-            .for_each(|e| e.desugar()));
+        self.0
+            .iter_mut()
+            .for_each(|v| v.body.iter_mut().for_each(|e| e.desugar()));
     }
 }
 
@@ -190,8 +182,8 @@ mod tests {
     use nom::types::CompleteByteSlice;
 
     use lang::ast::{Expr, Op, Prim};
-    use lang::prog::{Event,Prog};
     use lang::datapath::{Scope, Type};
+    use lang::prog::{Event, Prog};
 
     #[test]
     fn defs() {
@@ -201,17 +193,24 @@ mod tests {
             Ok((r, me)) => {
                 assert_eq!(r, CompleteByteSlice(&[]));
                 assert_eq!(
-                me,
-                vec![
-                    (false, Type::Name(String::from("Report.Foo")), Type::Num(Some(0))),
-                    (true, Type::Name(String::from("Report.Baz")), Type::Num(Some(0))),
-                    (false, Type::Name(String::from("Bar")), Type::Num(Some(0))),
-                    (false, Type::Name(String::from("Qux")), Type::Num(Some(0))),
-                ]
-            );
+                    me,
+                    vec![
+                        (
+                            false,
+                            Type::Name(String::from("Report.Foo")),
+                            Type::Num(Some(0))
+                        ),
+                        (
+                            true,
+                            Type::Name(String::from("Report.Baz")),
+                            Type::Num(Some(0))
+                        ),
+                        (false, Type::Name(String::from("Bar")), Type::Num(Some(0))),
+                        (false, Type::Name(String::from("Qux")), Type::Num(Some(0))),
+                    ]
+                );
             }
-            Err(nom::Err::Error(e)) | 
-            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -226,13 +225,14 @@ mod tests {
                 assert_eq!(r, CompleteByteSlice(&[]));
                 assert_eq!(
                     me,
-                    vec![
-                        (false, Type::Name(String::from("Report.Foo")), Type::Num(Some(u64::max_value()))),
-                    ]
+                    vec![(
+                        false,
+                        Type::Name(String::from("Report.Foo")),
+                        Type::Num(Some(u64::max_value()))
+                    ),]
                 );
             }
-            Err(nom::Err::Error(e)) | 
-            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -260,15 +260,13 @@ mod tests {
                 assert_eq!(r, CompleteByteSlice(&[]));
                 assert_eq!(
                     me,
-                    Event{
+                    Event {
                         flag: Expr::Atom(Prim::Bool(true)),
-                        body: vec![
-                            Expr::Sexp(
-                                Op::Add,
-                                Box::new(Expr::Atom(Prim::Num(3))),
-                                Box::new(Expr::Atom(Prim::Num(4))),
-                            ),
-                        ],
+                        body: vec![Expr::Sexp(
+                            Op::Add,
+                            Box::new(Expr::Atom(Prim::Num(3))),
+                            Box::new(Expr::Atom(Prim::Num(4))),
+                        ),],
                     }
                 );
             }
@@ -296,7 +294,7 @@ mod tests {
                 assert_eq!(r, CompleteByteSlice(&[]));
                 assert_eq!(
                     me,
-                    Event{
+                    Event {
                         flag: Expr::Sexp(
                             Op::Lt,
                             Box::new(Expr::Atom(Prim::Num(2))),
@@ -320,8 +318,7 @@ mod tests {
             Ok((_, Err(me))) => {
                 panic!(me);
             }
-            Err(nom::Err::Error(e)) | 
-            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -339,8 +336,8 @@ mod tests {
                 (* 9 8)
             )
         ";
+        use lang::Result;
         use nom::Needed;
-        use ::lang::Result;
         match super::events(CompleteByteSlice(foo)) {
             Ok((r, me)) => {
                 assert_eq!(r, CompleteByteSlice(&[]));
@@ -348,7 +345,7 @@ mod tests {
                 assert_eq!(
                     res_me,
                     vec![
-                        Event{
+                        Event {
                             flag: Expr::Sexp(
                                 Op::Lt,
                                 Box::new(Expr::Atom(Prim::Num(2))),
@@ -367,7 +364,7 @@ mod tests {
                                 ),
                             ],
                         },
-                        Event{
+                        Event {
                             flag: Expr::Sexp(
                                 Op::Lt,
                                 Box::new(Expr::Atom(Prim::Num(4))),
@@ -389,8 +386,7 @@ mod tests {
                     ],
                 );
             }
-            Err(nom::Err::Error(e)) | 
-            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -426,20 +422,17 @@ mod tests {
             )
         ";
         let (ast, sc) = Prog::new_with_scope(foo).unwrap();
-        assert_eq!(
-            sc,
-            {
-                let mut expected_scope = Scope::new();
-                expected_scope.new_control(String::from("foo"), Type::Num(Some(0)));
-                expected_scope.new_control(String::from("bar"), Type::Num(Some(0)));
-                expected_scope
-            }
-        );
+        assert_eq!(sc, {
+            let mut expected_scope = Scope::new();
+            expected_scope.new_control(String::from("foo"), Type::Num(Some(0)));
+            expected_scope.new_control(String::from("bar"), Type::Num(Some(0)));
+            expected_scope
+        });
 
         assert_eq!(
             ast,
             Prog(vec![
-                Event{
+                Event {
                     flag: Expr::Sexp(
                         Op::Gt,
                         Box::new(Expr::Atom(Prim::Name(String::from("foo")))),
@@ -467,7 +460,7 @@ mod tests {
                         ),
                     ],
                 },
-                Event{
+                Event {
                     flag: Expr::Atom(Prim::Bool(true)),
                     body: vec![
                         Expr::Sexp(

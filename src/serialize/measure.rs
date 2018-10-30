@@ -1,31 +1,31 @@
 //! When the datapath program specifies, the datapath sends a Report message containing
 //! measurements to CCP. Use the `Scope` returned from compiling the program to query the values.
 
+use super::{u32_to_u8s, u64_from_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
 use std::io::prelude::*;
-use {Result, Error};
-use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s, u64_to_u8s, u64_from_u8s};
+use {Error, Result};
 
 pub(crate) const MEASURE: u8 = 1;
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Msg {
     pub sid: u32,
     pub program_uid: u32,
-    // This is actually a u32 in libccp for struct alignment purposes. It *should* be a u8 
+    // This is actually a u32 in libccp for struct alignment purposes. It *should* be a u8
     // (as it is here), to help enforce the maximum number of fields, but it's much easier
-    // to keep everything 4-byte-aligned for de-serialization. 
+    // to keep everything 4-byte-aligned for de-serialization.
     pub num_fields: u8,
     pub fields: Vec<u64>,
 }
 
 fn deserialize_fields(buf: &[u8]) -> Result<Vec<u64>> {
     buf.chunks(8)
-        .map(|sl| if sl.len() < 8 {
-            Err(Error(format!("not long enough: {:?}", sl)))
-        } else {
-            Ok(u64_from_u8s(sl))
+        .map(|sl| {
+            if sl.len() < 8 {
+                Err(Error(format!("not long enough: {:?}", sl)))
+            } else {
+                Ok(u64_from_u8s(sl))
+            }
         })
         .collect()
 }
@@ -61,7 +61,7 @@ impl AsRawMsg for Msg {
     fn from_raw_msg(msg: RawMsg) -> Result<Self> {
         let u32s = unsafe { msg.get_u32s() }?;
         let b = msg.get_bytes()?;
-        
+
         Ok(Msg {
             sid: msg.sid,
             program_uid: u32s[0],
@@ -74,11 +74,11 @@ impl AsRawMsg for Msg {
 #[cfg(test)]
 mod tests {
     macro_rules! check_measure_msg {
-        ($id: ident, $sid:expr, $program_uid:expr, $fields:expr) => (
+        ($id: ident, $sid:expr, $program_uid:expr, $fields:expr) => {
             check_msg!(
                 $id,
                 super::Msg,
-                super::Msg{
+                super::Msg {
                     sid: $sid,
                     program_uid: $program_uid,
                     num_fields: $fields.len() as u8,
@@ -86,8 +86,8 @@ mod tests {
                 },
                 ::serialize::Msg::Ms(mes),
                 mes
-                );
-            )
+            );
+        };
     }
 
     check_measure_msg!(
@@ -107,7 +107,10 @@ mod tests {
         32,
         3,
         vec![
-        42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242,42424242
+            42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242,
+            42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242,
+            42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242,
+            42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242, 42424242
         ]
     );
 }

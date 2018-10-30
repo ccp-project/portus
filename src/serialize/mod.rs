@@ -1,7 +1,7 @@
 //! Serialization library for communicating with libccp in the datapath.
 //!
 //! Messages have a common CCP header:
-//! 
+//!
 //! ```no-run
 //! -----------------------------------
 //! | Msg Type | Len (B)  | Uint32    |
@@ -25,9 +25,9 @@
 //! In these cases, there is little deserialization overhead from the u32 and u64 parts of the message.
 
 use std;
-use std::vec::Vec;
 use std::io::prelude::*;
 use std::io::Cursor;
+use std::vec::Vec;
 
 use super::Result;
 
@@ -76,9 +76,7 @@ fn deserialize_header<R: Read>(buf: &mut R) -> Result<(u8, u32, u32)> {
     Ok((typ as u8, u32::from(len), sid))
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 /// A raw messge buffer with a parsed CCP header.
 pub struct RawMsg<'a> {
     pub typ: u8,
@@ -104,7 +102,9 @@ impl<'a> RawMsg<'a> {
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
             measure::MEASURE => Ok(&self.bytes[8..(self.len as usize - HDR_LENGTH as usize)]),
-            update_field::UPDATE_FIELD => Ok(&self.bytes[4..(self.len as usize - HDR_LENGTH as usize)]),
+            update_field::UPDATE_FIELD => {
+                Ok(&self.bytes[4..(self.len as usize - HDR_LENGTH as usize)])
+            }
             _ => Ok(self.bytes),
         }
     }
@@ -131,31 +131,32 @@ pub trait AsRawMsg {
 
 #[macro_use]
 mod test_helper {
-    /// Generates a test which serializes and deserializes a message 
+    /// Generates a test which serializes and deserializes a message
     /// and verifies the message is unchanged.
     #[macro_export]
     macro_rules! check_msg {
-        ($id: ident, $typ: ty, $m: expr, $got: pat, $x: ident) => (
+        ($id: ident, $typ: ty, $m: expr, $got: pat, $x: ident) => {
             #[test]
             fn $id() {
                 let m = $m;
                 let buf: Vec<u8> = ::serialize::serialize::<$typ>(&m.clone()).expect("serialize");
-                let (msg, _) = ::serialize::Msg::from_buf(&buf[..]).expect("deserialize: check_msg");
+                let (msg, _) =
+                    ::serialize::Msg::from_buf(&buf[..]).expect("deserialize: check_msg");
                 match msg {
                     $got => assert_eq!($x, m),
                     _ => panic!("wrong type for message"),
                 }
             }
-        )
+        };
     }
 }
 
-pub mod create;
-pub mod measure;
-pub mod install;
 pub mod changeprog;
-pub mod update_field;
+pub mod create;
+pub mod install;
+pub mod measure;
 mod testmsg;
+pub mod update_field;
 
 /// Serialize a serializable message.
 pub fn serialize<T: AsRawMsg>(m: &T) -> Result<Vec<u8>> {
@@ -171,7 +172,10 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     let mut buf = Cursor::new(buf);
     let (typ, len, sid) = deserialize_header(&mut buf)?;
     if len < 8 {
-        return Err(super::Error(format!("nonsensical len in header: ({}, {}, {})", typ, len, sid)));
+        return Err(super::Error(format!(
+            "nonsensical len in header: ({}, {}, {})",
+            typ, len, sid
+        )));
     }
 
     let i = buf.position();
@@ -187,8 +191,7 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
 /// Reads message type in the header of the input buffer and returns
 /// a Msg of the corresponding type. If the message type is unkown, returns a
 /// wrapper with direct access to the message bytes.
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Msg<'a> {
     Cr(create::Msg),
     Ms(measure::Msg),
@@ -325,6 +328,6 @@ mod tests {
             _ => panic!("wrong type for message"),
         }
 
-        assert_eq!(buf[len1+len2..].len(), 0);
+        assert_eq!(buf[len1 + len2..].len(), 0);
     }
 }

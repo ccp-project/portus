@@ -1,5 +1,5 @@
 //! The datapath program compiler.
-//! 
+//!
 //! Datapath programs consist of two parts:
 //! 1. Variable definitions
 //! 2. Event definitions
@@ -11,13 +11,13 @@
 //! the program. A `def` clause contains one or more variable definitions, and the definition of
 //! the `Report` struct. Only the variables within the `Report` struct will be accessible from CCP
 //! programs. Variables within the `Report` struct can optionally be declared `volatile`, which
-//! means they will be reset to their default values after each report is sent to CCP. For example, 
+//! means they will be reset to their default values after each report is sent to CCP. For example,
 //! a variable counting the number of cumulatively acknowledged packets would be declared volatile
 //! to prevent double-counting these values in the CCP algorithm logic.
 //!
 //! ### Example
 //! ```no-run
-//! (def 
+//! (def
 //!     (state_var 0)
 //!     (Report
 //!         (minrtt +infinity)
@@ -100,8 +100,8 @@
 //! "Flow.rtt_sample_us"    | Round-trip time             
 //! "Flow.was_timeout"      | Did a timeout occur?        
 
-use std;
 use nom;
+use std;
 
 use std::fmt::{Display, Formatter};
 
@@ -177,9 +177,9 @@ mod prog;
 mod serialize;
 
 pub use self::datapath::Bin;
-pub use self::datapath::Type;
 pub use self::datapath::Reg;
 pub use self::datapath::Scope;
+pub use self::datapath::Type;
 pub use self::prog::Prog;
 
 /// `compile()` uses 5 passes to yield Instrs.
@@ -191,17 +191,16 @@ pub use self::prog::Prog;
 /// 4. The list of runtime updates (from `updates`) for values is applied to the Scope.
 /// 5. `Bin::compile_prog()` turns a `Prog` into a `Bin`, which is a `Vec` of datapath `Instr`
 pub fn compile(src: &[u8], updates: &[(&str, u32)]) -> Result<(Bin, Scope)> {
-    Prog::new_with_scope(src)
-        .and_then(|(p, mut s)| {
-            for &(name, new_val) in updates {
-                match s.update_type(name, &Type::Num(Some(new_val as u64))) {
-                    Ok(_) => {},
-                    Err(e) => println!("err: {}", e)
-                }
+    Prog::new_with_scope(src).and_then(|(p, mut s)| {
+        for &(name, new_val) in updates {
+            match s.update_type(name, &Type::Num(Some(new_val as u64))) {
+                Ok(_) => {}
+                Err(e) => println!("err: {}", e),
             }
+        }
 
-            Ok((Bin::compile_prog(&p, &mut s)?, s))
-        })
+        Ok((Bin::compile_prog(&p, &mut s)?, s))
+    })
 }
 
 /// `compile_and_serialize()` adds a fourth pass.
@@ -216,7 +215,7 @@ pub fn compile_and_serialize(src: &[u8], updates: &[(&str, u32)]) -> Result<(Vec
 mod tests {
     extern crate test;
     use self::test::Bencher;
-    
+
     #[bench]
     fn bench_1_line_compileonly(b: &mut Bencher) {
         let fold = "
@@ -224,7 +223,8 @@ mod tests {
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
             )
-        ".as_bytes();
+        "
+        .as_bytes();
         b.iter(|| super::compile(fold, &[]).unwrap())
     }
 
@@ -235,10 +235,11 @@ mod tests {
             (when true
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
             )
-        ".as_bytes();
+        "
+        .as_bytes();
         b.iter(|| super::compile_and_serialize(fold, &[]).unwrap())
     }
-    
+
     #[bench]
     fn bench_2_line(b: &mut Bencher) {
         let fold = "
@@ -247,10 +248,11 @@ mod tests {
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
                 (:= Report.bar (+ Report.bar Ack.bytes_misordered))
             )
-        ".as_bytes();
+        "
+        .as_bytes();
         b.iter(|| super::compile_and_serialize(fold, &[]).unwrap())
     }
-    
+
     #[bench]
     fn bench_ewma(b: &mut Bencher) {
         let fold = "
@@ -259,10 +261,11 @@ mod tests {
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
                 (:= Report.bar (ewma 2 Flow.rate_outgoing))
             )
-        ".as_bytes();
+        "
+        .as_bytes();
         b.iter(|| super::compile_and_serialize(fold, &[]).unwrap())
     }
-    
+
     #[bench]
     fn bench_if(b: &mut Bencher) {
         let fold = "
@@ -271,10 +274,11 @@ mod tests {
                 (:= Report.foo (+ Report.foo Ack.bytes_acked))
                 (bind Report.bar (!if Report.bar (> Ack.lost_pkts_sample 0)))
             )
-        ".as_bytes();
+        "
+        .as_bytes();
         b.iter(|| super::compile_and_serialize(fold, &[]).unwrap())
     }
-    
+
     #[bench]
     fn bench_3_line(b: &mut Bencher) {
         let fold = "
@@ -284,7 +288,8 @@ mod tests {
                 (:= Report.bar (+ Report.bar Ack.bytes_misordered))
                 (:= Report.baz (+ Report.bar Ack.ecn_bytes))
             )
-        ".as_bytes();
+        "
+        .as_bytes();
         b.iter(|| super::compile_and_serialize(fold, &[]).unwrap())
     }
 }

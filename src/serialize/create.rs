@@ -1,14 +1,12 @@
 //! Message sent from datapath to CCP when a new flow starts.
 
+use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
 use std::io::prelude::*;
 use Result;
-use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s};
 
 pub(crate) const CREATE: u8 = 0;
 
-#[derive(Clone, Copy)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Msg {
     pub sid: u32,
     pub init_cwnd: u32,
@@ -21,11 +19,7 @@ pub struct Msg {
 
 impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u32, u32) {
-        (
-            CREATE,
-            HDR_LENGTH + 6 * 4,
-            self.sid,
-        )
+        (CREATE, HDR_LENGTH + 6 * 4, self.sid)
     }
 
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
@@ -66,20 +60,14 @@ impl AsRawMsg for Msg {
 #[cfg(test)]
 mod tests {
     macro_rules! check_create_msg {
-        ($id: ident, $msg: expr) => (
-            check_msg!(
-                $id, 
-                super::Msg,
-                $msg,
-                ::serialize::Msg::Cr(crm),
-                crm
-            );
-        )
+        ($id: ident, $msg: expr) => {
+            check_msg!($id, super::Msg, $msg, ::serialize::Msg::Cr(crm), crm);
+        };
     }
 
     check_create_msg!(
         test_create_1,
-        super::Msg{
+        super::Msg {
             sid: 15,
             init_cwnd: 1448 * 10,
             mss: 1448,

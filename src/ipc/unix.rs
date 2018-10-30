@@ -7,7 +7,9 @@ use std::marker::PhantomData;
 
 macro_rules! unix_addr {
     // TODO for now assumes just a single CCP (id=0)
-    ($x:expr) => (format!("/tmp/ccp/0/{}", $x));
+    ($x:expr) => {
+        format!("/tmp/ccp/0/{}", $x)
+    };
 }
 
 pub struct Socket<T> {
@@ -53,7 +55,8 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     fn send(&self, msg: &[u8]) -> Result<()> {
-        self.sk.send_to(msg, self.dest.clone())
+        self.sk
+            .send_to(msg, self.dest.clone())
             .map(|_| ())
             .map_err(Error::from)
     }
@@ -61,7 +64,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     fn recv(&self, msg: &mut [u8]) -> Result<usize> {
         self.sk.recv(msg).map_err(Error::from)
     }
-    
+
     fn close(&mut self) -> Result<()> {
         use std::net::Shutdown;
         self.sk.shutdown(Shutdown::Both).map_err(Error::from)

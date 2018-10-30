@@ -1,11 +1,9 @@
+use super::{AsRawMsg, RawMsg, HDR_LENGTH};
 use std;
 use std::io::prelude::*;
 use Result;
-use super::{AsRawMsg, RawMsg, HDR_LENGTH};
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Msg(pub String);
 
 impl AsRawMsg for Msg {

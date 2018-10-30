@@ -1,15 +1,13 @@
-use super::{Error, Result};
 use super::ast::Op;
 use super::datapath::{Bin, Event, Instr, Reg};
-use ::serialize::u32_to_u8s;
+use super::{Error, Result};
+use serialize::u32_to_u8s;
 
 /// Serialize a Bin to bytes for transfer to the datapath
 impl Bin {
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let b = self.clone();
-        let ists = b.instrs
-            .into_iter()
-            .flat_map(|i| i.into_iter());
+        let ists = b.instrs.into_iter().flat_map(|i| i.into_iter());
         b.events
             .into_iter()
             .flat_map(|i| i.into_iter())
@@ -39,15 +37,15 @@ impl IntoIterator for Event {
     type IntoIter = ::std::vec::IntoIter<Result<u8>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let v = &mut[0, 0, 0, 0,
-                     0, 0, 0, 0,
-                     0, 0, 0, 0,
-                     0, 0, 0, 0];
+        let v = &mut [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         u32_to_u8s(&mut v[0..=3], self.flag_idx);
         u32_to_u8s(&mut v[4..=7], self.num_flag_instrs);
         u32_to_u8s(&mut v[8..=11], self.body_idx);
         u32_to_u8s(&mut v[12..=15], self.num_body_instrs);
-        v.iter().map(|u| Ok(*u)).collect::<Vec<Result<u8>>>().into_iter()
+        v.iter()
+            .map(|u| Ok(*u))
+            .collect::<Vec<Result<u8>>>()
+            .into_iter()
     }
 }
 
@@ -68,7 +66,7 @@ impl IntoIterator for Instr {
     type IntoIter = ::std::vec::IntoIter<Result<u8>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let op = vec![Ok(serialize_op(&self.op))];
+        let op = vec![Ok(serialize_op(self.op))];
         op.into_iter()
             .chain(self.res)
             .chain(self.left)
@@ -78,25 +76,25 @@ impl IntoIterator for Instr {
     }
 }
 
-fn serialize_op(o: &Op) -> u8 {
-    match *o {
-        Op::Add      => 0,
-        Op::And      => unreachable!(),
-        Op::Bind     => 1,
-        Op::Def      => 2,
-        Op::Div      => 3,
-        Op::Equiv    => 4,
-        Op::Ewma     => 5,
-        Op::Gt       => 6,
-        Op::If       => 7,
-        Op::Lt       => 8,
-        Op::Max      => 9,
-        Op::MaxWrap  => 10,
-        Op::Min      => 11,
-        Op::Mul      => 12,
-        Op::NotIf    => 13,
-        Op::Or       => unreachable!(),
-        Op::Sub      => 14,
+fn serialize_op(o: Op) -> u8 {
+    match o {
+        Op::Add => 0,
+        Op::And => unreachable!(),
+        Op::Bind => 1,
+        Op::Def => 2,
+        Op::Div => 3,
+        Op::Equiv => 4,
+        Op::Ewma => 5,
+        Op::Gt => 6,
+        Op::If => 7,
+        Op::Lt => 8,
+        Op::Max => 9,
+        Op::MaxWrap => 10,
+        Op::Min => 11,
+        Op::Mul => 12,
+        Op::NotIf => 13,
+        Op::Or => unreachable!(),
+        Op::Sub => 14,
     }
 }
 
@@ -108,9 +106,10 @@ impl IntoIterator for Reg {
         let reg = match self {
             Reg::Control(i, _) => {
                 if i > 15 {
-                    Err(Error::from(
-                        format!("Control Register index too big (max 15): {:?}", i),
-                    ))
+                    Err(Error::from(format!(
+                        "Control Register index too big (max 15): {:?}",
+                        i
+                    )))
                 } else {
                     Ok((0u8, u32::from(i)))
                 }
@@ -120,43 +119,48 @@ impl IntoIterator for Reg {
                 if num == u64::max_value() || num < (1 << 31) {
                     Ok((1u8, num as u32))
                 } else {
-                    Err(Error::from(
-                        format!("ImmNum too big (max 32 bits): {:?}", num),
-                    ))
+                    Err(Error::from(format!(
+                        "ImmNum too big (max 32 bits): {:?}",
+                        num
+                    )))
                 }
             }
             Reg::Implicit(i, _) => {
                 if i > 5 {
-                    Err(Error::from(
-                        format!("Implicit Register index too big (max 5): {:?}", i),
-                    ))
+                    Err(Error::from(format!(
+                        "Implicit Register index too big (max 5): {:?}",
+                        i
+                    )))
                 } else {
                     Ok((2u8, u32::from(i)))
                 }
             }
             Reg::Local(i, _) => {
                 if i > 5 {
-                    Err(Error::from(
-                        format!("Local Register index too big (max 5): {:?}", i),
-                    ))
+                    Err(Error::from(format!(
+                        "Local Register index too big (max 5): {:?}",
+                        i
+                    )))
                 } else {
                     Ok((3u8, u32::from(i)))
                 }
             }
             Reg::Primitive(i, _) => {
                 if i > 15 {
-                    Err(Error::from(
-                        format!("Primitive Register index too big (max 15): {:?}", i),
-                    ))
+                    Err(Error::from(format!(
+                        "Primitive Register index too big (max 15): {:?}",
+                        i
+                    )))
                 } else {
                     Ok((4u8, u32::from(i)))
                 }
             }
             Reg::Report(i, _, is_volatile) => {
                 if i > 15 {
-                    Err(Error::from(
-                        format!("Report Register index too big (max 15): {:?}", i),
-                    ))
+                    Err(Error::from(format!(
+                        "Report Register index too big (max 15): {:?}",
+                        i
+                    )))
                 } else {
                     // in libccp:
                     // VOLATILE_REPORT_REG is type #5
@@ -167,9 +171,10 @@ impl IntoIterator for Reg {
             }
             Reg::Tmp(i, _) => {
                 if i > 15 {
-                    Err(Error::from(
-                        format!("Tmp Register index too big (max 15): {:?}", i),
-                    ))
+                    Err(Error::from(format!(
+                        "Tmp Register index too big (max 15): {:?}",
+                        i
+                    )))
                 } else {
                     Ok((7u8, u32::from(i)))
                 }
@@ -177,13 +182,15 @@ impl IntoIterator for Reg {
             Reg::None => unreachable!(),
         };
 
-        reg
-            .map(|(typ, idx)| {
-                let v = &mut[typ, 0, 0, 0, 0];
-                u32_to_u8s(&mut v[1..5], idx);
-                v.iter().map(|u| Ok(*u)).collect::<Vec<Result<u8>>>().into_iter()
-            })
-            .unwrap_or_else(|e| vec![Err(e)].into_iter())
+        reg.map(|(typ, idx)| {
+            let v = &mut [typ, 0, 0, 0, 0];
+            u32_to_u8s(&mut v[1..5], idx);
+            v.iter()
+                .map(|u| Ok(*u))
+                .collect::<Vec<Result<u8>>>()
+                .into_iter()
+        })
+        .unwrap_or_else(|e| vec![Err(e)].into_iter())
     }
 }
 
@@ -197,12 +204,12 @@ impl Reg {
 mod tests {
     use lang;
     use lang::ast::Op;
-    use lang::datapath::{Bin, Event, Instr, Type, Reg};
+    use lang::datapath::{Bin, Event, Instr, Reg, Type};
     #[test]
     fn do_ser() {
         // make a Bin to serialize
-        let b = Bin{
-            events: vec![Event{
+        let b = Bin {
+            events: vec![Event {
                 flag_idx: 1,
                 num_flag_instrs: 1,
                 body_idx: 2,
@@ -227,7 +234,7 @@ mod tests {
                     left: Reg::Report(6, Type::Num(Some(0)), true),
                     right: Reg::ImmNum(4),
                 },
-            ]
+            ],
         };
 
         let v = b.serialize().expect("serialize");
@@ -235,20 +242,18 @@ mod tests {
             v,
             vec![
                 // event description
-                0x01, 0x00, 0x00, 0x00,
-                0x01, 0x00, 0x00, 0x00,
-                0x02, 0x00, 0x00, 0x00,
-                0x01, 0x00, 0x00, 0x00,
-                // def reg::report(6) <- 0
-                0x02, 0x05, 0x06, 0x00, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 
-                // reg::eventFlag <- 1
-                0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
-                // def reg::report(6) <- 0
-                0x01, 0x05, 0x06, 0x00, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x00, 0x00, 
+                0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00,
+                0x00, 0x00, // def reg::report(6) <- 0
+                0x02, 0x05, 0x06, 0x00, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, // reg::eventFlag <- 1
+                0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00,
+                0x00, 0x00, // def reg::report(6) <- 0
+                0x01, 0x05, 0x06, 0x00, 0x00, 0x00, 0x05, 0x06, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00,
+                0x00, 0x00,
             ]
         );
     }
-    
+
     #[test]
     fn do_ser_max_imm() {
         // make an InstrBytes to serialize
@@ -259,15 +264,19 @@ mod tests {
             right: Reg::ImmNum(0x3fff_ffff),
         };
 
-        let v = b.into_iter().collect::<lang::Result<Vec<u8>>>().expect("serialize");
+        let v = b
+            .into_iter()
+            .collect::<lang::Result<Vec<u8>>>()
+            .expect("serialize");
         assert_eq!(
             v,
-            vec![ 
-                0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0x3f, 0x01, 0xff, 0xff, 0xff, 0x3f, 
+            vec![
+                0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0x3f, 0x01, 0xff, 0xff,
+                0xff, 0x3f,
             ]
         );
     }
-    
+
     #[test]
     fn do_ser_def_max_imm() {
         // make a Bin to serialize
@@ -278,11 +287,15 @@ mod tests {
             right: Reg::ImmNum(u64::max_value()),
         };
 
-        let v = b.into_iter().collect::<lang::Result<Vec<u8>>>().expect("serialize");
+        let v = b
+            .into_iter()
+            .collect::<lang::Result<Vec<u8>>>()
+            .expect("serialize");
         assert_eq!(
             v,
             vec![
-                0x02, 0x05, 0x02, 0x00, 0x00, 0x00, 0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0xff,
+                0x02, 0x05, 0x02, 0x00, 0x00, 0x00, 0x05, 0x02, 0x00, 0x00, 0x00, 0x01, 0xff, 0xff,
+                0xff, 0xff,
             ]
         );
     }

@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex};
 use super::Ipc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct FakeIpc(Arc<Mutex<Vec<u8>>>);
@@ -38,13 +38,13 @@ impl Ipc for FakeIpc {
 
 #[test]
 fn test_unix() {
-    use std;
-    use std::thread;
-    use std::sync::atomic;
-    use ::test_helper::TestMsg;
     use super::Blocking;
-    use ::serialize;
-    use ::serialize::Msg;
+    use serialize;
+    use serialize::Msg;
+    use std;
+    use std::sync::atomic;
+    use std::thread;
+    use test_helper::TestMsg;
 
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -52,27 +52,20 @@ fn test_unix() {
         rx.recv().expect("chan rcv");
         let sk2 = super::unix::Socket::<Blocking>::new("out", "in").expect("init socket");
         let mut buf = [0u8; 1024];
-        let b2 = super::Backend::new(
-            sk2, 
-            Arc::new(atomic::AtomicBool::new(true)), 
-            &mut buf[..],
-        );
+        let b2 = super::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
         let test_msg = TestMsg(String::from("hello, world"));
         let test_msg_buf = serialize::serialize(&test_msg).expect("serialize test msg");
-        b2.sender().send_msg(&test_msg_buf[..]).expect(
-            "send message",
-        );
+        b2.sender()
+            .send_msg(&test_msg_buf[..])
+            .expect("send message");
     });
-        
+
     let sk1 = super::unix::Socket::<Blocking>::new("in", "out").expect("init socket");
     let mut buf = [0u8; 1024];
-    let mut b1 = super::Backend::new(
-        sk1, 
-        Arc::new(atomic::AtomicBool::new(true)), 
-        &mut buf[..],
-    );
+    let mut b1 = super::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
     tx.send(true).expect("chan send");
-    match b1.next().expect("receive message") { // Msg::Other(RawMsg)
+    match b1.next().expect("receive message") {
+        // Msg::Other(RawMsg)
         Msg::Other(r) => {
             assert_eq!(r.typ, 0xff);
             assert_eq!(r.len, serialize::HDR_LENGTH + "hello, world".len() as u32);
@@ -86,15 +79,15 @@ fn test_unix() {
 
 #[test]
 fn test_chan() {
-    use std::thread;
-    use std::sync::{atomic, mpsc};
-    use ::test_helper::TestMsg;
     use super::Blocking;
-    use ::serialize;
-    use ::serialize::Msg;
+    use serialize;
+    use serialize::Msg;
+    use std::sync::{atomic, mpsc};
+    use std::thread;
+    use test_helper::TestMsg;
 
     let (tx, rx) = mpsc::channel();
-    
+
     let (s1, r1) = mpsc::channel();
     let (s2, r2) = mpsc::channel();
 
@@ -102,27 +95,20 @@ fn test_chan() {
         rx.recv().expect("chan rcv");
         let sk2 = super::chan::Socket::<Blocking>::new(s1, r2).expect("init socket");
         let mut buf = [0u8; 1024];
-        let b2 = super::Backend::new(
-            sk2, 
-            Arc::new(atomic::AtomicBool::new(true)), 
-            &mut buf[..],
-        );
+        let b2 = super::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
         let test_msg = TestMsg(String::from("hello, world"));
         let test_msg_buf = serialize::serialize(&test_msg).expect("serialize test msg");
-        b2.sender().send_msg(&test_msg_buf[..]).expect(
-            "send message",
-        );
+        b2.sender()
+            .send_msg(&test_msg_buf[..])
+            .expect("send message");
     });
-        
+
     let sk1 = super::chan::Socket::<Blocking>::new(s2, r1).expect("init socket");
     let mut buf = [0u8; 1024];
-    let mut b1 = super::Backend::new(
-        sk1, 
-        Arc::new(atomic::AtomicBool::new(true)), 
-        &mut buf[..],
-    );
+    let mut b1 = super::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
     tx.send(true).expect("chan send");
-    match b1.next().expect("receive message") { // Msg::Other(RawMsg)
+    match b1.next().expect("receive message") {
+        // Msg::Other(RawMsg)
         Msg::Other(r) => {
             assert_eq!(r.typ, 0xff);
             assert_eq!(r.len, serialize::HDR_LENGTH + "hello, world".len() as u32);

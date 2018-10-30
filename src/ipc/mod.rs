@@ -2,21 +2,21 @@
 //! messaging layer. This is how CCP communicates with the datapath.
 
 use std::rc::{Rc, Weak};
-use std::sync::{Arc, atomic};
+use std::sync::{atomic, Arc};
 
 use super::Error;
 use super::Result;
 
+/// Thread-channel implementation
+pub mod chan;
+#[cfg(all(target_os = "linux"))]
+/// Character device implementation
+pub mod kp;
 #[cfg(all(target_os = "linux"))]
 /// Netlink socket implementation
 pub mod netlink;
 /// Unix domain socket implementation
 pub mod unix;
-#[cfg(all(target_os = "linux"))]
-/// Character device implementation
-pub mod kp;
-/// Thread-channel implementation
-pub mod chan;
 
 /// IPC mechanisms must implement this trait.
 pub trait Ipc: 'static + Send {
@@ -42,7 +42,11 @@ pub struct BackendBuilder<T: Ipc> {
 }
 
 impl<T: Ipc> BackendBuilder<T> {
-    pub fn build<'a>(self, atomic_bool: Arc<atomic::AtomicBool>, receive_buf: &'a mut [u8]) -> Backend<'a, T> {
+    pub fn build<'a>(
+        self,
+        atomic_bool: Arc<atomic::AtomicBool>,
+        receive_buf: &'a mut [u8],
+    ) -> Backend<'a, T> {
         Backend::new(self.sock, atomic_bool, receive_buf)
     }
 }
@@ -53,7 +57,8 @@ pub struct BackendSender<T: Ipc>(Weak<T>);
 impl<T: Ipc> BackendSender<T> {
     /// Blocking send.
     pub fn send_msg(&self, msg: &[u8]) -> Result<()> {
-        let s = Weak::upgrade(&self.0).ok_or_else(|| Error(String::from("Send on closed IPC socket!")))?;
+        let s = Weak::upgrade(&self.0)
+            .ok_or_else(|| Error(String::from("Send on closed IPC socket!")))?;
         s.send(msg).map_err(Error::from)
     }
 }
@@ -75,14 +80,14 @@ pub struct Backend<'a, T: Ipc> {
     read_until: usize,
 }
 
-use ::serialize::Msg;
+use serialize::Msg;
 impl<'a, T: Ipc> Backend<'a, T> {
     pub fn new(
-        sock: T, 
-        continue_listening: Arc<atomic::AtomicBool>, 
+        sock: T,
+        continue_listening: Arc<atomic::AtomicBool>,
         receive_buf: &'a mut [u8],
     ) -> Backend<'a, T> {
-        Backend{
+        Backend {
             sock: Rc::new(sock),
             continue_listening,
             receive_buf,
@@ -104,25 +109,26 @@ impl<'a, T: Ipc> Backend<'a, T> {
     /// Get the next IPC message.
     // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
     // of `self`, so we cannot implement that trait.
-    pub fn next<'b>(&'b mut self) -> Option<Msg<'b>> {
+    pub fn next(&mut self) -> Option<Msg<'_>> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
             let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
             self.read_until += consumed;
-            return Some(msg);
+            Some(msg)
         } else {
             self.tot_read = self.get_next_read().ok()?;
             self.read_until = 0;
-            let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
+            let (msg, consumed) =
+                Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
             self.read_until += consumed;
 
-            return Some(msg);
+            Some(msg)
         }
     }
-    
+
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
-    fn get_next_read<'i>(&mut self) -> Result<usize> {
+    fn get_next_read(&mut self) -> Result<usize> {
         loop {
             // if continue_loop has been set to false, stop iterating
             if !self.continue_listening.load(atomic::Ordering::SeqCst) {
@@ -146,7 +152,11 @@ impl<'a, T: Ipc> Backend<'a, T> {
 impl<'a, T: Ipc> Drop for Backend<'a, T> {
     fn drop(&mut self) {
         Rc::get_mut(&mut self.sock)
-            .ok_or_else(|| Error(String::from("Could not get exclusive ref to socket to close")))
+            .ok_or_else(|| {
+                Error(String::from(
+                    "Could not get exclusive ref to socket to close",
+                ))
+            })
             .and_then(|s| s.close())
             .unwrap_or_else(|_| ());
     }

@@ -1,10 +1,10 @@
 extern crate portus;
 
-use std::io::{self, Read};
 use portus::{lang, serialize};
+use std::io::{self, Read};
 
 /// It is sometimes helpful to deconstruct a datapath program.
-/// `dump_fold` is a helper tool for doing so. It accepts datapath 
+/// `dump_fold` is a helper tool for doing so. It accepts datapath
 /// program source from stdin, and outputs to stdout:
 /// 0. An echo of the input program.
 /// 1. The AST representation of that program

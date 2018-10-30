@@ -1,8 +1,8 @@
 #[macro_use]
 extern crate slog;
-extern crate slog_term;
-extern crate slog_async;
 extern crate portus;
+extern crate slog_async;
+extern crate slog_term;
 
 use slog::Drain;
 
@@ -11,21 +11,23 @@ use slog::Drain;
 fn test_ccp_present(log: &slog::Logger) -> bool {
     use std::process::Command;
 
-    let lsmod = Command::new("lsmod")
-        .output()
-        .expect("lsmod failed");
+    let lsmod = Command::new("lsmod").output().expect("lsmod failed");
     debug!(log, "lsmod");
     let loaded_modules = String::from_utf8_lossy(&lsmod.stdout);
-    loaded_modules.split('\n').filter(|s| s.contains("ccp")).collect::<Vec<_>>().is_empty()
+    loaded_modules
+        .split('\n')
+        .filter(|s| s.contains("ccp"))
+        .collect::<Vec<_>>()
+        .is_empty()
 }
 
 #[cfg(all(target_os = "linux"))] // netlink is linux-only
 fn test(log: &slog::Logger) {
-    use std::process::Command;
     use portus::ipc::{Backend, Blocking};
-    use portus::test_helper::TestMsg;
     use portus::serialize::AsRawMsg;
-    use std::sync::{Arc, atomic};
+    use portus::test_helper::TestMsg;
+    use std::process::Command;
+    use std::sync::{atomic, Arc};
 
     if !test_ccp_present(log) {
         warn!(log, "ccp.ko loaded, aborting test");
@@ -42,15 +44,15 @@ fn test(log: &slog::Logger) {
     let major = version[0].parse::<u32>().unwrap();
     let minor = version[1].parse::<u32>().unwrap();
     if major != 4 || minor < 13 || minor > 16 {
-        error!(log,"current kernel version is {}.{}, but test requires >= 4.13 and <= 4.16", major, minor);
+        error!(
+            log,
+            "current kernel version is {}.{}, but test requires >= 4.13 and <= 4.16", major, minor
+        );
         return;
     }
 
     debug!(log, "checking permissions");
-    let id = Command::new("id")
-        .arg("-u")
-        .output()
-        .expect("id failed");
+    let id = Command::new("id").arg("-u").output().expect("id failed");
     let id_stdout = String::from_utf8_lossy(&id.stdout);
     if id_stdout.trim().parse::<u32>().unwrap() != 0 {
         error!(log, "test must be run as root");
@@ -94,10 +96,11 @@ fn test(log: &slog::Logger) {
         debug!(listen_log, "listen");
         tx.send(true).expect("sync");
 
-        if let portus::serialize::Msg::Other(raw) =
-            b.next().expect("get message from iterator")
-        {
-            assert_eq!(TestMsg::from_raw_msg(raw).expect("get TestMsg"), TestMsg(String::from("hello, netlink")));
+        if let portus::serialize::Msg::Other(raw) = b.next().expect("get message from iterator") {
+            assert_eq!(
+                TestMsg::from_raw_msg(raw).expect("get TestMsg"),
+                TestMsg(String::from("hello, netlink"))
+            );
         }
 
         debug!(listen_log, "send");
@@ -106,9 +109,7 @@ fn test(log: &slog::Logger) {
         let buf = portus::serialize::serialize(&msg).expect("serialize");
         sender.send_msg(&buf[..]).expect("send response");
 
-        if let portus::serialize::Msg::Other(raw) =
-            b.next().expect("get message from iterator")
-        {
+        if let portus::serialize::Msg::Other(raw) = b.next().expect("get message from iterator") {
             let got = TestMsg::from_raw_msg(raw).expect("get from raw");
             assert_eq!(got, test);
         } else {

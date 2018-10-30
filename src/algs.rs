@@ -13,10 +13,8 @@ pub fn make_logger() -> slog::Logger {
     slog::Logger::root(drain, o!())
 }
 
-// Must take a String so that clap::Args::validator will be happy
-#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-#[cfg(all(target_os = "linux"))]
 /// Platform-dependent validator for ipc mechanisms.
+#[cfg(all(target_os = "linux"))]
 pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
     match v.as_str() {
         "netlink" | "unix" | "char" => Ok(()),
@@ -24,10 +22,8 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
     }
 }
 
-// Must take a String so that clap::Args::validator will be happy
-#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-#[cfg(not(target_os = "linux"))]
 /// Platform-dependent validator for ipc mechanisms.
+#[cfg(not(target_os = "linux"))]
 pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
     match v.as_str() {
         "unix" => Ok(()),
