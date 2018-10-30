@@ -18,7 +18,7 @@ use simple_signal::Signal;
 extern crate pyo3;
 use pyo3::prelude::*;
 
-
+#[macro_export]
 macro_rules! raise {
     ($errtype:ident, $msg:expr) => {
         return Err(PyErr::new::<exc::$errtype, _>($msg));

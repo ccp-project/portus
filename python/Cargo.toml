@@ -2,13 +2,16 @@
 name = "pyportus"
 version = "0.4.0"
 authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
+description = "A Congestion Control Plane"
+homepage = "https://ccp-project.github.io"
+license = "ISC"
+repository = "https://github.com/ccp-project/portus"
 
 [dependencies]
 bytes = "0.4.5"
 clap = "2.29"
 fnv = "1"
-generic_cong_avoid = { git = "https://github.com/ccp-project/generic-cong-avoid" }
-portus = { path = ".." }
+portus = "0.4.2"
 simple-signal = "1"
 slog = { version = "2" }
 slog-async = "2"
@@ -25,4 +28,4 @@ bench = []
 
 [lib]
 name = "pyportus"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
