@@ -21,16 +21,4 @@ Further documentation is available on [docs.rs](https://docs.rs/portus).
 
 ### Run
 
-Once you've built `portus`, algorithms can be run as follows:
-
-```
-sudo ./ccp_generic_cong_avoid/target/debug/reno
-```
-
-All algorithms support the `--ipc` flag, allowing you to specify the method of
-inter-process communication between the CCP and your datapath of choice. For
-example, our current implementation of the linux kernel datapath uses netlink
-sockets, while our implementation of the mtcp/dpdk datapath uses unix sockets.
-
-Individual algorithms may also allow you to set algorithm-specific parameters
-from the command line. Run with `--help` to view them.
+There are no algorithm binaries in this repository: it is just a library and runtime for CCP algorithms. You may be interested in https://github.com/ccp-project/generic-cong-avoid, which provides implementations of Reno and Cubic, or https://github.com/ccp-project/bbr, a BBR implementation.
