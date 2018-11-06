@@ -1,6 +1,6 @@
 all: build test-portus test-ipc libccp-integration lint
 
-travis: build test-portus libccp-integration bindings
+travis: build test-portus libccp-integration
 
 OS := $(shell uname)
 CLIPPY := $(shell rustup component list --toolchain nightly | grep "clippy" | grep -c "installed")
