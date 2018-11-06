@@ -104,7 +104,7 @@ mod tests {
         let (s1, r1) = mpsc::channel();
         let (s2, r2) = mpsc::channel();
 
-        let ipc = Socket::<Blocking>::new(s1, r2).unwrap();
+        let ipc = Socket::<Blocking>::new(s1, r2);
 
         thread::spawn(move || {
             s2.send(vec![0, 9, 1, 8]).unwrap();
