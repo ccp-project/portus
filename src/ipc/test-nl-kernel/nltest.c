@@ -10,7 +10,6 @@
 #define MYMGRP 22
 
 struct sock *nl_sk = NULL;
-
 int nl_send_msg(unsigned long data, char *payload, size_t msg_size);
 /* (type, len, socket_id) header
  * -----------------------------------
@@ -25,22 +24,41 @@ struct __attribute__((packed, aligned(4))) CcpMsgHeader {
     uint32_t SocketId;
 };
 
+char * serialize_time_msg(struct timespec recv_time, struct timespec send_time){
+	long recv_cut_nsec = (long)recv_time.tv_nsec;
+	long send_cut_nsec = (long)send_time.tv_nsec;
+	char * msg = kmalloc(sizeof(struct CcpMsgHeader) + 2*sizeof(struct timespec), GFP_USER);
+	struct CcpMsgHeader hdr;
+
+	hdr.Type = 0xFF - 1;
+	hdr.Len = 8 + 2*(8 + 4);
+	hdr.SocketId = 0;
+
+	memcpy(msg, &hdr, sizeof(struct CcpMsgHeader));
+	memcpy(msg + sizeof(struct CcpMsgHeader), &(recv_time.tv_sec), 8);
+	memcpy(msg + sizeof(struct CcpMsgHeader) + 8, &recv_cut_nsec, 4);
+	memcpy(msg + sizeof(struct CcpMsgHeader) + 12, &(send_time.tv_sec), 8);
+	memcpy(msg + sizeof(struct CcpMsgHeader) + 20, &send_cut_nsec, 4);
+
+	return msg;
+}
 /* Receive echo message from userspace 
  * Respond echo it back for checking
  */
 void nl_recv_msg(struct sk_buff *skb) {
     int res;
-    struct CcpMsgHeader hdr;
-    struct nlmsghdr *nlh = nlmsg_hdr(skb);
+	struct timespec recv_time;
+	struct timespec send_time;
 
-    // read header to get length
-    memcpy(&hdr, nlmsg_data(nlh), sizeof(struct CcpMsgHeader));
-
-    res = nl_send_msg(0, nlmsg_data(nlh), hdr.Len);
+	getnstimeofday(&recv_time);
+	getnstimeofday(&send_time);
+    res = nl_send_msg(0, serialize_time_msg(recv_time, send_time), 8+2*(8+4));
     if (res < 0) {
         pr_info("nltest: echo send failed: %d\n", res);
     }
+    printk(KERN_INFO "nltest: Got past send extra messages\n");
 }
+
 
 /* Send message to userspace
  */
@@ -48,6 +66,7 @@ int nl_send_msg(unsigned long data, char *payload, size_t msg_size) {
     struct sk_buff *skb_out;
     struct nlmsghdr *nlh;
     int res;
+
 
     skb_out = nlmsg_new(
         NLMSG_ALIGN(msg_size), // @payload: size of the message payload

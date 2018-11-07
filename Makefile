@@ -13,7 +13,8 @@ test-portus: build
 
 test-ipc: build
 ifeq ($(OS), Linux)
-	sudo ./target/debug/nltest
+	sudo ./target/debug/ipc_latency -i 10 --impl unix
+	sudo ./target/debug/ipc_latency -i 10 --impl nl
 	sudo ./target/debug/kptest
 endif
 
