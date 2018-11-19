@@ -15,7 +15,7 @@ test-ipc: build
 ifeq ($(OS), Linux)
 	sudo ./target/debug/ipc_latency -i 10 --impl unix
 	sudo ./target/debug/ipc_latency -i 10 --impl nl
-	sudo ./target/debug/kptest
+	sudo ./target/debug/ipc_latency -i 10 --impl kp
 endif
 
 lint:
