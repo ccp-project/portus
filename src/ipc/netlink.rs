@@ -36,15 +36,16 @@ impl<T> Socket<T> {
 
         let pid = unsafe { libc::getpid() };
 
-        socket::bind(fd, &nix::sys::socket::SockAddr::new_netlink(pid as u32, 0))?;
+        socket::bind(fd, &nix::sys::socket::SockAddr::new_netlink(0, u32::max_value()))?;
 
         Ok(Socket(fd, PhantomData))
     }
 
     pub fn new() -> Result<Self> {
         let s = Self::__new()?;
-        let opt = 22;
+        /*
         use std::mem;
+        let opt = 22;
         s.setsockopt(
             270, 
             libc::NETLINK_ADD_MEMBERSHIP, 
@@ -63,6 +64,7 @@ impl<T> Socket<T> {
             &to as *const libc::timespec as *const libc::c_void,
             mem::size_of::<libc::timespec>() as u32
         )?;
+        */
         Ok(s)
     }
 
