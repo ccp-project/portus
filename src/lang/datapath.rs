@@ -215,7 +215,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                             return Err(Error::from(format!(
                                 "{:?} expected Num, got {:?}: {:?}",
                                 o, x, scope
-                            )))
+                            )));
                         }
                     }
 
@@ -592,7 +592,7 @@ impl Iterator for ScopeDefInstrIter {
                         op: Op::Def,
                         left: reg.clone(),
                         right: Reg::ImmNum(n),
-                    })
+                    });
                 }
                 Reg::Report(_, Type::Bool(Some(b)), _) | Reg::Control(_, Type::Bool(Some(b))) => {
                     return Some(Instr {
@@ -600,7 +600,7 @@ impl Iterator for ScopeDefInstrIter {
                         op: Op::Def,
                         left: reg.clone(),
                         right: Reg::ImmBool(b),
-                    })
+                    });
                 }
                 _ => continue,
             }

@@ -82,23 +82,23 @@
 //!
 //! The datapath makes available the following primitives:
 //!
-//!  Name                   | Description                 
+//!  Name                   | Description
 //! ------------------------|-----------------------------
-//! "Ack.bytes_acked"       | In-order bytes acked        
-//! "Ack.bytes_misordered"  | Out-of-order bytes acked    
-//! "Ack.ecn_bytes"         | ECN-marked bytes            
-//! "Ack.ecn_packets"       | ECN-marked packets          
-//! "Ack.lost_pkts_sample"  | Number of lost packets      
-//! "Ack.now"               | Current time                
-//! "Ack.packets_acked"     | In-order packets acked      
-//! "Ack.packets_misordered"| Out-of-order packets acked  
-//! "Flow.bytes_in_flight"  | Bytes in flight             
-//! "Flow.bytes_pending"    | Bytes in socket buffer      
-//! "Flow.packets_in_flight"| Packets in flight           
-//! "Flow.rate_incoming"    | Incoming rate               
-//! "Flow.rate_outgoing"    | Outgoing rate               
-//! "Flow.rtt_sample_us"    | Round-trip time             
-//! "Flow.was_timeout"      | Did a timeout occur?        
+//! "Ack.bytes_acked"       | In-order bytes acked
+//! "Ack.bytes_misordered"  | Out-of-order bytes acked
+//! "Ack.ecn_bytes"         | ECN-marked bytes
+//! "Ack.ecn_packets"       | ECN-marked packets
+//! "Ack.lost_pkts_sample"  | Number of lost packets
+//! "Ack.now"               | Current time
+//! "Ack.packets_acked"     | In-order packets acked
+//! "Ack.packets_misordered"| Out-of-order packets acked
+//! "Flow.bytes_in_flight"  | Bytes in flight
+//! "Flow.bytes_pending"    | Bytes in socket buffer
+//! "Flow.packets_in_flight"| Packets in flight
+//! "Flow.rate_incoming"    | Incoming rate
+//! "Flow.rate_outgoing"    | Outgoing rate
+//! "Flow.rtt_sample_us"    | Round-trip time
+//! "Flow.was_timeout"      | Did a timeout occur?
 
 use nom;
 use std;

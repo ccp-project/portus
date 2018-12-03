@@ -2,13 +2,11 @@
 
 use std;
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TestMsg(pub String);
 
-use std::io::prelude::*;
 use super::serialize;
+use std::io::prelude::*;
 impl serialize::AsRawMsg for TestMsg {
     fn get_hdr(&self) -> (u8, u32, u32) {
         (0xff, serialize::HDR_LENGTH + self.0.len() as u32, 0)

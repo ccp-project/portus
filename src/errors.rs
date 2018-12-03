@@ -32,7 +32,10 @@ impl std::error::Error for InvalidRegTypeError {
 }
 impl std::fmt::Display for InvalidRegTypeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "the requested field is not a report variable, and therefore cannot be accessed in ccp")
+        write!(
+            f,
+            "the requested field is not a report variable, and therefore cannot be accessed in ccp"
+        )
     }
 }
 #[derive(Debug, Clone)]
@@ -44,7 +47,10 @@ impl std::error::Error for InvalidReportError {
 }
 impl std::fmt::Display for InvalidReportError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "the requested field is in scope but was not found in the report")
+        write!(
+            f,
+            "the requested field is in scope but was not found in the report"
+        )
     }
 }
 #[derive(Debug, Clone)]
@@ -59,4 +65,3 @@ impl std::fmt::Display for FieldNotFoundError {
         write!(f, "the requested field was not found in this scope")
     }
 }
-

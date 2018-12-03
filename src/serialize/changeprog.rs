@@ -1,16 +1,13 @@
 //! CCP sends this message to change the datapath program currently in use.
 
-use std::io::prelude::*;
-use {Result, Error};
-use super::{AsRawMsg, RawMsg, HDR_LENGTH, u32_to_u8s, u64_to_u8s};
+use super::{u32_to_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
 use lang::Reg;
-
+use std::io::prelude::*;
+use {Error, Result};
 
 pub(crate) const CHANGEPROG: u8 = 4;
 
-#[derive(Clone)]
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Msg {
     pub sid: u32,
     pub program_uid: u32,
@@ -23,7 +20,7 @@ impl AsRawMsg for Msg {
         (
             CHANGEPROG,
             HDR_LENGTH + 4 + 4 + self.num_fields * 13, // Reg size = 5, u64 size = 8
-            self.sid
+            self.sid,
         )
     }
 
@@ -39,14 +36,18 @@ impl AsRawMsg for Msg {
     fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
         let mut buf = [0u8; 8];
         for f in &self.fields {
-            let reg = f.0.clone().into_iter().map(|e| e.map_err(Error::from)).collect::<Result<Vec<u8>>>()?;
+            let reg =
+                f.0.clone()
+                    .into_iter()
+                    .map(|e| e.map_err(Error::from))
+                    .collect::<Result<Vec<u8>>>()?;
             w.write_all(&reg[..])?;
             u64_to_u8s(&mut buf, f.1);
             w.write_all(&buf[..])?;
         }
         Ok(())
     }
-    
+
     // at least for now, portus does not have to worry about deserializing this message
     fn from_raw_msg(_msg: RawMsg) -> Result<Self> {
         unimplemented!();
@@ -59,7 +60,7 @@ mod tests {
 
     #[test]
     fn serialize_changeprog_msg() {
-        let m = super::Msg{
+        let m = super::Msg {
             sid: 1,
             program_uid: 7,
             num_fields: 1,
@@ -70,14 +71,13 @@ mod tests {
         assert_eq!(
             buf,
             vec![
-                4, 0,                                           // CHANGEPROG
-                29, 0,                                          // length = 12
-                1, 0, 0, 0,                                     // sock_id = 1
-                7, 0, 0, 0,                                     // program_uid = 7
-                1, 0, 0, 0,                                     // num_fields = 1
-                2, 4, 0, 0, 0, 0x2a, 0, 0, 0, 0, 0, 0, 0,        // Reg::Implicit(4) <- 42
+                4, 0, // CHANGEPROG
+                29, 0, // length = 12
+                1, 0, 0, 0, // sock_id = 1
+                7, 0, 0, 0, // program_uid = 7
+                1, 0, 0, 0, // num_fields = 1
+                2, 4, 0, 0, 0, 0x2a, 0, 0, 0, 0, 0, 0, 0, // Reg::Implicit(4) <- 42
             ],
         );
     }
 }
-

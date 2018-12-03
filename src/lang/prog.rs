@@ -123,16 +123,14 @@ impl Prog {
         use nom::Needed;
         let body = match defs(CompleteByteSlice(source)) {
             Ok((rest, flow_state)) => {
-                let (reports, controls): (
-                    Vec<(bool, String, Type)>,
-                    Vec<(bool, String, Type)>,
-                ) = flow_state
-                    .into_iter()
-                    .map(|(is_volatile, var, typ)| match var {
-                        Type::Name(v) => (is_volatile, v, typ),
-                        _ => unreachable!(),
-                    })
-                    .partition(|&(_, ref var, _)| var.starts_with("Report."));
+                let (reports, controls): (Vec<(bool, String, Type)>, Vec<(bool, String, Type)>) =
+                    flow_state
+                        .into_iter()
+                        .map(|(is_volatile, var, typ)| match var {
+                            Type::Name(v) => (is_volatile, v, typ),
+                            _ => unreachable!(),
+                        })
+                        .partition(|&(_, ref var, _)| var.starts_with("Report."));
 
                 for (is_volatile, var, typ) in reports {
                     scope.new_report(is_volatile, var, typ);
