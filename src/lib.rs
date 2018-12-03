@@ -121,20 +121,11 @@ pub trait DatapathTrait {
 }
 
 /// A collection of methods to interact with the datapath.
+#[derive(Clone)]
 pub struct Datapath<T: Ipc> {
     sock_id: u32,
     sender: BackendSender<T>,
     programs: Rc<HashMap<String, Scope>>,
-}
-
-impl<T: Ipc> Clone for Datapath<T> {
-    fn clone(&self) -> Self {
-        Self {
-            sock_id: self.sock_id,
-            sender: self.sender.clone(),
-            programs: self.programs.clone(),
-        }
-    }
 }
 
 impl<T: Ipc> DatapathTrait for Datapath<T> {
