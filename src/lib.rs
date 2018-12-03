@@ -498,8 +498,8 @@ where
                 }
 
                 if let Some(log) = cfg.logger.as_ref() {
-                    debug!(log, "creating new flow"; 
-                           "sid" => c.sid, 
+                    debug!(log, "creating new flow";
+                           "sid" => c.sid,
                            "init_cwnd" => c.init_cwnd,
                            "mss"  =>  c.mss,
                            "src_ip"  =>  c.src_ip,

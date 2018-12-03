@@ -21,15 +21,14 @@ impl<T> Socket<T> {
             nix::sys::socket::SockType::Raw,
             nix::sys::socket::SockFlag::empty(),
             libc::NETLINK_USERSOCK,
-        )
-        {
+        ) {
             fd
         } else {
             socket::socket(
                 nix::sys::socket::AddressFamily::Netlink,
                 nix::sys::socket::SockType::Raw,
-                nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_RECV) |
-                    nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_SEND),
+                nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_RECV)
+                    | nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_SEND),
                 libc::NETLINK_USERSOCK,
             )?
         };
@@ -46,10 +45,10 @@ impl<T> Socket<T> {
         let opt = 22;
         use std::mem;
         s.setsockopt(
-            270, 
-            libc::NETLINK_ADD_MEMBERSHIP, 
-            &opt as *const i32 as *const libc::c_void, 
-            mem::size_of::<c_int>() as u32
+            270,
+            libc::NETLINK_ADD_MEMBERSHIP,
+            &opt as *const i32 as *const libc::c_void,
+            mem::size_of::<c_int>() as u32,
         )?;
 
         let to = libc::timespec {
@@ -58,24 +57,22 @@ impl<T> Socket<T> {
         };
 
         s.setsockopt(
-            libc::SOL_SOCKET, 
-            libc::SO_RCVTIMEO, 
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
             &to as *const libc::timespec as *const libc::c_void,
-            mem::size_of::<libc::timespec>() as u32
+            mem::size_of::<libc::timespec>() as u32,
         )?;
         Ok(s)
     }
 
-    fn setsockopt(&self, level: c_int, option: c_int, val: *const libc::c_void, sz: u32) -> Result<()> {
-        let res = unsafe {
-            libc::setsockopt(
-                self.0,
-                level,
-                option as c_int,
-                val,
-                sz,
-            )
-        };
+    fn setsockopt(
+        &self,
+        level: c_int,
+        option: c_int,
+        val: *const libc::c_void,
+        sz: u32,
+    ) -> Result<()> {
+        let res = unsafe { libc::setsockopt(self.0, level, option as c_int, val, sz) };
 
         if res == -1 {
             return Err(Error::from(nix::Error::last()));
@@ -91,12 +88,13 @@ impl<T> Socket<T> {
             &[nix::sys::uio::IoVec::from_mut_slice(&mut nl_buf[..])],
             None,
             flags,
-        ).map(|r| r.bytes)
-            .map_err(Error::from)?;
+        )
+        .map(|r| r.bytes)
+        .map_err(Error::from)?;
         buf[..(end - NLMSG_HDRSIZE)].copy_from_slice(&nl_buf[NLMSG_HDRSIZE..end]);
         Ok(end - NLMSG_HDRSIZE)
     }
-    
+
     // netlink header format (RFC 3549)
     // 0               1               2               3
     // 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -127,10 +125,11 @@ impl<T> Socket<T> {
             &[],
             nix::sys::socket::MsgFlags::empty(),
             None,
-        ).map(|_| ())
-            .map_err(Error::from)
+        )
+        .map(|_| ())
+        .map_err(Error::from)
     }
-    
+
     fn __close(&mut self) -> Result<()> {
         let ok = unsafe { libc::close(self.0) as i32 };
         if ok < 0 {
@@ -140,7 +139,6 @@ impl<T> Socket<T> {
         }
     }
 }
-
 
 use super::Blocking;
 impl super::Ipc for Socket<Blocking> {
