@@ -70,12 +70,13 @@ mod tests {
         let buf: Vec<u8> = ::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
         assert_eq!(
             buf,
+            #[rustfmt::skip]
             vec![
-                4, 0, // CHANGEPROG
-                29, 0, // length = 12
-                1, 0, 0, 0, // sock_id = 1
-                7, 0, 0, 0, // program_uid = 7
-                1, 0, 0, 0, // num_fields = 1
+                4, 0,                                     // CHANGEPROG
+                29, 0,                                    // length = 12
+                1, 0, 0, 0,                               // sock_id = 1
+                7, 0, 0, 0,                               // program_uid = 7
+                1, 0, 0, 0,                               // num_fields = 1
                 2, 4, 0, 0, 0, 0x2a, 0, 0, 0, 0, 0, 0, 0, // Reg::Implicit(4) <- 42
             ],
         );
