@@ -71,7 +71,7 @@ impl Default for ClusterExampleConfig {
     fn default() -> Self {
         ClusterExampleConfig {
             algorithm : String::from("reno"),
-            allocator: String::from("rr"),
+            allocator: String::from("qdisc"),
             forecast: true,
         }
     }
@@ -200,7 +200,7 @@ impl<T: Ipc> CongAlg<T> for ClusterExample<T> {
         };
 
 				if s.allocator.as_str() == "qdisc" {
-					s.qdisc = Some(Qdisc::get(String::from("ifb0"), (1,0)));
+					s.qdisc = Some(Qdisc::get(String::from("ens5"), (1,0)));
 				}
 
         s.logger.as_ref().map(|log| {

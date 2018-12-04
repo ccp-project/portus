@@ -18,9 +18,9 @@ use cluster_message_types::{summary::Summary, allocation::Allocation};
 mod backend;
 use backend::Backend;
 
-const DEFAULT_SUMMARY_INTERVAL_MS: u32 = 23;
-const DEFAULT_SUMMARY_SLACK_MS: u32 = 2;
-const DEFAULT_BTL_BW_BPS: u32 = (104_000_000 / 8);
+const DEFAULT_SUMMARY_INTERVAL_MS: u32 = 45;
+const DEFAULT_SUMMARY_SLACK_MS: u32 = 5;
+const DEFAULT_BTL_BW_BPS: u32 = (60_000_000 / 8);
 const NS_IN_MS: u32 = 1000000;
 const NS_IN_MS_64: u64 = 1000000;
 
@@ -59,7 +59,6 @@ impl Controller {
                     active : true,
                     num_active_flows : sum.num_active_flows,
                 });
-                self.num_active_senders += 1;
             }
             Occupied(e) => {
                 let sender = e.into_mut();
@@ -72,6 +71,7 @@ impl Controller {
                 }
             }
         }
+				self.num_active_senders += 1;
         self.num_active_flows += sum.num_active_flows;
     }
 
@@ -81,7 +81,7 @@ impl Controller {
                 alloc.id = *id;
                 alloc.rate = ((self.btl_bw_bps as f32) * ((sender.num_active_flows as f32) / (self.num_active_flows as f32))) as u32;
                 alloc.burst = alloc.rate / 200; // mostly arbitrary, needs to be at least rate/HZ and HZ is 250
-                println!("giving {}+{} to {}", alloc.rate, alloc.burst, alloc.id);
+                println!("{} => {} ({}/{})", alloc.id, alloc.rate, sender.num_active_flows, self.num_active_flows);
                 alloc.next_summary_in_ms = self.summary_interval_ms;
                 match self.socket.send_to(alloc.as_slice(), sender.addr) {
                     Ok(_) => {}
@@ -90,13 +90,15 @@ impl Controller {
                 sender.active = false;
             }
         }
+        print!("\x1b[{}A", self.num_active_senders+1);
         self.num_active_flows = 0;
+				self.num_active_senders = 0;
     }
 
     fn reset_period(&mut self, now : u64) {
         self.summary_period_start = now + (self.summary_interval_ms * NS_IN_MS) as u64; //- (self.summary_slack_ms * NS_IN_MS);
         self.summary_period_end = now + ((self.summary_interval_ms * NS_IN_MS) + (self.summary_slack_ms * NS_IN_MS)) as u64;
-        println!("new period: ({},{})", (self.summary_period_start-self.start)/NS_IN_MS_64, (self.summary_period_end-self.start)/NS_IN_MS_64)
+        // println!("new period: ({},{})", (self.summary_period_start-self.start)/NS_IN_MS_64, (self.summary_period_end-self.start)/NS_IN_MS_64)
     }
 
     fn run(&mut self) {
@@ -112,18 +114,18 @@ impl Controller {
             match self.socket.recv_from(sum.as_mut_slice()) {
                 Ok((amt, ref sender_addr)) => {
                     if amt > 0 {
-                        println!("{}: got summary: {:?}", now_ms, sum);
-                        if self.num_active_senders == 0 {
+                        if self.start == 0 {
                             println!("==> first active sender!");
                             self.start = time::precise_time_ns();
                             self.on_summary(&sum, *sender_addr);
                             self.reallocate(&mut alloc);
                             self.reset_period(now);
                         } else if now >= self.summary_period_start && now <= self.summary_period_end {
-                            println!("==> summary came on time");
+                            //println!("==> summary came on time");
                             self.on_summary(&sum, *sender_addr);
                         } else {
-                            println!("==> summary came outside of expected period!");
+                            self.on_summary(&sum, *sender_addr);
+                            //println!("==> summary came outside of expected period!");
                         }
                     }
                 }   
@@ -135,7 +137,7 @@ impl Controller {
                 }
             }
 
-            if now > self.summary_period_end && self.num_active_senders > 0 {
+            if now > self.summary_period_end && self.num_active_flows > 0 {
                 eprintln!("{}: doing reallocation...", now_ms);
                 self.reallocate(&mut alloc);
                 self.reset_period(now);
@@ -204,7 +206,7 @@ fn main() {
             num_active_flows : 0,
             btl_bw_bps : DEFAULT_BTL_BW_BPS,
 
-            start : time::precise_time_ns()
+            start : 0,
         };
         controller.run();
     });
