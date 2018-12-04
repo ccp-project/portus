@@ -26,7 +26,7 @@ class AIMD(portus.AlgBase):
         return {
                 "default" : """\
                 (def (Report
-                    (volatileeacked 0) 
+                    (volatile acked 0) 
                     (volatile sacked 0) 
                     (volatile loss 0) 
                     (volatile timeout false)
@@ -56,5 +56,6 @@ class AIMD(portus.AlgBase):
     def new_flow(self, datapath, datapath_info):
         return AIMDFlow(datapath, datapath_info)
 
+alg = AIMD()
 
-portus.start("netlink", AIMD, debug=True)
+portus.start("netlink", alg, debug=True)

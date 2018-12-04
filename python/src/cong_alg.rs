@@ -61,7 +61,7 @@ impl Flow for PyFlow {
                 rep
             }
             None => {
-                error!(self.logger, "Failed to get report: can't find scope (no datapath program installed yet";
+                error!(self.logger, "Failed to get report: can't find scope (no datapath program installed yet)";
                    "sid" => sock_id,
                 );
                 return;
@@ -148,19 +148,6 @@ impl<T: Ipc> CongAlg<T> for PyCongAlg {
                 panic!("Failed to create PyDatapath");
             });
 
-        let py_datapath_internal = py
-            .init(|_| PyDatapath {
-                sock_id: control.get_sock_id(),
-                backend: Box::new(control),
-                logger: self.logger.clone(),
-                sc: Default::default(),
-                debug: self.debug,
-            })
-            .unwrap_or_else(|e| {
-                e.print(py);
-                panic!("Failed to create PyDatapath");
-            });
-
         let py_info = py
             .init(|_| DatapathInfo {
                 sock_id: info.sock_id,
@@ -177,7 +164,7 @@ impl<T: Ipc> CongAlg<T> for PyCongAlg {
             });
 
         let kwargs = PyDict::new(py);
-        let _ = kwargs.set_item("datapath", py_datapath).unwrap_or_else(|e| {
+        let _ = kwargs.set_item("datapath", &py_datapath).unwrap_or_else(|e| {
             e.print(py);
             panic!("error setting kwargs.datapath");
         });
@@ -195,7 +182,7 @@ impl<T: Ipc> CongAlg<T> for PyCongAlg {
             debug : self.debug,
             logger: self.logger.clone(),
             flow_obj,
-            datapath: py_datapath_internal,
+            datapath: py_datapath,
         }
     }
 
