@@ -10,7 +10,7 @@ extern crate time;
 use bytes::{ByteOrder, LittleEndian};
 use clap::Arg;
 use portus::ipc::{Backend, BackendSender, Blocking, Ipc, Nonblocking};
-use std::sync::{Arc, atomic};
+use std::sync::{atomic, Arc};
 use time::Duration;
 
 #[derive(Debug)]
@@ -47,13 +47,13 @@ impl portus::serialize::AsRawMsg for TimeMsg {
 }
 
 #[derive(Debug)]
-struct NlTimeMsg{
+struct NlTimeMsg {
     kern_rt: time::Timespec,
-    kern_st: time::Timespec
+    kern_st: time::Timespec,
 }
-impl portus::serialize::AsRawMsg for NlTimeMsg{
+impl portus::serialize::AsRawMsg for NlTimeMsg {
     fn get_hdr(&self) -> (u8, u32, u32) {
-        (0xff-1, portus::serialize::HDR_LENGTH + 16 + 8, 0) 
+        (0xff - 1, portus::serialize::HDR_LENGTH + 16 + 8, 0)
     }
 
     fn get_u32s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
@@ -80,30 +80,22 @@ impl portus::serialize::AsRawMsg for NlTimeMsg{
         let up_nsec = LittleEndian::read_i32(&b[8..12]);
         let down_sec = LittleEndian::read_i64(&b[12..20]);
         let down_nsec = LittleEndian::read_i32(&b[20..24]);
-        Ok(
-            NlTimeMsg{
-                kern_rt: time::Timespec::new(up_sec, up_nsec), 
-                kern_st: time::Timespec::new(down_sec, down_nsec)
-            }
-        )
+        Ok(NlTimeMsg {
+            kern_rt: time::Timespec::new(up_sec, up_nsec),
+            kern_st: time::Timespec::new(down_sec, down_nsec),
+        })
     }
 }
 
-use std::sync::mpsc;
 use portus::serialize::AsRawMsg;
-fn bench<T: Ipc>(
-    b: BackendSender<T>,
-    mut l: Backend<T>,
-    iter: u32,
-) -> Vec<Duration> {
+use std::sync::mpsc;
+fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Duration> {
     let res = (0..iter)
         .map(|_| {
             let then = time::get_time();
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
-            if let portus::serialize::Msg::Other(raw) =
-                l.next().expect("receive echo")
-            {
+            if let portus::serialize::Msg::Other(raw) = l.next().expect("receive echo") {
                 let then = TimeMsg::from_raw_msg(raw).expect("get time from raw");
                 time::get_time() - then.0
             } else {
@@ -116,7 +108,7 @@ fn bench<T: Ipc>(
 
 struct NlDuration(Duration, Duration, Duration);
 macro_rules! netlink_bench {
-    ($name: ident, $mode: ident) => (
+    ($name: ident, $mode: ident) => {
         #[cfg(target_os = "linux")] // netlink is linux-only
         fn $name(iter: u32) -> Vec<NlDuration> {
             use std::process::Command;
@@ -145,32 +137,34 @@ macro_rules! netlink_bench {
             let c1 = thread::spawn(move || {
                 let mut buf = [0u8; 1024];
                 let mut nl = portus::ipc::netlink::Socket::<$mode>::new()
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]))
+                    .map(|sk| {
+                        Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..])
+                    })
                     .expect("nl ipc initialization");
                 tx.send(vec![]).expect("ok to insmod");
                 nl.next().expect("receive echo");
                 let sender = nl.sender();
-                let res  = (0..iter)
-                .map(|_| {
+                let res = (0..iter)
+                    .map(|_| {
+                        let portus_send_time = time::get_time();
+                        let msg = portus::serialize::serialize(&TimeMsg(portus_send_time))
+                            .expect("serialize");
 
-                    let portus_send_time= time::get_time(); 
-                    let msg = portus::serialize::serialize(&TimeMsg(portus_send_time)).expect("serialize");
-
-                    sender.send_msg(&msg[..]).expect("send ts");
-                    if let portus::serialize::Msg::Other(raw) = nl.next().expect("recv echo")
-                    {
-                        let portus_rt = time::get_time();
-                        let kern_recv_msg = NlTimeMsg::from_raw_msg(raw).expect("get time from raw");
-                        return NlDuration(
-                            portus_rt - portus_send_time, 
-                            kern_recv_msg.kern_rt - portus_send_time, 
-                            portus_rt - kern_recv_msg.kern_st 
-                        )
-                    } else {
-                        panic!("wrong type");
-                    };
-                })
-                .collect();
+                        sender.send_msg(&msg[..]).expect("send ts");
+                        if let portus::serialize::Msg::Other(raw) = nl.next().expect("recv echo") {
+                            let portus_rt = time::get_time();
+                            let kern_recv_msg =
+                                NlTimeMsg::from_raw_msg(raw).expect("get time from raw");
+                            return NlDuration(
+                                portus_rt - portus_send_time,
+                                kern_recv_msg.kern_rt - portus_send_time,
+                                portus_rt - kern_recv_msg.kern_st,
+                            );
+                        } else {
+                            panic!("wrong type");
+                        };
+                    })
+                    .collect();
                 tx.send(res).expect("report rtts");
             });
 
@@ -190,20 +184,19 @@ macro_rules! netlink_bench {
                 .expect("rmmod failed");
             rx.recv().expect("get rtts")
         }
-        
+
         #[cfg(not(target_os = "linux"))] // netlink is linux-only
-        fn $name(_: u32) -> Vec<Duration> {
+        fn $name(_: u32) -> Vec<NlDuration> {
             vec![]
         }
-    )
+    };
 }
 
 netlink_bench!(netlink_blocking, Blocking);
 netlink_bench!(netlink_nonblocking, Nonblocking);
 
-
 macro_rules! kp_bench {
-    ($name: ident, $mode: ident) => (
+    ($name: ident, $mode: ident) => {
         #[cfg(target_os = "linux")] // kp is linux-only
         fn $name(iter: u32) -> Vec<Duration> {
             use std::process::Command;
@@ -239,7 +232,13 @@ macro_rules! kp_bench {
             let c1 = thread::spawn(move || {
                 let mut receive_buf = [0u8; 1024];
                 let kp = portus::ipc::kp::Socket::<$mode>::new()
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut receive_buf[..]))
+                    .map(|sk| {
+                        Backend::new(
+                            sk,
+                            Arc::new(atomic::AtomicBool::new(true)),
+                            &mut receive_buf[..],
+                        )
+                    })
                     .expect("kp ipc initialization");
                 tx.send(bench(kp.sender(), kp, iter)).expect("report rtts");
             });
@@ -257,15 +256,14 @@ macro_rules! kp_bench {
         fn $name(_: u32) -> Vec<Duration> {
             vec![]
         }
-    )
+    };
 }
 
 kp_bench!(kp_blocking, Blocking);
 kp_bench!(kp_nonblocking, Nonblocking);
 
-
 macro_rules! unix_bench {
-    ($name: ident, $mode: ident) => (
+    ($name: ident, $mode: ident) => {
         fn $name(iter: u32) -> Vec<Duration> {
             let (tx, rx) = mpsc::channel::<Vec<Duration>>();
             let (ready_tx, ready_rx) = mpsc::channel::<bool>();
@@ -274,18 +272,22 @@ macro_rules! unix_bench {
             let c1 = thread::spawn(move || {
                 let mut receive_buf = [0u8; 1024];
                 let unix = portus::ipc::unix::Socket::<$mode>::new("in", "out")
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut receive_buf[..]))
+                    .map(|sk| {
+                        Backend::new(
+                            sk,
+                            Arc::new(atomic::AtomicBool::new(true)),
+                            &mut receive_buf[..],
+                        )
+                    })
                     .expect("unix ipc initialization");
                 ready_rx.recv().expect("sync");
-                tx.send(bench(unix.sender(), unix, iter)).expect(
-                    "report rtts",
-                );
+                tx.send(bench(unix.sender(), unix, iter))
+                    .expect("report rtts");
             });
 
             // echo-er
             let c2 = thread::spawn(move || {
-                let sk = portus::ipc::unix::Socket::<Blocking>::new("out","in")
-                    .expect("sk init");
+                let sk = portus::ipc::unix::Socket::<Blocking>::new("out", "in").expect("sk init");
                 let mut buf = [0u8; 1024];
                 ready_tx.send(true).expect("sync");
                 for _ in 0..iter {
@@ -298,7 +300,7 @@ macro_rules! unix_bench {
             c2.join().expect("join echo thread");
             rx.recv().expect("get rtts")
         }
-    )
+    };
 }
 
 unix_bench!(unix_blocking, Blocking);
@@ -309,8 +311,41 @@ arg_enum!{
     pub enum IpcType {
         Nl,
         Unix,
-        Kp, 
+        Kp,
     }
+}
+
+#[cfg(target_os = "linux")]
+fn nl_exp(trials: u32) {
+    for t in netlink_nonblocking(trials).iter().map(|d| {
+        (
+            d.0.num_nanoseconds().unwrap(),
+            d.1.num_nanoseconds().unwrap(),
+            d.2.num_nanoseconds().unwrap(),
+        )
+    }) {
+        println!("nl nonblk total {:?}", t.0);
+        println!("nl nonblk to_kernel {:?}", t.1);
+        println!("nl nonblk from_kernel {:?}", t.2);
+    }
+
+    for t in netlink_blocking(trials).iter().map(|d| {
+        (
+            d.0.num_nanoseconds().unwrap(),
+            d.1.num_nanoseconds().unwrap(),
+            d.2.num_nanoseconds().unwrap(),
+        )
+    }) {
+        println!("nl blk total {:?}", t.0);
+        println!("nl blk to_kernel {:?}", t.1);
+        println!("nl blk from_kernel {:?}", t.2);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn nl_exp(trials: u32) {
+    netlink_blocking(trials);
+    netlink_nonblocking(trials);
 }
 
 fn main() {
@@ -318,71 +353,63 @@ fn main() {
         .version("0.2.0")
         .author("Akshay Narayan <akshayn@mit.edu>")
         .about("Benchmark of IPC Latency")
-        .arg(Arg::with_name("iterations")
-             .long("iterations")
-             .short("i")
-             .help("Specifies how many trials to run (default 100)")
-             .default_value("100"))
-        .arg(Arg::with_name("implementation")
-            .long("impl")
-            .help("Specifies the type of ipc being benchmarked")
-            .possible_values(&IpcType::variants())
-            .case_insensitive(true)
-            .multiple(true)
-            .default_value("nl"))
+        .arg(
+            Arg::with_name("iterations")
+                .long("iterations")
+                .short("i")
+                .help("Specifies how many trials to run (default 100)")
+                .default_value("100"),
+        )
+        .arg(
+            Arg::with_name("implementation")
+                .long("impl")
+                .help("Specifies the type of ipc being benchmarked")
+                .possible_values(&IpcType::variants())
+                .case_insensitive(true)
+                .multiple(true)
+                .default_value("nl"),
+        )
         .get_matches();
 
-    let trials = u32::from_str_radix(matches.value_of("iterations").unwrap(), 10).expect("iterations must be integral");
+    let trials = u32::from_str_radix(matches.value_of("iterations").unwrap(), 10)
+        .expect("iterations must be integral");
 
     let imps = values_t!(matches.values_of("implementation"), IpcType).unwrap();
-    
 
     println!("Impl Mode Leg Rtt");
     if imps.contains(&IpcType::Unix) {
         for t in unix_nonblocking(trials)
             .iter()
-            .map(|d| d.num_nanoseconds().unwrap()) {
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
             println!("unix nonblk {:?}", t);
         }
 
         for t in unix_blocking(trials)
             .iter()
-            .map(|d| d.num_nanoseconds().unwrap()) {
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
             println!("unix blk {:?}", t);
         }
     }
 
     if imps.contains(&IpcType::Nl) {
-        if cfg!(target_os = "linux") {
-            for t in netlink_nonblocking(trials)
-                .iter()
-                .map(|d| (d.0.num_nanoseconds().unwrap(), d.1.num_nanoseconds().unwrap(), d.2.num_nanoseconds().unwrap())){
-                println!("nl nonblk total {:?}", t.0);
-                println!("nl nonblk to_kernel {:?}", t.1);
-                println!("nl nonblk from_kernel {:?}", t.2);
-            }
-
-            for t in netlink_blocking(trials)
-                .iter()
-                .map(|d| (d.0.num_nanoseconds().unwrap(), d.1.num_nanoseconds().unwrap(),d.2.num_nanoseconds().unwrap())) {
-                println!("nl blk total {:?}", t.0);
-                println!("nl blk to_kernel {:?}", t.1);
-                println!("nl blk from_kernel {:?}", t.2);
-            }
-        }
+        nl_exp(trials);
     }
 
     if imps.contains(&IpcType::Kp) {
         if cfg!(target_os = "linux") {
             for t in kp_nonblocking(trials)
                 .iter()
-                .map(|d| d.num_nanoseconds().unwrap()) {
+                .map(|d| d.num_nanoseconds().unwrap())
+            {
                 println!("kp nonblk {:?}", t);
             }
 
             for t in kp_blocking(trials)
                 .iter()
-                .map(|d| d.num_nanoseconds().unwrap()) {
+                .map(|d| d.num_nanoseconds().unwrap())
+            {
                 println!("kp blk {:?}", t);
             }
         }
