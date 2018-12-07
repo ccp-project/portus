@@ -67,9 +67,10 @@
 //! ```
 
 #![feature(box_patterns)]
-#![feature(test)]
-#![feature(never_type)]
 #![feature(integer_atomics)]
+#![feature(never_type)]
+#![feature(stmt_expr_attributes)]
+#![feature(test)]
 
 extern crate bytes;
 extern crate clap;
