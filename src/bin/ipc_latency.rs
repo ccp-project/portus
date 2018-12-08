@@ -306,7 +306,7 @@ macro_rules! unix_bench {
 unix_bench!(unix_blocking, Blocking);
 unix_bench!(unix_nonblocking, Nonblocking);
 
-arg_enum!{
+arg_enum! {
     #[derive(PartialEq, Debug)]
     pub enum IpcType {
         Nl,
