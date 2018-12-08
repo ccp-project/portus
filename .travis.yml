@@ -5,5 +5,9 @@ cache: cargo
 install:
   - pip install --user setuptools
   - pip install --user setuptools_rust
+before_script:
+  - rustup toolchain install stable
+  - rustup component add --toolchain stable rustfmt
 script:
-    - make travis
+  - cargo +stable fmt --all -- --check
+  - make travis
