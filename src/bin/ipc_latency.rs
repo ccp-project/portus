@@ -324,9 +324,7 @@ fn nl_exp(trials: u32) {
             d.2.num_nanoseconds().unwrap(),
         )
     }) {
-        println!("nl nonblk total {:?}", t.0);
-        println!("nl nonblk to_kernel {:?}", t.1);
-        println!("nl nonblk from_kernel {:?}", t.2);
+        println!("nl nonblk {:?} {:?} {:?}", t.0, t.1, t.2);
     }
 
     for t in netlink_blocking(trials).iter().map(|d| {
@@ -336,9 +334,7 @@ fn nl_exp(trials: u32) {
             d.2.num_nanoseconds().unwrap(),
         )
     }) {
-        println!("nl blk total {:?}", t.0);
-        println!("nl blk to_kernel {:?}", t.1);
-        println!("nl blk from_kernel {:?}", t.2);
+        println!("nl blk {:?} {:?} {:?}", t.0, t.1, t.2);
     }
 }
 
@@ -376,20 +372,20 @@ fn main() {
 
     let imps = values_t!(matches.values_of("implementation"), IpcType).unwrap();
 
-    println!("Impl Mode Leg Rtt");
+    println!("Impl Mode Rtt To From");
     if imps.contains(&IpcType::Unix) {
         for t in unix_nonblocking(trials)
             .iter()
             .map(|d| d.num_nanoseconds().unwrap())
         {
-            println!("unix nonblk {:?}", t);
+            println!("unix nonblk {:?} 0 0", t);
         }
 
         for t in unix_blocking(trials)
             .iter()
             .map(|d| d.num_nanoseconds().unwrap())
         {
-            println!("unix blk {:?}", t);
+            println!("unix blk {:?} 0 0", t);
         }
     }
 
@@ -403,14 +399,14 @@ fn main() {
                 .iter()
                 .map(|d| d.num_nanoseconds().unwrap())
             {
-                println!("kp nonblk {:?}", t);
+                println!("kp nonblk {:?} 0 0", t);
             }
 
             for t in kp_blocking(trials)
                 .iter()
                 .map(|d| d.num_nanoseconds().unwrap())
             {
-                println!("kp blk {:?}", t);
+                println!("kp blk {:?} 0 0", t);
             }
         }
     }
