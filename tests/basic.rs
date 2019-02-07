@@ -1,11 +1,20 @@
-use std::time::SystemTime;
+extern crate fnv;
+extern crate portus;
+#[macro_use]
+extern crate slog;
+extern crate failure;
+extern crate libccp;
+extern crate minion;
+extern crate slog_term;
+extern crate time;
 
 use fnv::FnvHashMap as HashMap;
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
-use slog;
+use std::time::Instant;
 
-use super::{IntegrationTest, ACKED_PRIMITIVE};
+mod libccp_integration;
+use libccp_integration::{IntegrationTest, ACKED_PRIMITIVE};
 
 pub struct TestBasicSerialize;
 
@@ -43,8 +52,8 @@ impl IntegrationTest for TestBasicSerialize {
     fn check_test(
         &mut self,
         sc: &Scope,
-        log: &slog::Logger,
-        _t: SystemTime,
+        _log: &slog::Logger,
+        _t: Instant,
         _sock_id: u32,
         m: &Report,
     ) -> bool {
@@ -58,27 +67,14 @@ impl IntegrationTest for TestBasicSerialize {
             answer,
             acked
         );
-        info!(log, "Passed basic serialization test.");
+
         true
     }
 }
 
-#[cfg(test)]
-mod test {
-    use scenarios::{log_commits, run_test};
-    use slog;
-    use slog::Drain;
-    use slog_term;
-
-    #[test]
-    fn test() {
-        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let human_drain = slog_term::FullFormat::new(decorator)
-            .build()
-            .filter_level(slog::Level::Debug)
-            .fuse();
-        let log = slog::Logger::root(human_drain, o!());
-        log_commits(log.clone());
-        run_test::<super::TestBasicSerialize>(log, 1);
-    }
+#[test]
+fn basic() {
+    let log = libccp_integration::logger();
+    info!(log, "starting basic test");
+    libccp_integration::run_test::<TestBasicSerialize>(log, 1);
 }

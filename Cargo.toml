@@ -27,3 +27,8 @@ walkdir = "2"
 [dependencies.syn]
 version = "0.13"
 features = ["full", "visit", "fold", "extra-traits"]
+
+[dev-dependencies]
+failure = "0.1"
+minion = "0.1"
+libccp = "0.0.7"

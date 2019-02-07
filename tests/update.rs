@@ -1,11 +1,19 @@
-use std::time::SystemTime;
+extern crate fnv;
+extern crate portus;
+#[macro_use]
+extern crate slog;
+extern crate failure;
+extern crate libccp;
+extern crate minion;
+extern crate slog_term;
+extern crate time;
 
 use fnv::FnvHashMap as HashMap;
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
-use slog;
 
-use super::IntegrationTest;
+mod libccp_integration;
+use libccp_integration::IntegrationTest;
 
 pub struct TestUpdateFields;
 
@@ -48,8 +56,8 @@ impl IntegrationTest for TestUpdateFields {
     fn check_test(
         &mut self,
         sc: &Scope,
-        log: &slog::Logger,
-        _t: SystemTime,
+        _log: &slog::Logger,
+        _t: std::time::Instant,
         _sock_id: u32,
         m: &Report,
     ) -> bool {
@@ -71,27 +79,14 @@ impl IntegrationTest for TestUpdateFields {
             42,
             rate
         );
-        info!(log, "Passed update fields test.");
+
         true
     }
 }
 
-#[cfg(test)]
-mod test {
-    use scenarios::{log_commits, run_test};
-    use slog;
-    use slog::Drain;
-    use slog_term;
-
-    #[test]
-    fn test() {
-        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let human_drain = slog_term::FullFormat::new(decorator)
-            .build()
-            .filter_level(slog::Level::Debug)
-            .fuse();
-        let log = slog::Logger::root(human_drain, o!());
-        log_commits(log.clone());
-        run_test::<super::TestUpdateFields>(log, 1);
-    }
+#[test]
+fn update() {
+    let log = libccp_integration::logger();
+    info!(log, "starting update test");
+    libccp_integration::run_test::<TestUpdateFields>(log, 1);
 }

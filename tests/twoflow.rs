@@ -1,11 +1,20 @@
-use std::time::SystemTime;
+extern crate fnv;
+extern crate portus;
+#[macro_use]
+extern crate slog;
+extern crate failure;
+extern crate libccp;
+extern crate minion;
+extern crate slog_term;
+extern crate time;
 
 use fnv::FnvHashMap as HashMap;
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
-use slog;
+use std::time::Instant;
 
-use super::IntegrationTest;
+mod libccp_integration;
+use libccp_integration::IntegrationTest;
 
 pub struct TestTwoFlows;
 
@@ -38,7 +47,6 @@ impl IntegrationTest for TestTwoFlows {
         let flow_num = dp.get_sock_id();
         dp.update_field(&sc, &[("Control.number", flow_num * 10)])
             .unwrap();
-        println!("start flow {}", flow_num);
         Some(sc)
     }
 
@@ -46,7 +54,7 @@ impl IntegrationTest for TestTwoFlows {
         &mut self,
         sc: &Scope,
         _log: &slog::Logger,
-        _t: SystemTime,
+        _t: Instant,
         sock_id: u32,
         m: &Report,
     ) -> bool {
@@ -76,22 +84,9 @@ impl IntegrationTest for TestTwoFlows {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use scenarios::{log_commits, run_test};
-    use slog;
-    use slog::Drain;
-    use slog_term;
-
-    #[test]
-    fn test() {
-        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let human_drain = slog_term::FullFormat::new(decorator)
-            .build()
-            .filter_level(slog::Level::Debug)
-            .fuse();
-        let log = slog::Logger::root(human_drain, o!());
-        log_commits(log.clone());
-        run_test::<super::TestTwoFlows>(log, 2);
-    }
+#[test]
+fn twoflow() {
+    let log = libccp_integration::logger();
+    info!(log, "starting twoflow test");
+    libccp_integration::run_test::<TestTwoFlows>(log, 2);
 }

@@ -1,11 +1,20 @@
-use std::time::{Duration, SystemTime};
+extern crate fnv;
+extern crate portus;
+#[macro_use]
+extern crate slog;
+extern crate failure;
+extern crate libccp;
+extern crate minion;
+extern crate slog_term;
+extern crate time;
 
 use fnv::FnvHashMap as HashMap;
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
-use slog;
+use std::time::{Duration, Instant};
 
-use super::{IntegrationTest, ACKED_PRIMITIVE};
+mod libccp_integration;
+use libccp_integration::{IntegrationTest, ACKED_PRIMITIVE};
 
 pub struct TestTiming;
 
@@ -42,8 +51,8 @@ impl IntegrationTest for TestTiming {
     fn check_test(
         &mut self,
         sc: &Scope,
-        log: &slog::Logger,
-        t: SystemTime,
+        _log: &slog::Logger,
+        t: Instant,
         _sock_id: u32,
         m: &Report,
     ) -> bool {
@@ -51,11 +60,11 @@ impl IntegrationTest for TestTiming {
             .get_field("Report.acked", sc)
             .expect("expected acked field in returned measurement") as u32;
         // check that it has roughly been 3 seconds
-        let time_elapsed = t.elapsed().unwrap();
+        let time_elapsed = t.elapsed();
         assert!(
             (time_elapsed >= Duration::from_secs(3) && time_elapsed < Duration::from_secs(4)),
             "Report in timing test received at not correct time, got: {}, expected 3 seconds",
-            time_elapsed.subsec_nanos(),
+            time_elapsed.as_secs(),
         );
 
         // sanity check: acked primitive should be constant
@@ -65,27 +74,14 @@ impl IntegrationTest for TestTiming {
             acked,
             ACKED_PRIMITIVE,
         );
-        info!(log, "Passed timing test.");
+
         true
     }
 }
 
-#[cfg(test)]
-mod test {
-    use scenarios::{log_commits, run_test};
-    use slog;
-    use slog::Drain;
-    use slog_term;
-
-    #[test]
-    fn test() {
-        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let human_drain = slog_term::FullFormat::new(decorator)
-            .build()
-            .filter_level(slog::Level::Debug)
-            .fuse();
-        let log = slog::Logger::root(human_drain, o!());
-        log_commits(log.clone());
-        run_test::<super::TestTiming>(log, 1);
-    }
+#[test]
+fn timing() {
+    let log = libccp_integration::logger();
+    info!(log, "starting timing test");
+    libccp_integration::run_test::<TestTiming>(log, 1);
 }
