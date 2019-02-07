@@ -41,12 +41,11 @@ fn test_unix() {
     use super::Blocking;
     use serialize;
     use serialize::Msg;
-    use std;
     use std::sync::atomic;
     use std::thread;
     use test_helper::TestMsg;
 
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = crossbeam::channel::unbounded();
 
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
@@ -82,14 +81,14 @@ fn test_chan() {
     use super::Blocking;
     use serialize;
     use serialize::Msg;
-    use std::sync::{atomic, mpsc};
+    use std::sync::atomic;
     use std::thread;
     use test_helper::TestMsg;
 
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = crossbeam::channel::unbounded();
 
-    let (s1, r1) = mpsc::channel();
-    let (s2, r2) = mpsc::channel();
+    let (s1, r1) = crossbeam::channel::unbounded();
+    let (s2, r2) = crossbeam::channel::unbounded();
 
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");

@@ -1,18 +1,19 @@
 use std;
-use std::sync::mpsc;
+
+use crossbeam::channel;
 
 use super::Error;
 use super::Result;
 use std::marker::PhantomData;
 
 pub struct Socket<T> {
-    send: Option<mpsc::Sender<Vec<u8>>>,
-    recv: Option<mpsc::Receiver<Vec<u8>>>,
+    send: Option<channel::Sender<Vec<u8>>>,
+    recv: Option<channel::Receiver<Vec<u8>>>,
     _phantom: PhantomData<T>,
 }
 
 impl<T> Socket<T> {
-    pub fn new(to_ccp: mpsc::Sender<Vec<u8>>, from_ccp: mpsc::Receiver<Vec<u8>>) -> Self {
+    pub fn new(to_ccp: channel::Sender<Vec<u8>>, from_ccp: channel::Receiver<Vec<u8>>) -> Self {
         Socket {
             send: Some(to_ccp),
             recv: Some(from_ccp),
@@ -93,16 +94,16 @@ impl super::Ipc for Socket<Nonblocking> {
 #[cfg(test)]
 mod tests {
     use super::Socket;
+    use crossbeam::channel;
     use ipc::{Blocking, Ipc};
-    use std::sync::mpsc;
     use std::thread;
 
     #[test]
     fn basic() {
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = channel::unbounded();
 
-        let (s1, r1) = mpsc::channel();
-        let (s2, r2) = mpsc::channel();
+        let (s1, r1) = channel::unbounded();
+        let (s2, r2) = channel::unbounded();
 
         let ipc = Socket::<Blocking>::new(s1, r2);
 

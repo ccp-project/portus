@@ -1,12 +1,11 @@
 use super::ipc;
 use super::serialize;
-use std;
 use std::sync::{atomic, Arc};
 use std::thread;
 
 #[test]
 fn test_ser_over_ipc() {
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = crossbeam::channel::unbounded();
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
@@ -50,12 +49,11 @@ fn test_ser_over_ipc() {
 extern crate test;
 use self::test::Bencher;
 use ipc::Blocking;
-use std::sync::mpsc;
 
 #[bench]
 fn bench_ser_over_ipc(b: &mut Bencher) {
-    let (s1, r1) = mpsc::channel();
-    let (s2, r2) = mpsc::channel();
+    let (s1, r1) = crossbeam::channel::unbounded();
+    let (s2, r2) = crossbeam::channel::unbounded();
 
     let mut buf = [0u8; 1024];
     let sk1 = ipc::chan::Socket::<Blocking>::new(s1, r2);

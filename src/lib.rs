@@ -74,6 +74,7 @@
 
 extern crate bytes;
 extern crate clap;
+extern crate crossbeam;
 extern crate fnv;
 extern crate libc;
 extern crate nix;
