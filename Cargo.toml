@@ -11,7 +11,7 @@ license = "ISC"
 
 [dependencies]
 bytes = "0.4.5"
-clap = "2.29"
+clap = "2.32"
 crossbeam = "0.7"
 fnv = "1"
 libc = "0.2"
