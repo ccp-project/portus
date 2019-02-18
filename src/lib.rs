@@ -21,7 +21,7 @@
 //! ```
 //! extern crate fnv;
 //! extern crate portus;
-//! use fnv::FnvHashMap as HashMap;
+//! use std::collections::HashMap;
 //! use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 //! use portus::ipc::Ipc;
 //! use portus::lang::Scope;
@@ -87,7 +87,7 @@ extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
 
-use fnv::FnvHashMap as HashMap;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{atomic, Arc};
 use std::thread;
@@ -339,7 +339,7 @@ pub trait CongAlg<I: Ipc> {
     /// For example,
     /// ```
     /// extern crate fnv;
-    /// use fnv::FnvHashMap as HashMap;
+    /// use std::collections::HashMap;
     /// let mut h = HashMap::default();
     /// h.insert("prog1", "...(program)...".to_string());
     /// h.insert("prog2", "...(program)...".to_string());

@@ -8,7 +8,7 @@ extern crate minion;
 extern crate slog_term;
 extern crate time;
 
-use fnv::FnvHashMap as HashMap;
+use std::collections::HashMap;
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 

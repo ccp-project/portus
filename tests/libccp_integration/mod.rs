@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::mpsc;
 
-use fnv::FnvHashMap as HashMap;
+use std::collections::HashMap;
 use portus;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
