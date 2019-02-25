@@ -58,6 +58,13 @@ impl<T> Socket<T> {
 
         s.setsockopt(
             libc::SOL_SOCKET,
+            libc::SO_SNDTIMEO,
+            &to as *const libc::timespec as *const libc::c_void,
+            mem::size_of::<libc::timespec>() as u32,
+        )?;
+
+        s.setsockopt(
+            libc::SOL_SOCKET,
             libc::SO_RCVTIMEO,
             &to as *const libc::timespec as *const libc::c_void,
             mem::size_of::<libc::timespec>() as u32,
