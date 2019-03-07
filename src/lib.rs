@@ -290,8 +290,14 @@ impl Report {
     }
 }
 
-/// Implement this trait and [`portus::CongAlg`](./trait.CongAlg.html) to define a CCP congestion control algorithm.
-/// Instances of this type implement functionality specific to an individual flow.
+/// Implement this trait, [`portus::CongAlg`](./trait.CongAlg.html), and 
+///[`portus::CongAlgBuilder`](./trait.CongAlgBuilder.html) to define a CCP congestion control 
+/// algorithm.
+///
+/// * `CongAlg` implements functionality which applies to a given algorithm as a whole
+/// * `Flow` implements functionality specific to an individual flow
+/// * `CongAlgBuilder` specifies how the trait that implements `CongAlg` should be built 
+/// from given command-line arguments.
 pub trait Flow {
     /// This callback specifies the algorithm's behavior when it receives a report
     /// of measurements from the datapath.
@@ -316,9 +322,13 @@ where
     }
 }
 
-/// Implement this trait and [`portus::Flow`](./trait.Flow.html) to define a CCP congestion control algorithm.
-/// Instances of this type implement functionality which applies to a given
-/// algorithm as a whole.
+/// implement this trait, [`portus::CongAlgBuilder`](./trait.CongAlgBuilder.html) and
+/// [`portus::Flow`](./trait.Flow.html) to define a ccp congestion control algorithm.
+/// 
+/// * `CongAlg` implements functionality which applies to a given algorithm as a whole
+/// * `Flow` implements functionality specific to an individual flow
+/// * `CongAlgBuilder` specifies how the trait that implements `CongAlg` should be built 
+/// from given command-line arguments.
 pub trait CongAlg<I: Ipc> {
     /// A type which implements the [`portus::Flow`](./trait.Flow.html) trait, to manage
     /// an individual connection.
@@ -349,6 +359,31 @@ pub trait CongAlg<I: Ipc> {
     /// Create a new instance of the CongAlg to manage a new flow.
     /// Optionally copy any configuration parameters from `&self`.
     fn new_flow(&self, control: Datapath<I>, info: DatapathInfo) -> Self::Flow;
+
+}
+
+/// Structs implementing [`portus::CongAlg`](./trait.CongAlg.html) must also implement this trait
+/// (and must be annotated with [`portus_export::register_ccp_alg`]()) 
+///
+/// The expected use of this trait in a calling program is as follows:
+/// ```
+/// let args = CongAlgBuilder::args();
+/// let matches = app.get_matches_from(std::env::args_os());
+/// let alg = CongAlgBuilder::with_arg_matches(matches);
+/// ```
+pub trait CongAlgBuilder<'a,'b> {
+    /// This function should return a new
+    /// [`clap::App`](https://docs.rs/clap/2.32.0/clap/struct.App.html) that describes the
+    /// arguments this algorithm needs to create an instance of itself.
+    fn args() -> clap::App<'a,'b>;
+
+    /// This function takes as input the set of parsed arguments and uses them to parameterize a
+    /// new instance of this congestion control algorithm. The matches will be derived from 
+    /// running `Clap::App::get_matches_from` on the `clap::App` returned by the `register` function.
+    /// It also takes an instsance of a logger so that the calling program can define the logging
+    /// behavior (eg. format and redirection).
+    fn with_arg_matches(args: &clap::ArgMatches, logger: Option<slog::Logger>) -> Result<Self>
+        where Self:Sized;
 }
 
 /// A handle to manage running instances of the CCP execution loop.
