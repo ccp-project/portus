@@ -76,7 +76,7 @@ impl<'v> Visit<'v> for FastPathProgramFinder {
                                 eprintln!("{}{}", bold_red!("error"), bold!(format!(": {:?}", e)));
                                 eprintln!("{} {}", bold_blue!("-->"), self.filename);
                                 eprintln!("{} {}", bold_blue!("-->"), self.impl_str);
-                                let prog_src = l.into_tokens().to_string();
+                                let prog_src = l.into_token_stream().to_string();
                                 eprintln!(
                                     "{}\n\n",
                                     prog_src
