@@ -23,6 +23,12 @@ slog-async = "2"
 slog-term = "2"
 time = "0.1"
 walkdir = "2"
+colored = "1.7"
+structopt = "0.2"
+regex = "1.1"
+proc-macro2 = "0.4"
+toml = "0.4"
+libloading = "0.5"
 
 [dependencies.syn]
 version = "0.15"

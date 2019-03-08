@@ -350,7 +350,7 @@ pub trait CongAlg<I: Ipc> {
     /// ```
     /// extern crate fnv;
     /// use std::collections::HashMap;
-    /// let mut h = HashMap::default();
+    /// let mut h = HashMap::new();
     /// h.insert("prog1", "...(program)...".to_string());
     /// h.insert("prog2", "...(program)...".to_string());
     /// ```
@@ -366,7 +366,7 @@ pub trait CongAlg<I: Ipc> {
 /// (and must be annotated with [`portus_export::register_ccp_alg`]()) 
 ///
 /// The expected use of this trait in a calling program is as follows:
-/// ```
+/// ```no-run
 /// let args = CongAlgBuilder::args();
 /// let matches = app.get_matches_from(std::env::args_os());
 /// let alg = CongAlgBuilder::with_arg_matches(matches);

@@ -55,9 +55,8 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 /// Using the example algorithm from above:
 ///
 /// ```
-/// extern crate fnv;
 /// extern crate portus;
-/// use fnv::FnvHashMap as HashMap;
+/// use std::collections::HashMap;
 /// use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 /// use portus::ipc::Ipc;
 /// use portus::lang::Scope;
