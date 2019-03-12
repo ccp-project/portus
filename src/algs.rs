@@ -4,10 +4,18 @@ extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
 use slog::Drain;
+use std::fs::File;
 
 /// Make a standard instance of `slog::Logger`.
 pub fn make_logger() -> slog::Logger {
     let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    slog::Logger::root(drain, o!())
+}
+
+pub fn make_file_logger(f: File) -> slog::Logger {
+    let decorator = slog_term::PlainSyncDecorator::new(f);
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
     slog::Logger::root(drain, o!())
