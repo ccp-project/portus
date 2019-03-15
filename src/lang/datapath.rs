@@ -144,7 +144,7 @@ impl Bin {
                     // flatten the Vec<Vec<Instr>>
                     let body_instrs: Vec<Instr> = body_instrs_nested?
                         .into_iter()
-                        .flat_map(|x| x.into_iter())
+                        .flat_map(std::iter::IntoIterator::into_iter)
                         .collect();
 
                     let new_event = Event {
@@ -167,7 +167,11 @@ impl Bin {
             events: evs,
             instrs: def_instrs
                 .into_iter()
-                .chain(instrs.into_iter().flat_map(|x| x.into_iter()))
+                .chain(
+                    instrs
+                        .into_iter()
+                        .flat_map(std::iter::IntoIterator::into_iter),
+                )
                 .collect(),
         })
     }
@@ -233,11 +237,15 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left and right should have type num
                     match left.get_type() {
                         Ok(Type::Bool(_)) => (),
-                        x => return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x))),
+                        x => {
+                            return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x)))
+                        }
                     }
                     match right.get_type() {
                         Ok(Type::Bool(_)) => (),
-                        x => return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x))),
+                        x => {
+                            return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x)))
+                        }
                     }
 
                     let res = scope.new_tmp(Type::Bool(None));

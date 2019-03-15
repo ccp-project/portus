@@ -7,10 +7,13 @@ use crate::serialize::u32_to_u8s;
 impl Bin {
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let b = self.clone();
-        let ists = b.instrs.into_iter().flat_map(|i| i.into_iter());
+        let ists = b
+            .instrs
+            .into_iter()
+            .flat_map(std::iter::IntoIterator::into_iter);
         b.events
             .into_iter()
-            .flat_map(|i| i.into_iter())
+            .flat_map(std::iter::IntoIterator::into_iter)
             .chain(ists)
             .collect()
     }

@@ -2,8 +2,8 @@
 
 use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
 use crate::lang::Bin;
-use std::io::prelude::*;
 use crate::Result;
+use std::io::prelude::*;
 
 pub(crate) const INSTALL: u8 = 2;
 
@@ -71,7 +71,8 @@ mod tests {
             instrs: b,
         };
 
-        let buf: Vec<u8> = crate::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
+        let buf: Vec<u8> =
+            crate::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
         assert_eq!(
             buf,
             vec![

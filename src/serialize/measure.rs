@@ -2,8 +2,8 @@
 //! measurements to CCP. Use the `Scope` returned from compiling the program to query the values.
 
 use super::{u32_to_u8s, u64_from_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
-use std::io::prelude::*;
 use crate::{Error, Result};
+use std::io::prelude::*;
 
 pub(crate) const MEASURE: u8 = 1;
 

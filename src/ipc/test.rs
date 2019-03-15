@@ -41,9 +41,9 @@ fn test_unix() {
     use super::Blocking;
     use crate::serialize;
     use crate::serialize::Msg;
+    use crate::test_helper::TestMsg;
     use std::sync::atomic;
     use std::thread;
-    use crate::test_helper::TestMsg;
 
     let (tx, rx) = crossbeam::channel::unbounded();
 
@@ -81,9 +81,9 @@ fn test_chan() {
     use super::Blocking;
     use crate::serialize;
     use crate::serialize::Msg;
+    use crate::test_helper::TestMsg;
     use std::sync::atomic;
     use std::thread;
-    use crate::test_helper::TestMsg;
 
     let (tx, rx) = crossbeam::channel::unbounded();
 

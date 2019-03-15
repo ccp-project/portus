@@ -171,8 +171,8 @@ fn main() {
 
     for entry in walker
         .filter_entry(|e| !is_hidden(&e))
-        .filter(|e| e.is_ok())
-        .map(|e| e.unwrap())
+        .filter(Result::is_ok)
+        .map(Result::unwrap)
         .filter(|e| !is_dir(e) && is_rs(e))
     {
         let filepath = &entry.path();

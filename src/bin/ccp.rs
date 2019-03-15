@@ -1,6 +1,7 @@
 #![recursion_limit = "128"]
 
 extern crate colored;
+extern crate libc;
 extern crate libloading;
 extern crate portus;
 extern crate proc_macro2;
@@ -10,7 +11,6 @@ extern crate structopt;
 extern crate syn;
 extern crate toml;
 extern crate walkdir;
-extern crate libc;
 
 use colored::Colorize;
 use walkdir::WalkDir;
@@ -26,9 +26,10 @@ struct Alg {
 use toml::Value;
 
 fn log(action: &str, msg: &str) {
-    println!("{action:>12} {msg}",
-             action=action.green().bold(),
-             msg=msg
+    println!(
+        "{action:>12} {msg}",
+        action = action.green().bold(),
+        msg = msg
     );
 }
 fn log_warn(msg: &str) {
@@ -81,8 +82,8 @@ fn find_algs(root: PathBuf) -> Vec<Alg> {
         .collect()
 }
 
-fn generate_cargo_toml(algs: &Vec<Alg>) -> String {
-    let mut toml = format!(
+fn generate_cargo_toml(algs: &[Alg]) -> String {
+    let toml = std::iter::once(
         r#"[package]
 name = "startccp"
 version = "0.1.0"
@@ -95,44 +96,34 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 libc = "0.2"
 clap = "2.32"
-portus = {{ path = "/home/frank/portus" }}
+portus = "^0.5"
 "#
+        .to_owned(),
     );
 
-    for Alg {
-        crate_name,
-        crate_path,
-    } in algs
-    {
-        toml.push_str(&format!(
-            "{} = {{ path = \"{}\" }}\n",
-            crate_name, crate_path
-        ));
-    }
-    toml
+    let algs_strs = algs.iter().map(
+        |Alg {
+             crate_name,
+             crate_path,
+         }| { format!("{} = {{ path = \"{}\" }}\n", crate_name, crate_path).to_string() },
+    );
+
+    itertools::join(toml.chain(algs_strs), "")
 }
 
 use proc_macro2::{Ident, Span};
 use quote::*;
 
-fn generate_lib_rs(algs: &Vec<Alg>) -> String {
-    let imports = algs.iter().map(
-        |Alg {
-             crate_name,
-             crate_path: _,
-         }| {
-            let name = Ident::new(crate_name, Span::call_site());
-            quote! {
-                extern crate #name;
-            }
-        },
-    );
+fn generate_lib_rs(algs: &[Alg]) -> String {
+    let imports = algs.iter().map(|Alg { crate_name, .. }| {
+        let name = Ident::new(crate_name, Span::call_site());
+        quote! {
+            extern crate #name;
+        }
+    });
 
     let loads = algs.iter().map(
-        |Alg {
-             crate_name,
-             crate_path: _,
-         }| {
+        |Alg { crate_name, .. }| {
             let name = Ident::new(crate_name, Span::call_site());
             let name_key = Ident::new(&format!("{}_key", crate_name), Span::call_site());
             let name_args = Ident::new(&format!("{}_args", crate_name), Span::call_site());
@@ -143,7 +134,7 @@ fn generate_lib_rs(algs: &Vec<Alg>) -> String {
         },
     );
 
-    let matches = algs.iter().map(|Alg{crate_name, crate_path: _}| {
+    let matches = algs.iter().map(|Alg{ crate_name, .. }| {
         let name = Ident::new(crate_name, Span::call_site());
         let name_key = Ident::new(&format!("{}_key", crate_name), Span::call_site());
         let name_args = Ident::new(&format!("{}_args", crate_name), Span::call_site());
@@ -158,7 +149,7 @@ fn generate_lib_rs(algs: &Vec<Alg>) -> String {
         }
     });
 
-    let alglist = algs.iter().map(|Alg{crate_name, crate_path: _}| {
+    let alglist = algs.iter().map(|Alg { crate_name, .. }| {
         let name_key = Ident::new(&format!("{}_key", crate_name), Span::call_site());
         quote! {
             eprintln!("- {}", #name_key);
@@ -228,15 +219,21 @@ use std::path::Path;
 fn write_file(path: &PathBuf, code: String) {
     let mut file = match File::create(path) {
         Err(why) => {
-            log_error(&format!("unable to create file {}: {}", path.to_string_lossy().red().bold(), why));
+            log_error(&format!(
+                "unable to create file {}: {}",
+                path.to_string_lossy().red().bold(),
+                why
+            ));
         }
         Ok(f) => f,
     };
-    match file.write_all(code.as_bytes()) {
-        Err(why) => {
-            log_error(&format!("unable to write file {}: {}", path.to_string_lossy().red().bold(), why));
-        }
-        Ok(_) => {}
+
+    if let Err(why) = file.write_all(code.as_bytes()) {
+        log_error(&format!(
+            "unable to write file {}: {}",
+            path.to_string_lossy().red().bold(),
+            why
+        ));
     }
 }
 
@@ -249,7 +246,9 @@ fn rebuild_library(root: &PathBuf, algs: Vec<Alg>) -> bool {
     let librs_path = lib_path.clone().join("src").join("lib.rs");
     write_file(&librs_path, generate_lib_rs(&algs));
 
-    let cargo_bin_cmd = Command::new("which").arg("cargo").output()
+    let cargo_bin_cmd = Command::new("which")
+        .arg("cargo")
+        .output()
         .expect("unable to find cargo, make sure it is in your path");
     let cargo_bin = std::str::from_utf8(&cargo_bin_cmd.stdout).unwrap().trim();
     if cargo_bin == "" {
@@ -276,10 +275,17 @@ fn rebuild_library(root: &PathBuf, algs: Vec<Alg>) -> bool {
         return false;
     }
 
-    let orig_path = lib_path.clone().join("target").join("release").join("libstartccp.so");
+    let orig_path = lib_path
+        .clone()
+        .join("target")
+        .join("release")
+        .join("libstartccp.so");
     let link_path = "/usr/lib/libstartccp.so";
 
-    log("Linking", &format!("{} -> {}", orig_path.to_string_lossy(), link_path));
+    log(
+        "Linking",
+        &format!("{} -> {}", orig_path.to_string_lossy(), link_path),
+    );
 
     Command::new("sudo")
         .arg("ln")
@@ -289,7 +295,7 @@ fn rebuild_library(root: &PathBuf, algs: Vec<Alg>) -> bool {
         .output()
         .expect("failed to link into /usr/lib");
 
-    return true;
+    true
 }
 
 use std::path::PathBuf;
@@ -350,7 +356,6 @@ enum Subcommand {
 
 use std::io::ErrorKind;
 
-
 fn main() {
     let opt = Ccp::from_iter(std::env::args().take_while(|a| a != "--"));
 
@@ -366,7 +371,8 @@ fn main() {
         Ok(_) => {}
         Err(ref error) if error.kind() == ErrorKind::AlreadyExists => {}
         Err(error) => {
-            log_error(&format!("unable to create root directory {}: {:#?}", 
+            log_error(&format!(
+                "unable to create root directory {}: {:#?}",
                 root.clone().to_string_lossy().red().bold(),
                 error
             ));
@@ -379,7 +385,8 @@ fn main() {
         Ok(_) => {}
         Err(ref error) if error.kind() == ErrorKind::AlreadyExists => {}
         Err(error) => {
-            log_error(&format!("unable to create lib directory {}: {:#?}", 
+            log_error(&format!(
+                "unable to create lib directory {}: {:#?}",
                 lib_dir.clone().to_string_lossy().red().bold(),
                 error
             ));
@@ -400,16 +407,23 @@ fn main() {
                 None => url,
                 Some(_) => unreachable!(),
             };
+
             if &url[url.len() - 4..] != ".git" {
                 url = format!("{}.git", url);
             }
 
-            let branch = branch.unwrap_or(String::from("master"));
+            let branch = branch.unwrap_or_else(|| String::from("master"));
 
             log("Cloning", &format!("{} --branch {}", url, branch));
 
             let url_clone = url.clone();
-            let dir_name = url_clone.split("/").last().unwrap().split(".").next().unwrap();
+            let dir_name = url_clone
+                .split('/')
+                .last()
+                .unwrap()
+                .split('.')
+                .next()
+                .unwrap();
             let old_dir = root.clone().join(dir_name);
 
             Command::new("sudo")
@@ -454,9 +468,7 @@ fn main() {
                     .current_dir(crate_path.clone())
                     .output()
                     .expect("git remote failed");
-                let remote = std::str::from_utf8(
-                    &remote_cmd.stdout
-                ).unwrap().trim();
+                let remote = std::str::from_utf8(&remote_cmd.stdout).unwrap().trim();
 
                 let branch_cmd = Command::new("git")
                     .arg("rev-parse")
@@ -465,24 +477,27 @@ fn main() {
                     .current_dir(crate_path.clone())
                     .output()
                     .expect("git rev-parse failed");
-                let branch = std::str::from_utf8(
-                    &branch_cmd.stdout
-                ).unwrap().trim();
+                let branch = std::str::from_utf8(&branch_cmd.stdout).unwrap().trim();
 
-                println!("- {} @ {} (url={}, branch={})", crate_name.blue().bold(), crate_path, remote, branch);
+                println!(
+                    "- {} @ {} (url={}, branch={})",
+                    crate_name.blue().bold(),
+                    crate_path,
+                    remote,
+                    branch
+                );
             }
         }
-        Subcommand::Run { alg, } => {
+        Subcommand::Run { alg } => {
             let after_dash = std::env::args()
                 .skip_while(|a| a != "--")
                 .collect::<Vec<String>>();
-            
-            let argv =
-                if after_dash.len() > 0 {
-                    after_dash[1..].join(" ")
-                } else {
-                    String::from("")
-                };
+
+            let argv = if !after_dash.is_empty() {
+                after_dash[1..].join(" ")
+            } else {
+                String::from("")
+            };
 
             log("Running", &format!("{} {}", alg, argv));
 
@@ -495,8 +510,9 @@ fn main() {
                 .join("libstartccp.so");
             let lib = libloading::Library::new(lib_path).expect("failed to load dynamic library");
             unsafe {
-                let spawn: libloading::Symbol<unsafe extern "C" fn(*const c_char) -> u32> =
-                    lib.get(b"libstartccp_run_forever").expect("failed to get spawn function");
+                let spawn: libloading::Symbol<unsafe extern "C" fn(*const c_char) -> u32> = lib
+                    .get(b"libstartccp_run_forever")
+                    .expect("failed to get spawn function");
                 let args = CString::new(format!("{} {}", alg, argv)).expect("CString::new failed");
                 spawn(args.as_ptr());
             }

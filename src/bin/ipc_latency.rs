@@ -90,7 +90,7 @@ impl portus::serialize::AsRawMsg for NlTimeMsg {
 use portus::serialize::AsRawMsg;
 use std::sync::mpsc;
 fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Duration> {
-    let res = (0..iter)
+    (0..iter)
         .map(|_| {
             let then = time::get_time();
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
@@ -102,8 +102,7 @@ fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Durat
                 panic!("wrong type");
             }
         })
-        .collect();
-    return res;
+        .collect()
 }
 
 struct NlDuration(Duration, Duration, Duration);
@@ -393,21 +392,19 @@ fn main() {
         nl_exp(trials);
     }
 
-    if imps.contains(&IpcType::Kp) {
-        if cfg!(target_os = "linux") {
-            for t in kp_nonblocking(trials)
-                .iter()
-                .map(|d| d.num_nanoseconds().unwrap())
-            {
-                println!("kp nonblk {:?} 0 0", t);
-            }
+    if imps.contains(&IpcType::Kp) && cfg!(target_os = "linux") {
+        for t in kp_nonblocking(trials)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
+            println!("kp nonblk {:?} 0 0", t);
+        }
 
-            for t in kp_blocking(trials)
-                .iter()
-                .map(|d| d.num_nanoseconds().unwrap())
-            {
-                println!("kp blk {:?} 0 0", t);
-            }
+        for t in kp_blocking(trials)
+            .iter()
+            .map(|d| d.num_nanoseconds().unwrap())
+        {
+            println!("kp blk {:?} 0 0", t);
         }
     }
 }

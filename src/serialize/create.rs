@@ -1,8 +1,8 @@
 //! Message sent from datapath to CCP when a new flow starts.
 
 use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
-use std::io::prelude::*;
 use crate::Result;
+use std::io::prelude::*;
 
 pub(crate) const CREATE: u8 = 0;
 

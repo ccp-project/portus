@@ -2,8 +2,8 @@
 
 use super::{u32_to_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
 use crate::lang::Reg;
-use std::io::prelude::*;
 use crate::{Error, Result};
+use std::io::prelude::*;
 
 pub(crate) const CHANGEPROG: u8 = 4;
 
@@ -67,7 +67,8 @@ mod tests {
             fields: vec![(Reg::Implicit(4, crate::lang::Type::Num(None)), 42)],
         };
 
-        let buf: Vec<u8> = crate::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
+        let buf: Vec<u8> =
+            crate::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
         assert_eq!(
             buf,
             #[rustfmt::skip]

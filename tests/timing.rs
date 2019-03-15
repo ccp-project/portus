@@ -8,9 +8,9 @@ extern crate minion;
 extern crate slog_term;
 extern crate time;
 
-use std::collections::HashMap;
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 mod libccp_integration;

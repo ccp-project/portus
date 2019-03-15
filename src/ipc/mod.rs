@@ -157,7 +157,7 @@ impl<'a, T: Ipc> Drop for Backend<'a, T> {
                     "Could not get exclusive ref to socket to close",
                 ))
             })
-            .and_then(|s| s.close())
+            .and_then(Ipc::close)
             .unwrap_or_else(|_| ());
     }
 }

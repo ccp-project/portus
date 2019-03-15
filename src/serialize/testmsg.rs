@@ -1,7 +1,7 @@
 use super::{AsRawMsg, RawMsg, HDR_LENGTH};
+use crate::Result;
 use std;
 use std::io::prelude::*;
-use crate::Result;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Msg(pub String);

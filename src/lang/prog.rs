@@ -61,7 +61,7 @@ named_complete!(
                 >> defs2: many0!(decl)
                 >> (reports
                     .into_iter()
-                    .flat_map(|v| v.into_iter())
+                    .flat_map(std::iter::IntoIterator::into_iter)
                     .filter_map(|(is_volatile, name, init_val)| match name {
                         Type::Name(name) => Some(Type::Name(format!("Report.{}", name))),
                         _ => None,
@@ -170,7 +170,7 @@ impl Prog {
     fn desugar(&mut self) {
         self.0
             .iter_mut()
-            .for_each(|v| v.body.iter_mut().for_each(|e| e.desugar()));
+            .for_each(|v| v.body.iter_mut().for_each(Expr::desugar));
     }
 }
 

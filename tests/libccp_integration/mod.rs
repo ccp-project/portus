@@ -1,13 +1,13 @@
 use std::marker::PhantomData;
 use std::sync::mpsc;
 
-use std::collections::HashMap;
 use portus;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 use portus::{CongAlg, Datapath, DatapathInfo, DatapathTrait, Flow, Report};
 use slog;
 use slog::Drain;
+use std::collections::HashMap;
 
 pub const ACKED_PRIMITIVE: u32 = 5; // libccp uses this same value for acked_bytes
 
