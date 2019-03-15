@@ -1,7 +1,9 @@
 [package]
 name = "portus_export"
 version = "0.1.0"
-authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
+authors = ["Frank Cangialosi <frankc@csail.mit.edu>", "Akshay Narayan <akshayn@csail.mit.edu>"]
+description = "Procedural macro for use with portus, CCP congestion control algorithms"
+license = "ISC"
 edition = "2018"
 
 [lib]
