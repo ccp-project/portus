@@ -2,9 +2,9 @@
 //! given fields to the given values.
 
 use super::{u32_to_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
-use lang::Reg;
+use crate::lang::Reg;
 use std::io::prelude::*;
-use {Error, Result};
+use crate::{Error, Result};
 
 pub(crate) const UPDATE_FIELD: u8 = 3;
 
@@ -54,17 +54,17 @@ impl AsRawMsg for Msg {
 
 #[cfg(test)]
 mod tests {
-    use lang::Reg;
+    use crate::lang::Reg;
 
     #[test]
     fn serialize_update_msg() {
         let m = super::Msg {
             sid: 1,
             num_fields: 1,
-            fields: vec![(Reg::Implicit(4, ::lang::Type::Num(None)), 42)],
+            fields: vec![(Reg::Implicit(4, crate::lang::Type::Num(None)), 42)],
         };
 
-        let buf: Vec<u8> = ::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
+        let buf: Vec<u8> = crate::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
         assert_eq!(
             buf,
             vec![

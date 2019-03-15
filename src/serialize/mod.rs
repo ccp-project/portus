@@ -139,7 +139,7 @@ mod test_helper {
             #[test]
             fn $id() {
                 let m = $m;
-                let buf: Vec<u8> = ::serialize::serialize::<$typ>(&m.clone()).expect("serialize");
+                let buf: Vec<u8> = crate::serialize::serialize::<$typ>(&m.clone()).expect("serialize");
                 let (msg, _) =
                     ::serialize::Msg::from_buf(&buf[..]).expect("deserialize: check_msg");
                 match msg {

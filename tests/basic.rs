@@ -14,7 +14,7 @@ use portus::{DatapathTrait, Report};
 use std::time::Instant;
 
 mod libccp_integration;
-use libccp_integration::{IntegrationTest, ACKED_PRIMITIVE};
+use crate::libccp_integration::{IntegrationTest, ACKED_PRIMITIVE};
 
 pub struct TestBasicSerialize;
 

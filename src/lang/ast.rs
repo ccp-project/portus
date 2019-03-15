@@ -378,7 +378,7 @@ mod tests {
         use nom;
         let foo = b"(+ 10 20))";
         use super::exprs;
-        use lang::Result;
+        use crate::lang::Result;
         use nom::Needed;
         match exprs(CompleteByteSlice(foo)) {
             Ok((r, me)) => {

@@ -99,12 +99,12 @@ pub mod test_helper;
 #[macro_use]
 pub mod algs;
 mod errors;
-pub use errors::*;
+pub use crate::errors::*;
 
-use ipc::Ipc;
-use ipc::{BackendBuilder, BackendSender};
-use lang::{Bin, Reg, Scope};
-use serialize::Msg;
+use crate::ipc::Ipc;
+use crate::ipc::{BackendBuilder, BackendSender};
+use crate::lang::{Bin, Reg, Scope};
+use crate::serialize::Msg;
 
 /// CCP custom `Result` type, using `Error` as the `Err` type.
 pub type Result<T> = std::result::Result<T, Error>;

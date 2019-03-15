@@ -1,7 +1,7 @@
 use super::ast::Op;
 use super::datapath::{Bin, Event, Instr, Reg};
 use super::{Error, Result};
-use serialize::u32_to_u8s;
+use crate::serialize::u32_to_u8s;
 
 /// Serialize a Bin to bytes for transfer to the datapath
 impl Bin {
@@ -202,9 +202,9 @@ impl Reg {
 
 #[cfg(test)]
 mod tests {
-    use lang;
-    use lang::ast::Op;
-    use lang::datapath::{Bin, Event, Instr, Reg, Type};
+    use crate::lang;
+    use crate::lang::ast::Op;
+    use crate::lang::datapath::{Bin, Event, Instr, Reg, Type};
     #[test]
     fn do_ser() {
         // make a Bin to serialize

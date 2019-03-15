@@ -179,9 +179,9 @@ mod tests {
     use nom;
     use nom::types::CompleteByteSlice;
 
-    use lang::ast::{Expr, Op, Prim};
-    use lang::datapath::{Scope, Type};
-    use lang::prog::{Event, Prog};
+    use crate::lang::ast::{Expr, Op, Prim};
+    use crate::lang::datapath::{Scope, Type};
+    use crate::lang::prog::{Event, Prog};
 
     #[test]
     fn defs() {
@@ -334,7 +334,7 @@ mod tests {
                 (* 9 8)
             )
         ";
-        use lang::Result;
+        use crate::lang::Result;
         use nom::Needed;
         match super::events(CompleteByteSlice(foo)) {
             Ok((r, me)) => {
@@ -390,7 +390,7 @@ mod tests {
         }
     }
 
-    impl PartialEq for ::lang::datapath::RegFile {
+    impl PartialEq for crate::lang::datapath::RegFile {
         fn eq(&self, other: &Self) -> bool {
             self.0.iter().zip(other.0.iter()).all(|(x, y)| x == y)
         }

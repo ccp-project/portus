@@ -80,7 +80,7 @@ pub struct Backend<'a, T: Ipc> {
     read_until: usize,
 }
 
-use serialize::Msg;
+use crate::serialize::Msg;
 impl<'a, T: Ipc> Backend<'a, T> {
     pub fn new(
         sock: T,

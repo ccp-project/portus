@@ -622,8 +622,8 @@ impl IntoIterator for Scope {
 #[cfg(test)]
 mod tests {
     use super::{Bin, Event, Instr, Reg, Type};
-    use lang::ast::Op;
-    use lang::prog::Prog;
+    use crate::lang::ast::Op;
+    use crate::lang::prog::Prog;
     #[test]
     fn primitives() {
         let foo = b"

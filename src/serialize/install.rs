@@ -1,9 +1,9 @@
 //! CCP sends this message containing a datapath program.
 
 use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
-use lang::Bin;
+use crate::lang::Bin;
 use std::io::prelude::*;
-use Result;
+use crate::Result;
 
 pub(crate) const INSTALL: u8 = 2;
 
@@ -50,7 +50,7 @@ impl AsRawMsg for Msg {
 
 #[cfg(test)]
 mod tests {
-    use lang::{Bin, Prog};
+    use crate::lang::{Bin, Prog};
 
     #[test]
     fn serialize_install_msg() {
@@ -71,7 +71,7 @@ mod tests {
             instrs: b,
         };
 
-        let buf: Vec<u8> = ::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
+        let buf: Vec<u8> = crate::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
         assert_eq!(
             buf,
             vec![

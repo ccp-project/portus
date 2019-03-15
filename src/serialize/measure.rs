@@ -3,7 +3,7 @@
 
 use super::{u32_to_u8s, u64_from_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
 use std::io::prelude::*;
-use {Error, Result};
+use crate::{Error, Result};
 
 pub(crate) const MEASURE: u8 = 1;
 
@@ -84,7 +84,7 @@ mod tests {
                     num_fields: $fields.len() as u8,
                     fields: $fields,
                 },
-                ::serialize::Msg::Ms(mes),
+                crate::serialize::Msg::Ms(mes),
                 mes
             );
         };

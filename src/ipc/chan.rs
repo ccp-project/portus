@@ -95,7 +95,7 @@ impl super::Ipc for Socket<Nonblocking> {
 mod tests {
     use super::Socket;
     use crossbeam::channel;
-    use ipc::{Blocking, Ipc};
+    use crate::ipc::{Blocking, Ipc};
     use std::thread;
 
     #[test]

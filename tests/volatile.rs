@@ -13,7 +13,7 @@ use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 
 mod libccp_integration;
-use libccp_integration::IntegrationTest;
+use crate::libccp_integration::IntegrationTest;
 
 pub struct TestVolatileVars;
 

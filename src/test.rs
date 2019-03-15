@@ -48,7 +48,7 @@ fn test_ser_over_ipc() {
 
 extern crate test;
 use self::test::Bencher;
-use ipc::Blocking;
+use crate::ipc::Blocking;
 
 #[bench]
 fn bench_ser_over_ipc(b: &mut Bencher) {

@@ -2,7 +2,7 @@
 
 use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
 use std::io::prelude::*;
-use Result;
+use crate::Result;
 
 pub(crate) const CREATE: u8 = 0;
 
@@ -61,7 +61,7 @@ impl AsRawMsg for Msg {
 mod tests {
     macro_rules! check_create_msg {
         ($id: ident, $msg: expr) => {
-            check_msg!($id, super::Msg, $msg, ::serialize::Msg::Cr(crm), crm);
+            check_msg!($id, super::Msg, $msg, crate::serialize::Msg::Cr(crm), crm);
         };
     }
 
