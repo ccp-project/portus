@@ -248,7 +248,7 @@ pub struct Config {
 /// The set of information passed by the datapath to CCP
 /// when a connection starts. It includes a unique 5-tuple (CCP socket id + source and destination
 /// IP and port), the initial congestion window (`init_cwnd`), and flow MSS.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DatapathInfo {
     pub sock_id: u32,
     pub init_cwnd: u32,
