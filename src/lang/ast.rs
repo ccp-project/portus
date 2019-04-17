@@ -190,6 +190,10 @@ impl Expr {
     pub fn new(src: &[u8]) -> Result<Vec<Self>> {
         use nom::Needed;
         match exprs(CompleteByteSlice(src)) {
+            Ok((rest, _)) if !rest.is_empty() => Err(Error::from(format!(
+                "compile error: \"{}\"",
+                str::from_utf8(rest.0)?
+            ))),
             Ok((_, me)) => me
                 .into_iter()
                 .filter(|e| match e {
@@ -516,6 +520,16 @@ mod tests {
             e,
             vec![Expr::Cmd(Command::Report), Expr::Cmd(Command::Fallthrough),]
         );
+    }
+
+    #[test]
+    fn partial() {
+        let foo = b"
+            (:= foo 1)
+            (report
+        ";
+
+        Expr::new(foo).unwrap_err();
     }
 
     #[test]

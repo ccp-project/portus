@@ -70,7 +70,6 @@
 //!         )
 //!         (when (> Micros 1000)
 //!             (report)
-//!             (reset)
 //!         )
 //!     ";
 //!     let (bin, scope) = lang::compile(my_cool_program, &[]).unwrap();

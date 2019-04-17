@@ -152,6 +152,10 @@ impl Prog {
         }?;
 
         let evs = match events(body) {
+            Ok((rest, _)) if !rest.is_empty() => Err(Error::from(format!(
+                "compile error: \"{}\"",
+                std::str::from_utf8(rest.0)?
+            ))),
             Ok((_, me)) => me.into_iter().collect(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(Error::from(e)),
             Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from("need more src")),
@@ -475,5 +479,31 @@ mod tests {
                 },
             ]),
         );
+    }
+
+    #[test]
+    fn test_complete_failure_fails() {
+        let foo = b"
+        (def (Report.foo 0))
+        (when (> Micros 3000)
+            (report
+        )";
+
+        Prog::new_with_scope(foo).unwrap_err();
+    }
+
+    #[test]
+    fn test_partial_failure_fails() {
+        let foo = b"
+        (def (Report.foo 0))
+        (when true
+            (bind Report.foo 4)
+            (fallthrough)
+        )
+        (when (> Micros 3000)
+            (report
+        )";
+
+        Prog::new_with_scope(foo).unwrap_err();
     }
 }
