@@ -11,7 +11,7 @@ repository = "https://github.com/ccp-project/portus"
 bytes = "0.4.5"
 clap = "2.29"
 fnv = "1"
-portus = "0.4.2"
+portus = "0.5"
 simple-signal = "1"
 slog = { version = "2" }
 slog-async = "2"

@@ -1,5 +1,3 @@
-use fnv::FnvHashMap as HashMap;
-
 use portus;
 use pyo3::prelude::*;
 use slog;
@@ -7,8 +5,9 @@ use std::rc::Rc;
 
 use portus::{CongAlg, Datapath, Report, Flow, DatapathTrait};
 use portus::ipc::Ipc;
-// use super::{py_create_flow, py_setattr};
 use super::{PyDatapath, PyReport, DatapathInfo};
+
+use std::collections::HashMap;
 
 pub struct PyFlow {
     py: Python<'static>,
@@ -138,7 +137,7 @@ impl<T: Ipc> CongAlg<T> for PyCongAlg {
         let py_datapath = py
             .init(|_| PyDatapath {
                 sock_id: control.get_sock_id(),
-                backend: Box::new(control.clone()),
+                backend: Box::new(control),
                 logger: self.logger.clone(),
                 sc: Default::default(),
                 debug: self.debug.clone(),
