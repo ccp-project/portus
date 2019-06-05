@@ -34,7 +34,6 @@ macro_rules! py_none {
     };
 }
 
-
 mod cong_alg;
 use cong_alg::*;
 
@@ -118,15 +117,24 @@ impl<'p> pyo3::class::PyObjectProtocol<'p> for PyReport {
     }
 }
 
+fn get_fields(list: &PyList) -> Vec<(&str, u32)> {
+    list.into_iter()
+        .map(|tuple_ref| {
+            tuple_ref.extract()
+                .expect("second argument to datapath.set_program must be a list of tuples of the form (string, int)")
+        })
+    .collect::<Vec<(&str, u32)>>()
+}
+
 #[py::methods]
 impl PyDatapath {
     fn update_field(&self, _py: Python, reg_name: String, val: u32) -> PyResult<()> {
         if self.debug {
             debug!(self.logger, "Updating field";
-               "sid" => self.sock_id,
-               "field" => reg_name.clone(),
-               "val" => val,
-           )
+                "sid" => self.sock_id,
+                "field" => reg_name.clone(),
+                "val" => val,
+            )
         }
         let sc = match self.sc {
             Some(ref s) => s,
@@ -146,9 +154,9 @@ impl PyDatapath {
     fn update_fields(&self, py: Python, fields: &PyList) -> PyResult<()> {
         if self.debug {
             debug!(self.logger, "Updating fields";
-               "sid" => self.sock_id,
-               "fields" => format!("{:?}",fields), 
-           )
+                "sid" => self.sock_id,
+                "fields" => format!("{:?}",fields),
+            )
         }
         let sc = match self.sc {
             Some(ref s) => s,
@@ -160,32 +168,7 @@ impl PyDatapath {
             }
         };
 
-        let ret = {
-            let items : Vec<(String,u32)> = fields.into_iter().map(|tuple_ref| {
-                let tuple_obj : PyObject = tuple_ref.into();
-                let tuple:&PyTuple = match tuple_obj.extract(py) {
-                    Ok(t) => t,
-                    Err(_) => {
-                        raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples")
-                    }
-                };
-                if tuple.len() != 2 {
-                    raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples with exactly two values each");
-                }
-                let name = match PyString::try_from(tuple.get_item(0)) {
-                    Ok(ps) => ps.to_string_lossy().into_owned(),
-                    Err(_) => raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples of the form (string, int|float)"),
-                };
-                let val = match tuple.get_item(1).extract::<u32>() {
-                    Ok(v) => v,
-                    Err(_) => raise!(TypeError, "second argument to datapath.update_fields must be a list of tuples of the form (string, int|float)")
-                };
-                Ok((name,val))
-            }).collect::<Result<Vec<(String, u32)>, _>>().unwrap();
-
-            let args: Vec<(&str, u32)> = items.iter().map(|(s, i)| (&s[..], i.clone())).collect();
-            self.backend.update_field(sc, &args[..])
-        };
+        let ret = self.backend.update_field(sc, &get_fields(fields)[..]);
 
         match ret {
             Ok(()) => Ok(()),
@@ -201,45 +184,18 @@ impl PyDatapath {
     ) -> PyResult<()> {
         if self.debug {
             debug!(self.logger, "switching datapath programs";
-               "sid" => self.sock_id,
-               "program_name" => program_name.clone(),
-           )
+                "sid" => self.sock_id,
+                "program_name" => program_name.clone(),
+            )
         }
 
-        let ret: Result<Scope, _> = match fields {
-            Some(list) => {
-                let items : Vec<(String,u32)> = list.into_iter().map(|tuple_ref| {
-                    let tuple_obj : PyObject = tuple_ref.into();
-                    let tuple:&PyTuple = match tuple_obj.extract(py) {
-                        Ok(t) => t,
-                        Err(_) => {
-                            panic!("second argument to datapath.set_program must be a list of tuples");
-                        }
-                    };
-                    if tuple.len() != 2 {
-                        panic!("second argument to datapath.set_program must be a list of tuples with exactly two values each (found {})",tuple.len());
-                    }
-                    let name = match PyString::try_from(tuple.get_item(0)) {
-                        Ok(ps) => ps.to_string_lossy().into_owned(),
-                        Err(_) => {
-                            panic!("second argument to datapath.set_program must be a list of tuples of the form (string, int), but one tuple does not begin with a string");
-                        }
-                    };
-                    let val = match tuple.get_item(1).extract::<u32>() {
-                        Ok(v) => v,
-                        Err(_) => {
-                            panic!("second argument to datapath.set_program must be a list of tuples of the form (string, int), but one tuple does not end with an int");
-                        }
-                    };
-                    (name,val)
-                }).collect::<Vec<(String, u32)>>();
-
-                let args: Vec<(&str, u32)> =
-                    items.iter().map(|(s, i)| (&s[..], i.clone())).collect();
-                self.backend.set_program(program_name, Some(&args[..]))
-            }
-            None => self.backend.set_program(program_name, None),
-        };
+        let ret = self.backend.set_program(
+            program_name,
+            fields
+                .map(|list| get_fields(list))
+                .as_ref()
+                .map(|x| x.as_slice()),
+        );
 
         match ret {
             Ok(sc) => {
@@ -290,12 +246,7 @@ fn py_try_compile(_py: pyo3::Python<'static>, prog: String) -> PyResult<String> 
     }
 }
 
-fn py_connect(
-    py: pyo3::Python<'static>,
-    ipc: String,
-    alg: PyObject,
-    debug: bool,
-) -> PyResult<i32> {
+fn py_connect(py: pyo3::Python<'static>, ipc: String, alg: PyObject, debug: bool) -> PyResult<i32> {
     let log = portus::algs::make_logger();
 
     // Check args
@@ -316,14 +267,8 @@ fn py_connect(
             let b = Socket::<ipc::Blocking>::new("in", "out")
                 .map(|sk| BackendBuilder { sock: sk })
                 .expect("create unix socket");
-            portus::run::<_, PyCongAlg>(
-                b,
-                portus::Config {
-                    logger: Some(log),
-                },
-                py_cong_alg
-            )
-            .unwrap();
+            portus::run::<_, PyCongAlg>(b, portus::Config { logger: Some(log) }, py_cong_alg)
+                .unwrap();
         }
         #[cfg(all(target_os = "linux"))]
         "netlink" => {
@@ -332,14 +277,8 @@ fn py_connect(
                 .map(|sk| BackendBuilder { sock: sk })
                 .expect("create netlink socket");
 
-            portus::run::<_, PyCongAlg>(
-                b,
-                portus::Config {
-                    logger: Some(log),
-                },
-                py_cong_alg
-            )
-            .unwrap();
+            portus::run::<_, PyCongAlg>(b, portus::Config { logger: Some(log) }, py_cong_alg)
+                .unwrap();
         }
         _ => unreachable!(),
     }
