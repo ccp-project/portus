@@ -213,22 +213,26 @@ impl PyDatapath {
                     let tuple:&PyTuple = match tuple_obj.extract(py) {
                         Ok(t) => t,
                         Err(_) => {
-                            raise!(TypeError, "second argument to datapath.set_program must be a list of tuples")
+                            panic!("second argument to datapath.set_program must be a list of tuples");
                         }
                     };
                     if tuple.len() != 2 {
-                        raise!(TypeError, "second argument to datapath.set_program must be a list of tuples with exactly two values each");
+                        panic!("second argument to datapath.set_program must be a list of tuples with exactly two values each (found {})",tuple.len());
                     }
                     let name = match PyString::try_from(tuple.get_item(0)) {
                         Ok(ps) => ps.to_string_lossy().into_owned(),
-                        Err(_) => raise!(TypeError, "second argument to datapath.set_program must be a list of tuples of the form (string, int|float)"),
+                        Err(_) => {
+                            panic!("second argument to datapath.set_program must be a list of tuples of the form (string, int), but one tuple does not begin with a string");
+                        }
                     };
                     let val = match tuple.get_item(1).extract::<u32>() {
                         Ok(v) => v,
-                        Err(_) => raise!(TypeError, "second argument to datapath.set_program must be a list of tuples of the form (string, int|float)")
+                        Err(_) => {
+                            panic!("second argument to datapath.set_program must be a list of tuples of the form (string, int), but one tuple does not end with an int");
+                        }
                     };
-                    Ok((name,val))
-                }).collect::<Result<Vec<(String, u32)>, _>>().unwrap();
+                    (name,val)
+                }).collect::<Vec<(String, u32)>>();
 
                 let args: Vec<(&str, u32)> =
                     items.iter().map(|(s, i)| (&s[..], i.clone())).collect();
