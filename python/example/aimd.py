@@ -9,7 +9,7 @@ class AIMDFlow():
         self.datapath_info = datapath_info
         self.init_cwnd = float(self.datapath_info.mss * AIMDFlow.INIT_CWND)
         self.cwnd = self.init_cwnd
-        self.datapath.set_program("default", [("Cwnd", self.cwnd)])
+        self.datapath.set_program("default", [("Cwnd", int(self.cwnd))])
 
     def on_report(self, r):
         if r.loss > 0 or r.sacked > 0:
