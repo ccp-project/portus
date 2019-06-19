@@ -96,7 +96,7 @@ pub fn deserialize_nltimemsg(msg: portus::serialize::other::Msg) -> portus::Resu
 
 use portus::ipc::SingleBackend;
 use std::sync::mpsc;
-fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Duration> {
+fn bench<T: Ipc>(b: BackendSender<T>, mut l: SingleBackend<T>, iter: u32) -> Vec<Duration> {
     (0..iter)
         .map(|_| {
             let then = time::get_time();
@@ -142,7 +142,7 @@ macro_rules! netlink_bench {
             // listen
             let c1 = thread::spawn(move || {
                 let mut nl = portus::ipc::netlink::Socket::<$mode>::new()
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
+                    .map(|sk| SingleBackend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
                     .expect("nl ipc initialization");
                 tx.send(vec![]).expect("ok to insmod");
                 nl.next().expect("receive echo");
@@ -234,7 +234,7 @@ macro_rules! kp_bench {
 
             let c1 = thread::spawn(move || {
                 let kp = portus::ipc::kp::Socket::<$mode>::new()
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
+                    .map(|sk| SingleBackend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
                     .expect("kp ipc initialization");
                 tx.send(bench(kp.sender(), kp, iter)).expect("report rtts");
             });

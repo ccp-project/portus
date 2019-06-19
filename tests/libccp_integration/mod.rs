@@ -80,7 +80,7 @@ impl<I: Ipc, T: IntegrationTest> Flow for TestBase<I, T> {
 }
 
 use portus::ipc::chan::Socket;
-use portus::ipc::{BackendBuilder, Blocking};
+use portus::ipc::{SingleBackendBuilder, Blocking};
 use std;
 use std::thread;
 
@@ -90,8 +90,8 @@ fn start_ccp<T: IntegrationTest + 'static + Send>(
     log: slog::Logger,
     tx: mpsc::Sender<Result<(), ()>>,
 ) -> portus::CCPHandle {
-    let b = BackendBuilder { sock: sk };
-    portus::spawn::<Socket<Blocking>, TestBaseConfig<T>>(
+    let b = SingleBackendBuilder { sock: sk };
+    portus::spawn::<Socket<Blocking>, TestBaseConfig<T>, SingleBackendBuilder<Socket<Blocking>>>(
         b,
         portus::Config {
             logger: Some(log.clone()),

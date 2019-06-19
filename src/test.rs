@@ -3,13 +3,15 @@ use super::serialize;
 use std::sync::{atomic, Arc};
 use std::thread;
 
+use crate::ipc::Backend;
+
 #[test]
 fn test_ser_over_ipc() {
     let (tx, rx) = crossbeam::channel::unbounded();
     let sk = ipc::test::FakeIpc::new();
     let sk1 = sk.clone();
     let c1 = thread::spawn(move || {
-        let mut b1 = ipc::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)));
+        let mut b1 = ipc::SingleBackend::new(sk1, Arc::new(atomic::AtomicBool::new(true)));
         tx.send(true).expect("ready chan send");
         let msg = b1.next().expect("receive message");
         assert_eq!(
@@ -26,7 +28,7 @@ fn test_ser_over_ipc() {
     let sk2 = sk.clone();
     let c2 = thread::spawn(move || {
         rx.recv().expect("ready chan rcv");
-        let b2 = ipc::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)));
+        let b2 = ipc::SingleBackend::new(sk2, Arc::new(atomic::AtomicBool::new(true)));
 
         // serialize a message
         let m = serialize::measure::Msg {
@@ -54,10 +56,10 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
     let (s2, r2) = crossbeam::channel::unbounded();
 
     let sk1 = ipc::chan::Socket::<Blocking>::new(s1, r2);
-    let mut b1 = ipc::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)));
+    let mut b1 = ipc::SingleBackend::new(sk1, Arc::new(atomic::AtomicBool::new(true)));
 
     let sk2 = ipc::chan::Socket::<Blocking>::new(s2, r1);
-    let b2 = ipc::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)));
+    let b2 = ipc::SingleBackend::new(sk2, Arc::new(atomic::AtomicBool::new(true)));
 
     let m = serialize::measure::Msg {
         sid: 42,

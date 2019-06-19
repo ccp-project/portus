@@ -101,7 +101,10 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 /// }
 ///
 /// fn main() {
-///     portus::start!("unix", None, MyCongestionControlAlgorithm(Default::default()));
+///     let handle = portus::spawn!("unix", None, MyCongestionControlAlgorithm(Default::default()), 4u32);
+///     std::thread::sleep(std::time::Duration::from_secs(2));
+///     handle.kill();
+///     handle.wait();
 /// }
 /// ```
 #[macro_export]
@@ -111,32 +114,88 @@ macro_rules! start {
         $crate::start!($ipc, $log, $alg, Blocking)
     }};
     ($ipc:expr, $log:expr, $alg: expr, $blk: ty) => {{
-        use $crate::ipc::BackendBuilder;
+        use $crate::ipc::SingleBackendBuilder;
         match $ipc {
             "unix" => {
                 use $crate::ipc::unix::Socket;
                 let b = Socket::<$blk>::new(0, "in", "out")
-                    .map(|sk| BackendBuilder { sock: sk })
+                    .map(|sk| SingleBackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::run::<_, _, SingleBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
             }
             #[cfg(all(target_os = "linux"))]
             "netlink" => {
                 use $crate::ipc::netlink::Socket;
                 let b = Socket::<$blk>::new()
-                    .map(|sk| BackendBuilder { sock: sk })
+                    .map(|sk| SingleBackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::run::<_, _, SingleBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
             }
             #[cfg(all(target_os = "linux"))]
             "char" => {
                 use $crate::ipc::kp::Socket;
                 let b = Socket::<$blk>::new()
-                    .map(|sk| BackendBuilder { sock: sk })
+                    .map(|sk| SingleBackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::run::<_, _, SingleBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
             }
             _ => unreachable!(),
+        }
+    }};
+    ($ipc:expr, $log:expr, $alg:expr, $blk:ty, $nthreads: expr) => {{
+        use std::convert::TryInto;
+        use $crate::ipc::MultiBackendBuilder;
+        match $ipc {
+            "unix" => {
+                use $crate::ipc::unix::Socket;
+                let mut v = vec![];
+                for i in 0..$nthreads {
+                    v.push(Socket::<$blk>::new(i.try_into().unwrap(), "in", "out").unwrap())
+                }
+                let b = MultiBackendBuilder { socks: v };
+                $crate::run::<_, _, MultiBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
+            }
+            _ => unimplemented!(),
+        }
+    }};
+}
+#[macro_export]
+macro_rules! spawn {
+    ($ipc:expr, $log:expr, $alg:expr, $nthreads: expr) => {{
+        use std::convert::TryInto;
+        use $crate::ipc::Blocking;
+        use $crate::ipc::MultiBackendBuilder;
+        match $ipc {
+            "unix" => {
+                use $crate::ipc::unix::Socket;
+                let mut v = vec![];
+                for i in 0..$nthreads {
+                    v.push(Socket::<Blocking>::new(i.try_into().unwrap(), "in", "out").unwrap())
+                }
+                let b = MultiBackendBuilder { socks: v };
+                $crate::spawn::<_, _, MultiBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
+            }
+            _ => unimplemented!(),
         }
     }};
 }
