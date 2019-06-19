@@ -485,8 +485,7 @@ where
     I: Ipc,
     U: CongAlg<I>,
 {
-    let mut receive_buf = [0u8; 1024];
-    let mut b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
+    let mut b = backend_builder.build(continue_listening.clone());
     let mut flows = HashMap::<u32, U::Flow>::default();
     let backend = b.sender();
 

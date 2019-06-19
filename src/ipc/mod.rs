@@ -42,12 +42,11 @@ pub struct BackendBuilder<T: Ipc> {
 }
 
 impl<T: Ipc> BackendBuilder<T> {
-    pub fn build<'a>(
+    pub fn build(
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
-        receive_buf: &'a mut [u8],
-    ) -> Backend<'a, T> {
-        Backend::new(self.sock, atomic_bool, receive_buf)
+    ) -> Backend<T> {
+        Backend::new(self.sock, atomic_bool)
     }
 }
 
@@ -72,25 +71,24 @@ impl<T: Ipc> Clone for BackendSender<T> {
 /// Backend will yield incoming IPC messages forever via `next()`.
 /// It owns the socket; `BackendSender` holds weak references.
 /// The atomic bool is a way to stop iterating.
-pub struct Backend<'a, T: Ipc> {
+pub struct Backend<T: Ipc> {
     sock: Rc<T>,
     continue_listening: Arc<atomic::AtomicBool>,
-    receive_buf: &'a mut [u8],
+    receive_buf: [u8; 1024],
     tot_read: usize,
     read_until: usize,
 }
 
 use crate::serialize::Msg;
-impl<'a, T: Ipc> Backend<'a, T> {
+impl<T: Ipc> Backend<T> {
     pub fn new(
         sock: T,
         continue_listening: Arc<atomic::AtomicBool>,
-        receive_buf: &'a mut [u8],
-    ) -> Backend<'a, T> {
+    ) -> Backend<T> {
         Backend {
             sock: Rc::new(sock),
             continue_listening,
-            receive_buf,
+            receive_buf: [0u8; 1024],
             tot_read: 0,
             read_until: 0,
         }
@@ -135,7 +133,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
                 return Err(Error(String::from("Done")));
             }
 
-            let read = match self.sock.recv(self.receive_buf) {
+            let read = match self.sock.recv(&mut self.receive_buf) {
                 Ok(l) => l,
                 _ => continue,
             };
@@ -149,7 +147,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
     }
 }
 
-impl<'a, T: Ipc> Drop for Backend<'a, T> {
+impl<T: Ipc> Drop for Backend<T> {
     fn drop(&mut self) {
         Rc::get_mut(&mut self.sock)
             .ok_or_else(|| {

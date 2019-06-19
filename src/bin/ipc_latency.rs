@@ -134,11 +134,8 @@ macro_rules! netlink_bench {
 
             // listen
             let c1 = thread::spawn(move || {
-                let mut buf = [0u8; 1024];
                 let mut nl = portus::ipc::netlink::Socket::<$mode>::new()
-                    .map(|sk| {
-                        Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..])
-                    })
+                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
                     .expect("nl ipc initialization");
                 tx.send(vec![]).expect("ok to insmod");
                 nl.next().expect("receive echo");
@@ -229,15 +226,8 @@ macro_rules! kp_bench {
                 .expect("load failed");
 
             let c1 = thread::spawn(move || {
-                let mut receive_buf = [0u8; 1024];
                 let kp = portus::ipc::kp::Socket::<$mode>::new()
-                    .map(|sk| {
-                        Backend::new(
-                            sk,
-                            Arc::new(atomic::AtomicBool::new(true)),
-                            &mut receive_buf[..],
-                        )
-                    })
+                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
                     .expect("kp ipc initialization");
                 tx.send(bench(kp.sender(), kp, iter)).expect("report rtts");
             });
@@ -269,15 +259,8 @@ macro_rules! unix_bench {
 
             // listen
             let c1 = thread::spawn(move || {
-                let mut receive_buf = [0u8; 1024];
                 let unix = portus::ipc::unix::Socket::<$mode>::new(1, "in", "out")
-                    .map(|sk| {
-                        Backend::new(
-                            sk,
-                            Arc::new(atomic::AtomicBool::new(true)),
-                            &mut receive_buf[..],
-                        )
-                    })
+                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
                     .expect("unix ipc initialization");
                 ready_rx.recv().expect("sync");
                 tx.send(bench(unix.sender(), unix, iter))
