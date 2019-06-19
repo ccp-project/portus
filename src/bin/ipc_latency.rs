@@ -89,7 +89,8 @@ impl portus::serialize::AsRawMsg for NlTimeMsg {
 
 use portus::serialize::AsRawMsg;
 use std::sync::mpsc;
-fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Duration> {
+use portus::ipc::SingleBackend;
+fn bench<T: Ipc>(b: BackendSender<T>, mut l: SingleBackend<T>, iter: u32) -> Vec<Duration> {
     (0..iter)
         .map(|_| {
             let then = time::get_time();
@@ -136,7 +137,7 @@ macro_rules! netlink_bench {
             let c1 = thread::spawn(move || {
                 let mut nl = portus::ipc::netlink::Socket::<$mode>::new()
                     .map(|sk| {
-                        Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)))
+                        SingleBackend::new(sk, Arc::new(atomic::AtomicBool::new(true)))
                     })
                     .expect("nl ipc initialization");
                 tx.send(vec![]).expect("ok to insmod");
@@ -230,7 +231,7 @@ macro_rules! kp_bench {
             let c1 = thread::spawn(move || {
                 let kp = portus::ipc::kp::Socket::<$mode>::new()
                     .map(|sk| {
-                        Backend::new(
+                        SingleBackend::new(
                             sk,
                             Arc::new(atomic::AtomicBool::new(true)),
                         )
@@ -268,7 +269,7 @@ macro_rules! unix_bench {
             let c1 = thread::spawn(move || {
                 let unix = portus::ipc::unix::Socket::<$mode>::new("in", "out")
                     .map(|sk| {
-                        Backend::new(
+                        SingleBackend::new(
                             sk,
                             Arc::new(atomic::AtomicBool::new(true)),
                         )

@@ -30,6 +30,14 @@ pub trait Ipc: 'static + Send {
     fn close(&mut self) -> Result<()>;
 }
 
+/// This trait allows for the backend to be either single or mutli-threaded
+pub trait Backend<T: Ipc> {
+    fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self;
+    fn sender(&self) -> BackendSender<T>;
+    fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool>;
+    fn next(&mut self) -> Option<Msg<'_>>;
+}
+
 /// Marker type specifying that the IPC socket should make blocking calls to the underlying socket
 pub struct Blocking;
 /// Marker type specifying that the IPC socket should make nonblocking calls to the underlying socket
@@ -42,11 +50,11 @@ pub struct BackendBuilder<T: Ipc> {
 }
 
 impl<T: Ipc> BackendBuilder<T> {
-    pub fn build(
+    pub fn build<B: Backend<T>>(
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> Backend<T> {
-        Backend::new(self.sock, atomic_bool)
+    ) -> B {
+        B::new(self.sock, atomic_bool)
     }
 }
 
@@ -71,7 +79,7 @@ impl<T: Ipc> Clone for BackendSender<T> {
 /// Backend will yield incoming IPC messages forever via `next()`.
 /// It owns the socket; `BackendSender` holds weak references.
 /// The atomic bool is a way to stop iterating.
-pub struct Backend<T: Ipc> {
+pub struct SingleBackend<T: Ipc> {
     sock: Rc<T>,
     continue_listening: Arc<atomic::AtomicBool>,
     receive_buf: [u8; 1024],
@@ -80,12 +88,12 @@ pub struct Backend<T: Ipc> {
 }
 
 use crate::serialize::Msg;
-impl<T: Ipc> Backend<T> {
-    pub fn new(
+impl<T: Ipc> Backend<T> for SingleBackend<T> {
+    fn new(
         sock: T,
         continue_listening: Arc<atomic::AtomicBool>,
-    ) -> Backend<T> {
-        Backend {
+    ) -> Self {
+        SingleBackend {
             sock: Rc::new(sock),
             continue_listening,
             receive_buf: [0u8; 1024],
@@ -94,20 +102,20 @@ impl<T: Ipc> Backend<T> {
         }
     }
 
-    pub fn sender(&self) -> BackendSender<T> {
+    fn sender(&self) -> BackendSender<T> {
         BackendSender(Rc::downgrade(&self.sock))
     }
 
     /// Return a copy of the flag variable that indicates that the
     /// `Backend` should continue listening (i.e., not exit).
-    pub fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
+    fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
         Arc::clone(&(self.continue_listening))
     }
 
     /// Get the next IPC message.
     // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
     // of `self`, so we cannot implement that trait.
-    pub fn next(&mut self) -> Option<Msg<'_>> {
+    fn next(&mut self) -> Option<Msg<'_>> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
             let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
@@ -124,6 +132,9 @@ impl<T: Ipc> Backend<T> {
         }
     }
 
+}
+
+impl<T: Ipc> SingleBackend<T> {
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
     fn get_next_read(&mut self) -> Result<usize> {
@@ -147,7 +158,7 @@ impl<T: Ipc> Backend<T> {
     }
 }
 
-impl<T: Ipc> Drop for Backend<T> {
+impl<T: Ipc> Drop for SingleBackend<T> {
     fn drop(&mut self) {
         Rc::get_mut(&mut self.sock)
             .ok_or_else(|| {
