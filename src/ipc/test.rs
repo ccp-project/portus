@@ -49,7 +49,7 @@ fn test_unix() {
 
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
-        let sk2 = super::unix::Socket::<Blocking>::new("out", "in").expect("init socket");
+        let sk2 = super::unix::Socket::<Blocking>::new(1, "out", "in").expect("init socket");
         let mut buf = [0u8; 1024];
         let b2 = super::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
         let test_msg = TestMsg(String::from("hello, world"));
@@ -59,7 +59,7 @@ fn test_unix() {
             .expect("send message");
     });
 
-    let sk1 = super::unix::Socket::<Blocking>::new("in", "out").expect("init socket");
+    let sk1 = super::unix::Socket::<Blocking>::new(1, "in", "out").expect("init socket");
     let mut buf = [0u8; 1024];
     let mut b1 = super::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
     tx.send(true).expect("chan send");
