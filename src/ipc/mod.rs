@@ -35,7 +35,7 @@ pub trait Backend<T: Ipc> {
     //fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self;
     fn sender(&self) -> BackendSender<T>;
     fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool>;
-    fn next(&mut self) -> Option<Msg<'_>>;
+    fn next(&mut self) -> Option<Msg>;
 }
 
 /// Marker type specifying that the IPC socket should make blocking calls to the underlying socket
@@ -82,7 +82,7 @@ pub struct MultiBackend<'a, T: Ipc> {
     continue_listening: Arc<atomic::AtomicBool>,
     sel: crossbeam::channel::Select<'a>,
     backends: Vec<BackendSender<T>>,
-    receivers: Vec<crossbeam::channel::Receiver<Option<Msg<'a>>>>,
+    receivers: Vec<crossbeam::channel::Receiver<Option<Msg>>>,
 }
 
 impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
@@ -96,12 +96,12 @@ impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
         let mut sel = crossbeam::channel::Select::new();
 
         for sock in socks {
-            let backend = SingleBackend::new(sock, continue_listening);
+            let mut backend = SingleBackend::new(sock, Arc::clone(&continue_listening));
             backends.push(backend.sender());
 
             let (s,r) = unbounded();
-            receivers.push(r);
             sel.recv(&r);
+            receivers.push(r);
 
             std::thread::spawn(move || {
                 loop {
@@ -134,7 +134,7 @@ impl<'a, T: Ipc> Backend<T> for MultiBackend<'a, T> {
         Arc::clone(&(self.continue_listening))
     }
 
-    fn next(&mut self) -> Option<Msg<'_>> {
+    fn next(&mut self) -> Option<Msg> {
         let oper = self.sel.select();
         let index = oper.index();
         oper.recv(&self.receivers[index]).unwrap() // TODO don't just unwrap
@@ -168,7 +168,7 @@ impl<T: Ipc> Backend<T> for SingleBackend<T> {
     /// Get the next IPC message.
     // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
     // of `self`, so we cannot implement that trait.
-    fn next(&mut self) -> Option<Msg<'_>> {
+    fn next(&mut self) -> Option<Msg> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
             let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
