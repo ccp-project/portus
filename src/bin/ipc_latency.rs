@@ -14,9 +14,10 @@ use std::sync::{atomic, Arc};
 use time::Duration;
 
 #[derive(Debug)]
-struct TimeMsg(time::Timespec);
+pub struct TimeMsg(time::Timespec);
 
 use std::io::prelude::*;
+
 impl portus::serialize::AsRawMsg for TimeMsg {
     fn get_hdr(&self) -> (u8, u32, u32) {
         (0xff, portus::serialize::HDR_LENGTH + 8 + 4, 0)
@@ -38,16 +39,19 @@ impl portus::serialize::AsRawMsg for TimeMsg {
         Ok(())
     }
 
-    fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
-        let b = msg.get_bytes()?;
-        let sec = LittleEndian::read_i64(&b[0..8]);
-        let nsec = LittleEndian::read_i32(&b[8..12]);
-        Ok(TimeMsg(time::Timespec::new(sec, nsec)))
+    fn from_raw_msg(_msg: portus::serialize::RawMsg) -> portus::Result<Self> {
+        unimplemented!()
     }
+}
+pub fn deserialize_timemsg(msg: portus::serialize::other::Msg) -> portus::Result<TimeMsg> {
+    let b = msg.get_raw_bytes();
+    let sec = LittleEndian::read_i64(&b[0..8]);
+    let nsec = LittleEndian::read_i32(&b[8..12]);
+    Ok(TimeMsg(time::Timespec::new(sec, nsec)))
 }
 
 #[derive(Debug)]
-struct NlTimeMsg {
+pub struct NlTimeMsg {
     kern_rt: time::Timespec,
     kern_st: time::Timespec,
 }
@@ -74,20 +78,23 @@ impl portus::serialize::AsRawMsg for NlTimeMsg {
         Ok(())
     }
 
-    fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
-        let b = msg.get_bytes()?;
-        let up_sec = LittleEndian::read_i64(&b[0..8]);
-        let up_nsec = LittleEndian::read_i32(&b[8..12]);
-        let down_sec = LittleEndian::read_i64(&b[12..20]);
-        let down_nsec = LittleEndian::read_i32(&b[20..24]);
-        Ok(NlTimeMsg {
-            kern_rt: time::Timespec::new(up_sec, up_nsec),
-            kern_st: time::Timespec::new(down_sec, down_nsec),
-        })
+    fn from_raw_msg(_msg: portus::serialize::RawMsg) -> portus::Result<Self> {
+        unimplemented!()
     }
 }
+pub fn deserialize_nltimemsg(msg: portus::serialize::other::Msg) -> portus::Result<NlTimeMsg> {
+    let b = msg.get_raw_bytes();
+    let up_sec = LittleEndian::read_i64(&b[0..8]);
+    let up_nsec = LittleEndian::read_i32(&b[8..12]);
+    let down_sec = LittleEndian::read_i64(&b[12..20]);
+    let down_nsec = LittleEndian::read_i32(&b[20..24]);
+    Ok(NlTimeMsg {
+        kern_rt: time::Timespec::new(up_sec, up_nsec),
+        kern_st: time::Timespec::new(down_sec, down_nsec),
+    })
+}
 
-use portus::serialize::AsRawMsg;
+use portus::ipc::SingleBackend;
 use std::sync::mpsc;
 fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Duration> {
     (0..iter)
@@ -96,7 +103,7 @@ fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Durat
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
             if let portus::serialize::Msg::Other(raw) = l.next().expect("receive echo") {
-                let then = TimeMsg::from_raw_msg(raw).expect("get time from raw");
+                let then = deserialize_timemsg(raw).expect("get time from raw");
                 time::get_time() - then.0
             } else {
                 panic!("wrong type");
@@ -150,7 +157,7 @@ macro_rules! netlink_bench {
                         if let portus::serialize::Msg::Other(raw) = nl.next().expect("recv echo") {
                             let portus_rt = time::get_time();
                             let kern_recv_msg =
-                                NlTimeMsg::from_raw_msg(raw).expect("get time from raw");
+                                deserialize_nltimemsg(raw).expect("get time from raw");
                             return NlDuration(
                                 portus_rt - portus_send_time,
                                 kern_recv_msg.kern_rt - portus_send_time,
@@ -260,7 +267,7 @@ macro_rules! unix_bench {
             // listen
             let c1 = thread::spawn(move || {
                 let unix = portus::ipc::unix::Socket::<$mode>::new(1, "in", "out")
-                    .map(|sk| Backend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
+                    .map(|sk| SingleBackend::new(sk, Arc::new(atomic::AtomicBool::new(true))))
                     .expect("unix ipc initialization");
                 ready_rx.recv().expect("sync");
                 tx.send(bench(unix.sender(), unix, iter))

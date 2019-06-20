@@ -23,3 +23,12 @@ impl AsRawMsg for Msg {
         Ok(Msg(st))
     }
 }
+#[cfg(test)]
+impl Msg {
+    pub fn from_other_msg(msg: super::other::Msg) -> Result<Self> {
+        let b = msg.get_raw_bytes();
+        let s = std::str::from_utf8(b)?;
+        let st = String::from(s);
+        Ok(Msg(st))
+    }
+}

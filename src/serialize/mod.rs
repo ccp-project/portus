@@ -156,6 +156,7 @@ pub mod changeprog;
 pub mod create;
 pub mod install;
 pub mod measure;
+pub mod other;
 mod testmsg;
 pub mod update_field;
 
@@ -193,21 +194,21 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
 /// a Msg of the corresponding type. If the message type is unkown, returns a
 /// wrapper with direct access to the message bytes.
 #[derive(Debug, PartialEq)]
-pub enum Msg<'a> {
+pub enum Msg {
     Cr(create::Msg),
     Ms(measure::Msg),
     Ins(install::Msg),
-    Other(RawMsg<'a>),
+    Other(other::Msg),
 }
 
-impl<'a> Msg<'a> {
+impl Msg {
     fn from_raw_msg(m: RawMsg) -> Result<Msg> {
         match m.typ {
             create::CREATE => Ok(Msg::Cr(create::Msg::from_raw_msg(m)?)),
             measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
             install::INSTALL => Ok(Msg::Ins(install::Msg::from_raw_msg(m)?)),
             update_field::UPDATE_FIELD => unimplemented!(),
-            _ => Ok(Msg::Other(m)),
+            _ => Ok(Msg::Other(other::Msg::from_raw_msg(m)?)),
         }
     }
 
@@ -288,13 +289,13 @@ mod tests {
     #[test]
     fn test_other_msg() {
         use super::testmsg;
-        use super::AsRawMsg;
+
         let m = testmsg::Msg(String::from("testing"));
         let buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m.clone()).expect("serialize");
         let (msg, _) = Msg::from_buf(&buf[..]).expect("deserialize");
         match msg {
-            Msg::Other(raw) => {
-                let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
+            Msg::Other(o) => {
+                let got = testmsg::Msg::from_other_msg(o).expect("get raw msg");
                 assert_eq!(m, got);
             }
             _ => panic!("wrong type for message"),
@@ -304,7 +305,6 @@ mod tests {
     #[test]
     fn test_multi_msg() {
         use super::testmsg;
-        use super::AsRawMsg;
 
         let m1 = testmsg::Msg(String::from("foo"));
         let m2 = testmsg::Msg(String::from("bar"));
@@ -313,8 +313,8 @@ mod tests {
 
         let (msg, len1) = Msg::from_buf(&buf[..]).expect("deserialize");
         match msg {
-            Msg::Other(raw) => {
-                let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
+            Msg::Other(o) => {
+                let got = testmsg::Msg::from_other_msg(o).expect("get raw msg");
                 assert_eq!(m1, got);
             }
             _ => panic!("wrong type for message"),
@@ -322,8 +322,8 @@ mod tests {
 
         let (msg, len2) = Msg::from_buf(&buf[len1..]).expect("deserialize");
         match msg {
-            Msg::Other(raw) => {
-                let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
+            Msg::Other(o) => {
+                let got = testmsg::Msg::from_other_msg(o).expect("get raw msg");
                 assert_eq!(m2, got);
             }
             _ => panic!("wrong type for message"),
