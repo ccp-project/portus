@@ -1,8 +1,8 @@
 //! A library wrapping various IPC mechanisms with a datagram-oriented
 //! messaging layer. This is how CCP communicates with the datapath.
 
-use std::rc::{Rc, Weak};
-use std::sync::{atomic, Arc};
+//use std::rc::{Rc, Weak};
+use std::sync::{atomic, Arc, Weak};
 
 use super::Error;
 use super::Result;
@@ -32,7 +32,7 @@ pub trait Ipc: 'static + Send {
 
 /// This trait allows for the backend to be either single or mutli-threaded
 pub trait Backend<T: Ipc> {
-    fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self;
+    //fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self;
     fn sender(&self) -> BackendSender<T>;
     fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool>;
     fn next(&mut self) -> Option<Msg<'_>>;
@@ -50,11 +50,11 @@ pub struct BackendBuilder<T: Ipc> {
 }
 
 impl<T: Ipc> BackendBuilder<T> {
-    pub fn build<B: Backend<T>>(
+    pub fn build(
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> B {
-        B::new(self.sock, atomic_bool)
+    ) -> SingleBackend<T> {
+        SingleBackend::new(self.sock, atomic_bool)
     }
 }
 
@@ -76,11 +76,77 @@ impl<T: Ipc> Clone for BackendSender<T> {
     }
 }
 
+use crossbeam::channel::unbounded;
+pub struct MultiBackend<'a, T: Ipc> {
+    last_recvd: Option<u8>,
+    continue_listening: Arc<atomic::AtomicBool>,
+    sel: crossbeam::channel::Select<'a>,
+    backends: Vec<BackendSender<T>>,
+    receivers: Vec<crossbeam::channel::Receiver<Option<Msg<'a>>>>,
+}
+
+impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
+    fn new(
+        socks: Vec<T>,
+        continue_listening: Arc<atomic::AtomicBool>,
+    ) -> Self {
+
+        let mut backends = Vec::new();
+        let mut receivers = Vec::new();
+        let mut sel = crossbeam::channel::Select::new();
+
+        for sock in socks {
+            let backend = SingleBackend::new(sock, continue_listening);
+            backends.push(backend.sender());
+
+            let (s,r) = unbounded();
+            receivers.push(r);
+            sel.recv(&r);
+
+            std::thread::spawn(move || {
+                loop {
+                    s.send(backend.next());
+                }
+            });
+        }
+
+        MultiBackend {
+            last_recvd: None,
+            continue_listening,
+            sel,
+            backends,
+            receivers,
+        }
+    }
+
+}
+impl<'a, T: Ipc> Backend<T> for MultiBackend<'a, T> {
+    fn sender(&self) -> BackendSender<T> {
+        match self.last_recvd {
+            Some(i) => self.backends[i as usize],
+            None    => panic!("Called sender but no messages have been received yet!")
+        }
+    }
+
+    /// Return a copy of the flag variable that indicates that the
+    /// `Backend` should continue listening (i.e., not exit).
+    fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
+        Arc::clone(&(self.continue_listening))
+    }
+
+    fn next(&mut self) -> Option<Msg<'_>> {
+        let oper = self.sel.select();
+        let index = oper.index();
+        oper.recv(&self.receivers[index]).unwrap() // TODO don't just unwrap
+    }
+}
+
+
 /// Backend will yield incoming IPC messages forever via `next()`.
 /// It owns the socket; `BackendSender` holds weak references.
 /// The atomic bool is a way to stop iterating.
 pub struct SingleBackend<T: Ipc> {
-    sock: Rc<T>,
+    sock: Arc<T>,
     continue_listening: Arc<atomic::AtomicBool>,
     receive_buf: [u8; 1024],
     tot_read: usize,
@@ -89,21 +155,8 @@ pub struct SingleBackend<T: Ipc> {
 
 use crate::serialize::Msg;
 impl<T: Ipc> Backend<T> for SingleBackend<T> {
-    fn new(
-        sock: T,
-        continue_listening: Arc<atomic::AtomicBool>,
-    ) -> Self {
-        SingleBackend {
-            sock: Rc::new(sock),
-            continue_listening,
-            receive_buf: [0u8; 1024],
-            tot_read: 0,
-            read_until: 0,
-        }
-    }
-
     fn sender(&self) -> BackendSender<T> {
-        BackendSender(Rc::downgrade(&self.sock))
+        BackendSender(Arc::downgrade(&self.sock))
     }
 
     /// Return a copy of the flag variable that indicates that the
@@ -135,6 +188,19 @@ impl<T: Ipc> Backend<T> for SingleBackend<T> {
 }
 
 impl<T: Ipc> SingleBackend<T> {
+    fn new(
+        sock: T,
+        continue_listening: Arc<atomic::AtomicBool>,
+    ) -> Self {
+        SingleBackend {
+            sock: Arc::new(sock),
+            continue_listening,
+            receive_buf: [0u8; 1024],
+            tot_read: 0,
+            read_until: 0,
+        }
+    }
+
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
     fn get_next_read(&mut self) -> Result<usize> {
@@ -160,7 +226,7 @@ impl<T: Ipc> SingleBackend<T> {
 
 impl<T: Ipc> Drop for SingleBackend<T> {
     fn drop(&mut self) {
-        Rc::get_mut(&mut self.sock)
+        Arc::get_mut(&mut self.sock)
             .ok_or_else(|| {
                 Error(String::from(
                     "Could not get exclusive ref to socket to close",

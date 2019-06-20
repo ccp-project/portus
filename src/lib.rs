@@ -465,7 +465,6 @@ where
 }
 
 use crate::ipc::Backend;
-use crate::ipc::SingleBackend;
 // Main execution inner loop of ccp.
 // Blocks "forever", or until the iterator stops iterating.
 //
@@ -487,7 +486,7 @@ where
     I: Ipc,
     U: CongAlg<I>,
 {
-    let mut b = backend_builder.build::<SingleBackend<I>>(continue_listening.clone());
+    let mut b = backend_builder.build(continue_listening.clone());
     let mut flows = HashMap::<u32, U::Flow>::default();
     let backend = b.sender();
 
