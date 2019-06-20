@@ -97,7 +97,6 @@ impl portus::serialize::AsRawMsg for NlTimeMsg {
 }
 
 
-use portus::serialize::AsRawMsg;
 use std::sync::mpsc;
 use portus::ipc::SingleBackend;
 fn bench<T: Ipc>(b: BackendSender<T>, mut l: SingleBackend<T>, iter: u32) -> Vec<Duration> {
