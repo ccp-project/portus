@@ -102,7 +102,7 @@ mod errors;
 pub use crate::errors::*;
 
 use crate::ipc::Ipc;
-use crate::ipc::{BackendBuilder, BackendSender};
+use crate::ipc::{BackendBuilder, BackendSender, MultiBackendBuilder};
 use crate::lang::{Bin, Reg, Scope};
 use crate::serialize::Msg;
 
@@ -426,9 +426,9 @@ impl CCPHandle {
 /// Run() or spawn() create arc<AtomicBool> objects,
 /// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
 /// boolean to kill the thread.
-pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> Result<!>
+pub fn run<I, U>(backend_builder: MultiBackendBuilder<I>, cfg: Config, alg: U) -> Result<!>
 where
-    I: Ipc,
+    I: Ipc + Sync,
     U: CongAlg<I>,
 {
     // call run_inner
@@ -452,9 +452,9 @@ where
 /// 3. The caller calls `CCPHandle::kill()`
 ///
 /// See [`run`](./fn.run.html) for more information.
-pub fn spawn<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> CCPHandle
+pub fn spawn<I, U>(backend_builder: MultiBackendBuilder<I>, cfg: Config, alg: U) -> CCPHandle
 where
-    I: Ipc,
+    I: Ipc + Sync,
     U: CongAlg<I> + 'static + Send,
 {
     let stop_signal = Arc::new(atomic::AtomicBool::new(true));
@@ -478,12 +478,12 @@ use crate::ipc::Backend;
 // 2. Receiving an install control message (only the datapath should receive these).
 fn run_inner<I, U>(
     continue_listening: Arc<atomic::AtomicBool>,
-    backend_builder: BackendBuilder<I>,
+    backend_builder: MultiBackendBuilder<I>,
     cfg: Config,
     alg: U,
 ) -> Result<()>
 where
-    I: Ipc,
+    I: Ipc + Sync,
     U: CongAlg<I>,
 {
     let mut b = backend_builder.build(continue_listening.clone());

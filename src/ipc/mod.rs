@@ -43,17 +43,20 @@ pub struct Blocking;
 /// Marker type specifying that the IPC socket should make nonblocking calls to the underlying socket
 pub struct Nonblocking;
 
+pub trait BackendBuilder<T> where T: Ipc + std::marker::Sync {
+    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> impl Backend<T>;
+}
 /// Backend builder contains the objects
 /// needed to build a new backend.
-pub struct BackendBuilder<T: Ipc> {
+pub struct SingleBackendBuilder<T: Ipc> {
     pub sock: T,
 }
 
-impl<T: Ipc> BackendBuilder<T> {
-    pub fn build(
+impl<T> BackendBuilder<T> for SingleBackendBuilder<T> where T: Ipc + std::marker::Sync {
+    fn build(
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> SingleBackend<T> {
+    ) -> impl Backend<T> {
         SingleBackend::new(self.sock, atomic_bool)
     }
 }
@@ -76,19 +79,17 @@ impl<T: Ipc> Clone for BackendSender<T> {
     }
 }
 
-/*
 pub struct MultiBackendBuilder<T: Ipc> {
     pub socks: Vec<T>,
 }
-impl<T: Ipc> MultiBackendBuilder<T> {
+impl<T> MultiBackendBuilder<T> where T: Ipc + std::marker::Sync {
     pub fn build(
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> MultiBackend<T> {
+    ) -> impl Backend<T> {
         MultiBackend::new(self.socks, atomic_bool)
     }
 }
-*/
 
 use crossbeam::channel::{Receiver, Select, unbounded};
 pub struct MultiBackend<T: Ipc> {
@@ -101,7 +102,7 @@ pub struct MultiBackend<T: Ipc> {
 }
 
 impl<T> MultiBackend<T> where T: Ipc + std::marker::Sync {
-    fn new(
+    pub fn new(
         socks: Vec<T>,
         continue_listening: Arc<atomic::AtomicBool>,
     ) -> Self {
