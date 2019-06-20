@@ -18,7 +18,7 @@ pub struct Socket<T> {
     sk: UnixDatagram,
     dest: String,
     _phantom: PhantomData<T>,
-    id: u8
+    _id: u8
 }
 
 impl<T> Socket<T> {
@@ -48,7 +48,7 @@ impl<T> Socket<T> {
             sk: sock,
             dest: send_to_addr,
             _phantom: PhantomData,
-            id
+            _id : id
         })
     }
 }
