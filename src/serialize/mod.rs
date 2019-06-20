@@ -197,6 +197,7 @@ pub enum Msg {
     Cr(create::Msg),
     Ms(measure::Msg),
     Ins(install::Msg),
+    Other(Vec<u8>),
 }
 
 impl Msg {
@@ -206,7 +207,7 @@ impl Msg {
             measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
             install::INSTALL => Ok(Msg::Ins(install::Msg::from_raw_msg(m)?)),
             update_field::UPDATE_FIELD => unimplemented!(),
-            _ => unimplemented!(),
+            _ => Ok(Msg::Other(m.get_bytes().unwrap().to_vec())),
         }
     }
 
