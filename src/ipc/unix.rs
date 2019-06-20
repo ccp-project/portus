@@ -6,9 +6,11 @@ use super::Result;
 use std::marker::PhantomData;
 
 macro_rules! unix_addr {
-    // TODO for now assumes just a single CCP (id=0)
-    ($x:expr) => {
-        format!("/tmp/ccp/0/{}", $x)
+    ($id:expr) => {
+        format!("/tmp/ccp/{}", $id)
+    };
+    ($id:expr, $dir:expr) => {
+        format!("/tmp/ccp/{}/{}", $id, $dir)
     };
 }
 
@@ -16,17 +18,18 @@ pub struct Socket<T> {
     sk: UnixDatagram,
     dest: String,
     _phantom: PhantomData<T>,
+    id: u8
 }
 
 impl<T> Socket<T> {
     // Only the CCP process is allowed to use id = 0.
     // For all other datapaths, they should use a known unique identifier
     // such as the port number.
-    fn __new(bind_to: &str, send_to: &str) -> Result<Self> {
-        let bind_to_addr = unix_addr!(bind_to.to_string());
-        let send_to_addr = unix_addr!(send_to.to_string());
+    fn __new(id: u8, bind_to: &str, send_to: &str) -> Result<Self> {
+        let bind_to_addr = unix_addr!(id, bind_to);
+        let send_to_addr = unix_addr!(id, send_to);
         // create dir if not already exists
-        match std::fs::create_dir_all("/tmp/ccp/0").err() {
+        match std::fs::create_dir_all(unix_addr!(id)).err() {
             Some(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
             Some(e) => Err(e),
             None => Ok(()),
@@ -45,6 +48,7 @@ impl<T> Socket<T> {
             sk: sock,
             dest: send_to_addr,
             _phantom: PhantomData,
+            id
         })
     }
 }
@@ -73,15 +77,15 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
 
 use super::Blocking;
 impl Socket<Blocking> {
-    pub fn new(bind_to: &str, send_to: &str) -> Result<Self> {
-        Socket::__new(bind_to, send_to)
+    pub fn new(id: u8, bind_to: &str, send_to: &str) -> Result<Self> {
+        Socket::__new(id, bind_to, send_to)
     }
 }
 
 use super::Nonblocking;
 impl Socket<Nonblocking> {
-    pub fn new(bind_to: &str, send_to: &str) -> Result<Self> {
-        let sk = Socket::__new(bind_to, send_to)?;
+    pub fn new(id: u8, bind_to: &str, send_to: &str) -> Result<Self> {
+        let sk = Socket::__new(id, bind_to, send_to)?;
         sk.sk.set_nonblocking(true).map_err(Error::from)?;
         Ok(sk)
     }
