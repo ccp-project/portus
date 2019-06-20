@@ -91,15 +91,16 @@ impl<T: Ipc> MultiBackendBuilder<T> {
 */
 
 use crossbeam::channel::{Receiver, Select, unbounded};
-pub struct MultiBackend<'a, T: Ipc> {
+pub struct MultiBackend<T: Ipc> {
     last_recvd: Option<usize>,
     continue_listening: Arc<atomic::AtomicBool>,
     sel: Select<'static>,
     backends: Vec<BackendSender<T>>,
-    receivers: &'static mut [Receiver<Option<Msg>>],
+    receivers: &'static [Receiver<Option<Msg>>],
+    receivers_ptr: *mut [Receiver<Option<Msg>>],
 }
 
-impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
+impl<T> MultiBackend<T> where T: Ipc + std::marker::Sync {
     fn new(
         socks: Vec<T>,
         continue_listening: Arc<atomic::AtomicBool>,
@@ -123,8 +124,12 @@ impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
             });
         }
 
-        let sel = Select::new();
-        let recv_slice = Box::leak(Vec::into_boxed_slice(receivers));
+        let mut sel = Select::new();
+        let recv_ptr = Box::into_raw(Vec::into_boxed_slice(receivers));
+        let recv_slice : &'static [Receiver<Option<Msg>>] = unsafe { &*recv_ptr } ;
+        for r in recv_slice { 
+            sel.recv(r);
+        }
 
         MultiBackend {
             last_recvd: None,
@@ -132,17 +137,23 @@ impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
             sel,
             backends,
             receivers : recv_slice,
+            receivers_ptr: recv_ptr,
         }
     }
 }
 impl<T: Ipc> Drop for MultiBackend<T> {
     fn drop(&mut self) {
+        // clear the select
         std::mem::replace(&mut self.sel, Select::new());
-        unsafe { Box::from_raw(self.receivers) };
+        // recover the box, but don't drop it just yet so we can clear the slice first
+        let _b = unsafe { Box::from_raw(self.receivers_ptr) };
+        // clear the slice
+        std::mem::replace(&mut self.receivers, &[]);
+        // now we can drop the box safely
     }
 }
 
-impl<'a, T: Ipc> Backend<T> for MultiBackend<'a, T> {
+impl<T: Ipc> Backend<T> for MultiBackend<T> {
     fn sender(&self) -> BackendSender<T> {
         match self.last_recvd {
             Some(i) => self.backends[i as usize].clone(),
