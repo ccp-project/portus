@@ -76,13 +76,27 @@ impl<T: Ipc> Clone for BackendSender<T> {
     }
 }
 
-use crossbeam::channel::unbounded;
+/*
+pub struct MultiBackendBuilder<T: Ipc> {
+    pub socks: Vec<T>,
+}
+impl<T: Ipc> MultiBackendBuilder<T> {
+    pub fn build(
+        self,
+        atomic_bool: Arc<atomic::AtomicBool>,
+    ) -> MultiBackend<T> {
+        MultiBackend::new(self.socks, atomic_bool)
+    }
+}
+*/
+
+use crossbeam::channel::{Receiver, Select, unbounded};
 pub struct MultiBackend<'a, T: Ipc> {
-    last_recvd: Option<u8>,
+    last_recvd: Option<usize>,
     continue_listening: Arc<atomic::AtomicBool>,
-    sel: crossbeam::channel::Select<'a>,
+    sel: Select<'a>,
     backends: Vec<BackendSender<T>>,
-    receivers: Vec<crossbeam::channel::Receiver<Option<Msg>>>,
+    receivers: Vec<Receiver<Option<Msg>>>,
 }
 
 impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
@@ -93,15 +107,15 @@ impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
 
         let mut backends = Vec::new();
         let mut receivers = Vec::new();
-        let mut sel = crossbeam::channel::Select::new();
+        let mut sel = Select::new();
 
         for sock in socks {
             let mut backend = SingleBackend::new(sock, Arc::clone(&continue_listening));
             backends.push(backend.sender());
 
             let (s,r) = unbounded();
-            sel.recv(&r);
             receivers.push(r);
+            sel.recv(&receivers[receivers.len()-1]);
 
             std::thread::spawn(move || {
                 loop {
@@ -118,12 +132,12 @@ impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
             receivers,
         }
     }
-
 }
+
 impl<'a, T: Ipc> Backend<T> for MultiBackend<'a, T> {
     fn sender(&self) -> BackendSender<T> {
         match self.last_recvd {
-            Some(i) => self.backends[i as usize],
+            Some(i) => self.backends[i as usize].clone(),
             None    => panic!("Called sender but no messages have been received yet!")
         }
     }
@@ -137,6 +151,7 @@ impl<'a, T: Ipc> Backend<T> for MultiBackend<'a, T> {
     fn next(&mut self) -> Option<Msg> {
         let oper = self.sel.select();
         let index = oper.index();
+        self.last_recvd = Some(index);
         oper.recv(&self.receivers[index]).unwrap() // TODO don't just unwrap
     }
 }
@@ -188,7 +203,7 @@ impl<T: Ipc> Backend<T> for SingleBackend<T> {
 }
 
 impl<T: Ipc> SingleBackend<T> {
-    fn new(
+    pub fn new(
         sock: T,
         continue_listening: Arc<atomic::AtomicBool>,
     ) -> Self {

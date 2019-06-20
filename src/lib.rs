@@ -588,7 +588,7 @@ where
                 //return Err(Error(String::from("The start() listener should never receive an install \
                 //    message, since it is on the CCP side.")));
             }
-            _ => continue,
+            _ => continue
         }
     }
     // if the thread has been killed, return that as error
