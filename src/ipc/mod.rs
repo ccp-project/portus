@@ -94,9 +94,9 @@ use crossbeam::channel::{Receiver, Select, unbounded};
 pub struct MultiBackend<'a, T: Ipc> {
     last_recvd: Option<usize>,
     continue_listening: Arc<atomic::AtomicBool>,
-    sel: Select<'a>,
+    sel: Select<'static>,
     backends: Vec<BackendSender<T>>,
-    receivers: Vec<Receiver<Option<Msg>>>,
+    receivers: &'static mut [Receiver<Option<Msg>>],
 }
 
 impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
@@ -107,7 +107,6 @@ impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
 
         let mut backends = Vec::new();
         let mut receivers = Vec::new();
-        let mut sel = Select::new();
 
         for sock in socks {
             let mut backend = SingleBackend::new(sock, Arc::clone(&continue_listening));
@@ -115,22 +114,31 @@ impl<'a, T> MultiBackend<'a, T> where T: Ipc + std::marker::Sync {
 
             let (s,r) = unbounded();
             receivers.push(r);
-            sel.recv(&receivers[receivers.len()-1]);
+            //sel.recv(&receivers[receivers.len()-1]);
 
             std::thread::spawn(move || {
                 loop {
-                    s.send(backend.next());
+                    s.send(backend.next()).unwrap() // TODO don't unwrap
                 }
             });
         }
+
+        let sel = Select::new();
+        let recv_slice = Box::leak(Vec::into_boxed_slice(receivers));
 
         MultiBackend {
             last_recvd: None,
             continue_listening,
             sel,
             backends,
-            receivers,
+            receivers : recv_slice,
         }
+    }
+}
+impl<T: Ipc> Drop for MultiBackend<T> {
+    fn drop(&mut self) {
+        std::mem::replace(&mut self.sel, Select::new());
+        unsafe { Box::from_raw(self.receivers) };
     }
 }
 
