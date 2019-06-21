@@ -111,30 +111,42 @@ macro_rules! start {
         $crate::start!($ipc, $log, $alg, Blocking)
     }};
     ($ipc:expr, $log:expr, $alg: expr, $blk: ty) => {{
-        use $crate::ipc::BackendBuilder;
+        use $crate::ipc::SingleBackendBuilder;
         match $ipc {
             "unix" => {
                 use $crate::ipc::unix::Socket;
                 let b = Socket::<$blk>::new(0, "in", "out")
-                    .map(|sk| BackendBuilder { sock: sk })
+                    .map(|sk| SingleBackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::run::<_, _, SingleBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
             }
             #[cfg(all(target_os = "linux"))]
             "netlink" => {
                 use $crate::ipc::netlink::Socket;
                 let b = Socket::<$blk>::new()
-                    .map(|sk| BackendBuilder { sock: sk })
+                    .map(|sk| SingleBackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::run::<_, _, SingleBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
             }
             #[cfg(all(target_os = "linux"))]
             "char" => {
                 use $crate::ipc::kp::Socket;
                 let b = Socket::<$blk>::new()
-                    .map(|sk| BackendBuilder { sock: sk })
+                    .map(|sk| SingleBackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::run::<_, _, SingleBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
             }
             _ => unreachable!(),
         }
