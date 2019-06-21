@@ -101,7 +101,10 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 /// }
 ///
 /// fn main() {
-///     portus::start!("unix", None, MyCongestionControlAlgorithm(Default::default()));
+///     let handle = portus::spawn!("unix", None, MyCongestionControlAlgorithm(Default::default()), 4);
+///     std::thread::sleep(std::time::Duration::from_secs(2));
+///     handle.kill();
+///     handle.wait();
 /// }
 /// ```
 #[macro_export]
@@ -149,6 +152,49 @@ macro_rules! start {
                 )
             }
             _ => unreachable!(),
+        }
+    }};
+    ($ipc:expr, $log:expr, $alg:expr, $blk:ty, $nthreads: expr) => {{
+        use std::convert::TryInto;
+        use $crate::ipc::MultiBackendBuilder;
+        match $ipc {
+            "unix" => {
+                use $crate::ipc::unix::Socket;
+                let mut v = vec![];
+                for i in 0..$nthreads {
+                    v.push(Socket::<$blk>::new(i.try_into().unwrap(), "in", "out").unwrap())
+                }
+                let b = MultiBackendBuilder { socks: v };
+                $crate::run::<_, _, MultiBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
+            }
+            _ => unimplemented!(),
+        }
+    }};
+}
+#[macro_export]
+macro_rules! spawn {
+    ($ipc:expr, $log:expr, $alg:expr, $nthreads: expr) => {{
+        use $crate::ipc::Blocking;
+        use $crate::ipc::MultiBackendBuilder;
+        match $ipc {
+            "unix" => {
+                use $crate::ipc::unix::Socket;
+                let mut v = vec![];
+                for i in 0..$nthreads {
+                    v.push(Socket::<Blocking>::new(i.try_into().unwrap(), "in", "out").unwrap())
+                }
+                let b = MultiBackendBuilder { socks: v };
+                $crate::spawn::<_, _, MultiBackendBuilder<_>>(
+                    b,
+                    $crate::Config { logger: $log },
+                    $alg,
+                )
+            }
+            _ => unimplemented!(),
         }
     }};
 }
