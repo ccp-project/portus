@@ -102,7 +102,7 @@ mod errors;
 pub use crate::errors::*;
 
 use crate::ipc::Ipc;
-use crate::ipc::{BackendBuilder, BackendSender, MultiBackendBuilder};
+use crate::ipc::{BackendBuilder, BackendSender};
 use crate::lang::{Bin, Reg, Scope};
 use crate::serialize::Msg;
 
@@ -426,10 +426,11 @@ impl CCPHandle {
 /// Run() or spawn() create arc<AtomicBool> objects,
 /// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
 /// boolean to kill the thread.
-pub fn run<I, U>(backend_builder: MultiBackendBuilder<I>, cfg: Config, alg: U) -> Result<!>
+pub fn run<I, U, B>(backend_builder: B, cfg: Config, alg: U) -> Result<!>
 where
     I: Ipc + Sync,
     U: CongAlg<I>,
+    B: BackendBuilder<I>,
 {
     // call run_inner
     match run_inner(
@@ -452,10 +453,11 @@ where
 /// 3. The caller calls `CCPHandle::kill()`
 ///
 /// See [`run`](./fn.run.html) for more information.
-pub fn spawn<I, U>(backend_builder: MultiBackendBuilder<I>, cfg: Config, alg: U) -> CCPHandle
+pub fn spawn<I, U, B>(backend_builder: B, cfg: Config, alg: U) -> CCPHandle
 where
     I: Ipc + Sync,
     U: CongAlg<I> + 'static + Send,
+    B: BackendBuilder<I> + 'static + Send,
 {
     let stop_signal = Arc::new(atomic::AtomicBool::new(true));
     CCPHandle {
@@ -476,15 +478,16 @@ use crate::ipc::Backend;
 // It returns any error, either from:
 // 1. the IPC channel failing
 // 2. Receiving an install control message (only the datapath should receive these).
-fn run_inner<I, U>(
+fn run_inner<I, U, B>(
     continue_listening: Arc<atomic::AtomicBool>,
-    backend_builder: MultiBackendBuilder<I>,
+    backend_builder: B,
     cfg: Config,
     alg: U,
 ) -> Result<()>
 where
     I: Ipc + Sync,
     U: CongAlg<I>,
+    B: BackendBuilder<I>,
 {
     let mut b = backend_builder.build(continue_listening.clone());
     let mut flows = HashMap::<u32, U::Flow>::default();
@@ -549,7 +552,7 @@ where
                 let f = alg.new_flow(
                     Datapath {
                         sock_id: c.sid,
-                        sender: backend.clone(),
+                        sender: b.sender(), // backend.clone(),
                         programs: scope_map.clone(),
                     },
                     DatapathInfo {
