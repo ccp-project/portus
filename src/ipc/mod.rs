@@ -44,7 +44,8 @@ pub struct Blocking;
 pub struct Nonblocking;
 
 pub trait BackendBuilder<T> where T: Ipc + std::marker::Sync {
-    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> impl Backend<T>;
+    type Back : Backend<T>;
+    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Self::Back;
 }
 /// Backend builder contains the objects
 /// needed to build a new backend.
@@ -53,10 +54,11 @@ pub struct SingleBackendBuilder<T: Ipc> {
 }
 
 impl<T> BackendBuilder<T> for SingleBackendBuilder<T> where T: Ipc + std::marker::Sync {
+    type Back = SingleBackend<T>;
     fn build(
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> impl Backend<T> {
+    ) -> Self::Back {
         SingleBackend::new(self.sock, atomic_bool)
     }
 }
@@ -80,13 +82,15 @@ impl<T: Ipc> Clone for BackendSender<T> {
 }
 
 pub struct MultiBackendBuilder<T: Ipc> {
+
     pub socks: Vec<T>,
 }
-impl<T> MultiBackendBuilder<T> where T: Ipc + std::marker::Sync {
-    pub fn build(
+impl<T> BackendBuilder<T> for MultiBackendBuilder<T> where T: Ipc + std::marker::Sync {
+    type Back = MultiBackend<T>;
+    fn build(
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> impl Backend<T> {
+    ) -> Self::Back {
         MultiBackend::new(self.socks, atomic_bool)
     }
 }
@@ -133,7 +137,7 @@ impl<T> MultiBackend<T> where T: Ipc + std::marker::Sync {
         }
 
         MultiBackend {
-            last_recvd: None,
+            last_recvd: Some(0), // TODO need a better solution for this, should be none
             continue_listening,
             sel,
             backends,
