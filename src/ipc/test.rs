@@ -2,7 +2,6 @@ use super::Ipc;
 use std::sync::{Arc, Mutex};
 
 use crate::ipc::Backend;
-use crate::ipc::SingleBackend;
 
 #[derive(Clone)]
 pub struct FakeIpc(Arc<Mutex<Vec<u8>>>);
@@ -69,7 +68,7 @@ fn test_unix() {
         Msg::Other(r) => {
             assert_eq!(r.typ, 0xff);
             assert_eq!(r.len, serialize::HDR_LENGTH + "hello, world".len() as u32);
-            assert_eq!(r.get_bytes().unwrap(), "hello, world".as_bytes());
+            assert_eq!(r.get_raw_bytes(), "hello, world".as_bytes());
         }
         _ => unreachable!(),
     }
@@ -110,7 +109,7 @@ fn test_chan() {
         Msg::Other(r) => {
             assert_eq!(r.typ, 0xff);
             assert_eq!(r.len, serialize::HDR_LENGTH + "hello, world".len() as u32);
-            assert_eq!(r.get_bytes().unwrap(), "hello, world".as_bytes());
+            assert_eq!(r.get_raw_bytes(), "hello, world".as_bytes());
         }
         _ => unreachable!(),
     }
