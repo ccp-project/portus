@@ -466,6 +466,38 @@ where
     }
 }
 
+fn install_programs<I: Ipc + Sync>(
+    programs: &HashMap<&'static str, String>,
+    mut scope_map: &mut Rc<HashMap<String, Scope>>,
+    b: BackendSender<I>,
+) -> Result<()> {
+    for (program_name, program) in programs.iter() {
+        match lang::compile(program.as_bytes(), &[]) {
+            Ok((bin, sc)) => {
+                match send_and_install(0, &b, bin, &sc) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        return Err(Error(format!(
+                            "Failed to install datapath program \"{}\": {:?}",
+                            program_name, e
+                        )));
+                    }
+                }
+                Rc::get_mut(&mut scope_map)
+                    .unwrap()
+                    .insert(program_name.to_string(), sc.clone());
+            }
+            Err(e) => {
+                return Err(Error(format!(
+                    "Datapath program \"{}\" failed to compile: {:?}",
+                    program_name, e
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 use crate::ipc::Backend;
 // Main execution inner loop of ccp.
 // Blocks "forever", or until the iterator stops iterating.
@@ -491,7 +523,6 @@ where
 {
     let mut b = backend_builder.build(continue_listening.clone());
     let mut flows = HashMap::<u32, U::Flow>::default();
-    let backend = b.sender();
 
     if let Some(log) = cfg.logger.as_ref() {
         info!(log, "starting CCP";
@@ -503,29 +534,33 @@ where
     let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
 
     let programs = alg.datapath_programs();
-    for (program_name, program) in programs.iter() {
-        match lang::compile(program.as_bytes(), &[]) {
-            Ok((bin, sc)) => {
-                match send_and_install(0, &backend, bin, &sc) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(Error(format!(
-                            "Failed to install datapath program \"{}\": {:?}",
-                            program_name, e
-                        )));
-                    }
+    match install_programs(&programs, &mut scope_map, b.sender()) {
+        Ok(()) => {} // great, the datapath is ready, keep going!
+        Err(_) => {
+            if let Some(log) = cfg.logger.as_ref() {
+                info!(
+                    log,
+                    "could not connect to datapath, waiting for datapath to initiate..."
+                );
+            }
+            // the datapath is not ready yet, let's wait for it to send us a msg
+            let got = b.next();
+            if got.is_none() {
+                if !continue_listening.load(atomic::Ordering::SeqCst) {
+                    return Ok(());
+                } else {
+                    return Err(Error(String::from("The IPC channel has closed.")));
                 }
-                Rc::get_mut(&mut scope_map)
-                    .unwrap()
-                    .insert(program_name.to_string(), sc.clone());
             }
-            Err(e) => {
-                return Err(Error(format!(
-                    "Datapath program \"{}\" failed to compile: {:?}",
-                    program_name, e
-                )));
+            if let Some(log) = cfg.logger.as_ref() {
+                info!(log, "got message from datapath, installing programs...");
             }
+            // got a msg from the datapath, it must be up, so let's try to install programs again
+            install_programs(&programs, &mut scope_map, b.sender()).unwrap();
         }
+    }
+    if let Some(log) = cfg.logger.as_ref() {
+        info!(log, "programs installed, CCP ready");
     }
 
     while let Some(msg) = b.next() {
@@ -591,7 +626,7 @@ where
                 //return Err(Error(String::from("The start() listener should never receive an install \
                 //    message, since it is on the CCP side.")));
             }
-            _ => continue
+            _ => continue,
         }
     }
     // if the thread has been killed, return that as error
