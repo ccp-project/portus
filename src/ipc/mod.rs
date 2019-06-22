@@ -34,6 +34,7 @@ pub trait Ipc: 'static + Send {
 pub trait Backend<T: Ipc> {
     //fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self;
     fn sender(&self) -> BackendSender<T>;
+    fn broadcaster(&self) -> BackendBroadcaster<T>;
     fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool>;
     fn next(&mut self) -> Option<Msg>;
 }
@@ -153,7 +154,7 @@ where
         }
 
         MultiBackend {
-            last_recvd: Some(0), // TODO need a better solution for this, should be none
+            last_recvd: None,
             continue_listening,
             sel,
             backends,
@@ -178,8 +179,14 @@ impl<T: Ipc> Backend<T> for MultiBackend<T> {
     fn sender(&self) -> BackendSender<T> {
         match self.last_recvd {
             Some(i) => self.backends[i as usize].clone(),
-            None    => panic!("Called sender but no messages have been received yet!")
+            None => {
+                panic!("No messages have been received yet, so there is no corresponding sender")
+            }
         }
+    }
+
+    fn broadcaster(&self) -> BackendBroadcaster<T> {
+        BackendBroadcaster(self.backends.clone())
     }
 
     /// Return a copy of the flag variable that indicates that the
@@ -211,6 +218,10 @@ use crate::serialize::Msg;
 impl<T: Ipc> Backend<T> for SingleBackend<T> {
     fn sender(&self) -> BackendSender<T> {
         BackendSender(Arc::downgrade(&self.sock))
+    }
+
+    fn broadcaster(&self) -> BackendBroadcaster<T> {
+        BackendBroadcaster(vec![self.sender()])
     }
 
     /// Return a copy of the flag variable that indicates that the

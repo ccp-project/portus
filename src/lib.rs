@@ -102,7 +102,7 @@ mod errors;
 pub use crate::errors::*;
 
 use crate::ipc::Ipc;
-use crate::ipc::{BackendBuilder, BackendSender};
+use crate::ipc::{BackendBroadcaster, BackendBuilder, BackendSender};
 use crate::lang::{Bin, Reg, Scope};
 use crate::serialize::Msg;
 
@@ -239,7 +239,7 @@ where
         instrs: bin,
     };
     let buf = serialize::serialize(&msg)?;
-    sender.send_msg(&buf[..])?;
+    sender.broadcast_msg(&buf[..])?;
     Ok(())
 }
 
@@ -474,12 +474,12 @@ where
 fn install_programs<I: Ipc + Sync>(
     programs: &HashMap<&'static str, String>,
     mut scope_map: &mut Rc<HashMap<String, Scope>>,
-    b: BackendSender<I>,
+    b: &BackendBroadcaster<I>,
 ) -> Result<()> {
     for (program_name, program) in programs.iter() {
         match lang::compile(program.as_bytes(), &[]) {
             Ok((bin, sc)) => {
-                match send_and_install(0, &b, bin, &sc) {
+                match send_and_install(0, b, bin, &sc) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(Error(format!(
@@ -539,7 +539,8 @@ where
     let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
 
     let programs = alg.datapath_programs();
-    match install_programs(&programs, &mut scope_map, b.sender()) {
+    let broadcaster = b.broadcaster();
+    match install_programs(&programs, &mut scope_map, &broadcaster) {
         Ok(()) => {} // great, the datapath is ready, keep going!
         Err(_) => {
             if let Some(log) = cfg.logger.as_ref() {
@@ -561,7 +562,7 @@ where
                 info!(log, "got message from datapath, installing programs...");
             }
             // got a msg from the datapath, it must be up, so let's try to install programs again
-            install_programs(&programs, &mut scope_map, b.sender()).unwrap();
+            install_programs(&programs, &mut scope_map, &broadcaster).unwrap();
         }
     }
     if let Some(log) = cfg.logger.as_ref() {
