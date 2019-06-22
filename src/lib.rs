@@ -222,7 +222,12 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
     }
 }
 
-fn send_and_install<I>(sock_id: u32, sender: &BackendSender<I>, bin: Bin, sc: &Scope) -> Result<()>
+fn send_and_install<I>(
+    sock_id: u32,
+    sender: &BackendBroadcaster<I>,
+    bin: Bin,
+    sc: &Scope,
+) -> Result<()>
 where
     I: Ipc,
 {

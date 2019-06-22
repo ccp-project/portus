@@ -43,8 +43,11 @@ pub struct Blocking;
 /// Marker type specifying that the IPC socket should make nonblocking calls to the underlying socket
 pub struct Nonblocking;
 
-pub trait BackendBuilder<T> where T: Ipc + std::marker::Sync {
-    type Back : Backend<T>;
+pub trait BackendBuilder<T>
+where
+    T: Ipc + std::marker::Sync,
+{
+    type Back: Backend<T>;
     fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Self::Back;
 }
 /// Backend builder contains the objects
@@ -53,12 +56,12 @@ pub struct SingleBackendBuilder<T: Ipc> {
     pub sock: T,
 }
 
-impl<T> BackendBuilder<T> for SingleBackendBuilder<T> where T: Ipc + std::marker::Sync {
+impl<T> BackendBuilder<T> for SingleBackendBuilder<T>
+where
+    T: Ipc + std::marker::Sync,
+{
     type Back = SingleBackend<T>;
-    fn build(
-        self,
-        atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> Self::Back {
+    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Self::Back {
         SingleBackend::new(self.sock, atomic_bool)
     }
 }
@@ -81,21 +84,31 @@ impl<T: Ipc> Clone for BackendSender<T> {
     }
 }
 
-pub struct MultiBackendBuilder<T: Ipc> {
+pub struct BackendBroadcaster<T: Ipc>(Vec<BackendSender<T>>);
 
+impl<T: Ipc> BackendBroadcaster<T> {
+    pub fn broadcast_msg(&self, msg: &[u8]) -> Result<()> {
+        for s in &self.0 {
+            s.send_msg(msg)?;
+        }
+        Ok(())
+    }
+}
+
+pub struct MultiBackendBuilder<T: Ipc> {
     pub socks: Vec<T>,
 }
-impl<T> BackendBuilder<T> for MultiBackendBuilder<T> where T: Ipc + std::marker::Sync {
+impl<T> BackendBuilder<T> for MultiBackendBuilder<T>
+where
+    T: Ipc + std::marker::Sync,
+{
     type Back = MultiBackend<T>;
-    fn build(
-        self,
-        atomic_bool: Arc<atomic::AtomicBool>,
-    ) -> Self::Back {
+    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Self::Back {
         MultiBackend::new(self.socks, atomic_bool)
     }
 }
 
-use crossbeam::channel::{Receiver, Select, unbounded};
+use crossbeam::channel::{unbounded, Receiver, Select};
 pub struct MultiBackend<T: Ipc> {
     last_recvd: Option<usize>,
     continue_listening: Arc<atomic::AtomicBool>,
@@ -105,12 +118,11 @@ pub struct MultiBackend<T: Ipc> {
     receivers_ptr: *mut [Receiver<Option<Msg>>],
 }
 
-impl<T> MultiBackend<T> where T: Ipc + std::marker::Sync {
-    pub fn new(
-        socks: Vec<T>,
-        continue_listening: Arc<atomic::AtomicBool>,
-    ) -> Self {
-
+impl<T> MultiBackend<T>
+where
+    T: Ipc + std::marker::Sync,
+{
+    pub fn new(socks: Vec<T>, continue_listening: Arc<atomic::AtomicBool>) -> Self {
         let mut backends = Vec::new();
         let mut receivers = Vec::new();
 
@@ -118,7 +130,7 @@ impl<T> MultiBackend<T> where T: Ipc + std::marker::Sync {
             let mut backend = SingleBackend::new(sock, Arc::clone(&continue_listening));
             backends.push(backend.sender());
 
-            let (s,r) = unbounded();
+            let (s, r) = unbounded();
             receivers.push(r);
 
             std::thread::spawn(move || loop {
@@ -135,8 +147,8 @@ impl<T> MultiBackend<T> where T: Ipc + std::marker::Sync {
 
         let mut sel = Select::new();
         let recv_ptr = Box::into_raw(Vec::into_boxed_slice(receivers));
-        let recv_slice : &'static [Receiver<Option<Msg>>] = unsafe { &*recv_ptr } ;
-        for r in recv_slice { 
+        let recv_slice: &'static [Receiver<Option<Msg>>] = unsafe { &*recv_ptr };
+        for r in recv_slice {
             sel.recv(r);
         }
 
@@ -145,7 +157,7 @@ impl<T> MultiBackend<T> where T: Ipc + std::marker::Sync {
             continue_listening,
             sel,
             backends,
-            receivers : recv_slice,
+            receivers: recv_slice,
             receivers_ptr: recv_ptr,
         }
     }
@@ -183,7 +195,6 @@ impl<T: Ipc> Backend<T> for MultiBackend<T> {
         oper.recv(&self.receivers[index]).unwrap() // TODO don't just unwrap
     }
 }
-
 
 /// Backend will yield incoming IPC messages forever via `next()`.
 /// It owns the socket; `BackendSender` holds weak references.
@@ -227,14 +238,10 @@ impl<T: Ipc> Backend<T> for SingleBackend<T> {
             Some(msg)
         }
     }
-
 }
 
 impl<T: Ipc> SingleBackend<T> {
-    pub fn new(
-        sock: T,
-        continue_listening: Arc<atomic::AtomicBool>,
-    ) -> Self {
+    pub fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self {
         SingleBackend {
             sock: Arc::new(sock),
             continue_listening,
