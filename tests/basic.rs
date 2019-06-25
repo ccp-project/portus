@@ -76,5 +76,9 @@ impl IntegrationTest for TestBasicSerialize {
 fn basic() {
     let log = libccp_integration::logger();
     info!(log, "starting basic test");
-    libccp_integration::run_test::<TestBasicSerialize>(log, 1);
+    libccp_integration::run_test::<TestBasicSerialize>(log, 1, false);
+
+    let log2 = libccp_integration::logger();
+    info!(log2, "starting basic test (multi)");
+    libccp_integration::run_test::<TestBasicSerialize>(log2, 1, true);
 }

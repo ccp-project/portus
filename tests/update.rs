@@ -88,5 +88,5 @@ impl IntegrationTest for TestUpdateFields {
 fn update() {
     let log = libccp_integration::logger();
     info!(log, "starting update test");
-    libccp_integration::run_test::<TestUpdateFields>(log, 1);
+    libccp_integration::run_test::<TestUpdateFields>(log, 1, false);
 }

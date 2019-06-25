@@ -88,5 +88,5 @@ impl IntegrationTest for TestTwoFlows {
 fn twoflow() {
     let log = libccp_integration::logger();
     info!(log, "starting twoflow test");
-    libccp_integration::run_test::<TestTwoFlows>(log, 2);
+    libccp_integration::run_test::<TestTwoFlows>(log, 2, false);
 }

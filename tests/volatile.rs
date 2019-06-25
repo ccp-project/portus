@@ -74,5 +74,5 @@ impl IntegrationTest for TestVolatileVars {
 fn volatile() {
     let log = libccp_integration::logger();
     info!(log, "starting volatile test");
-    libccp_integration::run_test::<TestVolatileVars>(log, 1);
+    libccp_integration::run_test::<TestVolatileVars>(log, 1, false);
 }

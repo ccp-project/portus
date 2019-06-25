@@ -80,7 +80,7 @@ impl<I: Ipc, T: IntegrationTest> Flow for TestBase<I, T> {
 }
 
 use portus::ipc::chan::Socket;
-use portus::ipc::{SingleBackendBuilder, Blocking};
+use portus::ipc::{Blocking, MultiBackendBuilder, SingleBackendBuilder};
 use std;
 use std::thread;
 
@@ -100,8 +100,27 @@ fn start_ccp<T: IntegrationTest + 'static + Send>(
     )
 }
 
+fn start_ccp_multi<T: IntegrationTest + 'static + Send>(
+    sks: Vec<Socket<Blocking>>,
+    log: slog::Logger,
+    tx: mpsc::Sender<Result<(), ()>>,
+) -> portus::CCPHandle {
+    let b = MultiBackendBuilder { socks: sks };
+    portus::spawn::<Socket<Blocking>, TestBaseConfig<T>, MultiBackendBuilder<Socket<Blocking>>>(
+        b,
+        portus::Config {
+            logger: Some(log.clone()),
+        },
+        TestBaseConfig(tx, Some(log.clone()), PhantomData::<T>),
+    )
+}
+
 // Runs a specific intergration test
-pub fn run_test<T: IntegrationTest + 'static + Send>(log: slog::Logger, num_flows: usize) {
+pub fn run_test<T: IntegrationTest + 'static + Send>(
+    log: slog::Logger,
+    num_flows: usize,
+    use_multi: bool,
+) {
     let (tx, rx) = std::sync::mpsc::channel();
 
     // Channel for IPC
@@ -113,14 +132,17 @@ pub fn run_test<T: IntegrationTest + 'static + Send>(log: slog::Logger, num_flow
     let (dp_handle, conn_handles) = mock_datapath::start(dp_log, num_flows, s2, r1);
 
     let sk = Socket::<Blocking>::new(s1, r2);
-    let ccp_handle = start_ccp::<T>(sk, log.clone(), tx);
+    let ccp_handle = match use_multi {
+        false => start_ccp::<T>(sk, log.clone(), tx),
+        true => start_ccp_multi::<T>(vec![sk], log.clone(), tx),
+    };
 
     // wait for program to finish
     let wait_for_done = thread::spawn(move || {
         rx.recv_timeout(std::time::Duration::from_secs(20))
             .unwrap()
             .unwrap();
-        ccp_handle.kill(); // causes backend to stop iterating
+        ccp_handle.kill();
         ccp_handle.wait().unwrap();
 
         for h in conn_handles {
