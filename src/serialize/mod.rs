@@ -90,9 +90,39 @@ impl<'a> RawMsg<'a> {
     pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
         use std::mem;
         match self.typ {
-            create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
-            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..8])),
-            update_field::UPDATE_FIELD => Ok(mem::transmute(&self.bytes[0..4])),
+            create::CREATE => {
+                if self.bytes.len() >= (4 * 6) {
+                    Ok(mem::transmute(&self.bytes[0..(4 * 6)]))
+                } else {
+                    Err(super::Error(format!(
+                        "Message too small: {:?} < {:?}",
+                        self.bytes.len(),
+                        (4 * 6)
+                    )))
+                }
+            }
+            measure::MEASURE => {
+                if self.bytes.len() >= 8 {
+                    Ok(mem::transmute(&self.bytes[0..8]))
+                } else {
+                    Err(super::Error(format!(
+                        "Message too small: {:?} < {:?}",
+                        self.bytes.len(),
+                        8
+                    )))
+                }
+            }
+            update_field::UPDATE_FIELD => {
+                if self.bytes.len() >= 4 {
+                    Ok(mem::transmute(&self.bytes[0..4]))
+                } else {
+                    Err(super::Error(format!(
+                        "Message too small: {:?} < {:?}",
+                        self.bytes.len(),
+                        4
+                    )))
+                }
+            }
             _ => Ok(&[]),
         }
     }
