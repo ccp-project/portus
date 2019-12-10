@@ -33,17 +33,19 @@ impl<T> Socket<T> {
 }
 
 impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
+    type Addr = ();
+
     fn name() -> String {
         String::from("char")
     }
 
-    fn send(&self, buf: &[u8]) -> Result<()> {
+    fn send(&self, buf: &[u8], _to: &Self::Addr) -> Result<()> {
         nix::unistd::write(self.fd.as_raw_fd(), buf)
             .map(|_| ())
             .map_err(Error::from)
     }
 
-    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
+    fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)> {
         let pollfd = nix::poll::PollFd::new(self.fd.as_raw_fd(), nix::poll::POLLIN);
         let ok = nix::poll::poll(&mut [pollfd], 1000)?;
         if ok < 0 {
@@ -51,7 +53,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
         }
 
         let len = nix::unistd::read(self.fd.as_raw_fd(), msg).map_err(Error::from)?;
-        Ok(len)
+        Ok((len, ()))
     }
 
     fn close(&mut self) -> Result<()> {
