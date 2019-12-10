@@ -103,7 +103,7 @@ pub use crate::errors::*;
 
 use crate::ipc::Ipc;
 use crate::ipc::{BackendBuilder, BackendSender};
-use crate::lang::{Bin, Reg, Scope};
+use crate::lang::{Reg, Scope};
 use crate::serialize::Msg;
 
 /// CCP custom `Result` type, using `Error` as the `Err` type.
@@ -220,22 +220,6 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
         self.sender.send_msg(&buf[..])?;
         Ok(())
     }
-}
-
-fn send_and_install<I>(sock_id: u32, sender: &BackendSender<I>, bin: Bin, sc: &Scope) -> Result<()>
-where
-    I: Ipc,
-{
-    let msg = serialize::install::Msg {
-        sid: sock_id,
-        program_uid: sc.program_uid,
-        num_events: bin.events.len() as u32,
-        num_instrs: bin.instrs.len() as u32,
-        instrs: bin,
-    };
-    let buf = serialize::serialize(&msg)?;
-    sender.send_msg(&buf[..])?;
-    Ok(())
 }
 
 /// Configuration parameters for the portus runtime.
@@ -487,8 +471,7 @@ where
 {
     let mut receive_buf = [0u8; 1024];
     let mut b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
-    let mut flows = HashMap::<u32, U::Flow>::default();
-    let backend = b.sender();
+    let mut dp_to_flowmap = HashMap::<I::Addr, HashMap::<u32, U::Flow>>::new();
 
     if let Some(log) = cfg.logger.as_ref() {
         info!(log, "starting CCP";
@@ -498,20 +481,22 @@ where
     }
 
     let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
+    let mut install_msgs = vec![];
 
     let programs = alg.datapath_programs();
     for (program_name, program) in programs.iter() {
         match lang::compile(program.as_bytes(), &[]) {
             Ok((bin, sc)) => {
-                match send_and_install(0, &backend, bin, &sc) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(Error(format!(
-                            "Failed to install datapath program \"{}\": {:?}",
-                            program_name, e
-                        )));
-                    }
-                }
+                let msg = serialize::install::Msg {
+                    sid: 0,
+                    program_uid: sc.program_uid,
+                    num_events: bin.events.len() as u32,
+                    num_instrs: bin.instrs.len() as u32,
+                    instrs: bin,
+                };
+                let buf = serialize::serialize(&msg)?;
+                install_msgs.push(buf);
+
                 Rc::get_mut(&mut scope_map)
                     .unwrap()
                     .insert(program_name.to_string(), sc.clone());
@@ -525,10 +510,47 @@ where
         }
     }
 
-    while let Some(msg) = b.next() {
+    if let Some(log) = cfg.logger.as_ref() {
+        info!(log, "compiled all datapath programs, ccp ready"; 
+              "programs" => format!("{:#?}", programs.keys())
+        );
+    }
+
+    while let Some((msg, recv_addr)) = b.next() {
         match msg {
+            Msg::Rdy(r) => {
+                if dp_to_flowmap.remove(&recv_addr).is_some() {
+                    if let Some(log) = cfg.logger.as_ref() { 
+                        info!(log, "new ready from old datapath, clearing old flows and installing programs...");
+                    }
+                } else {
+                    if let Some(log) = cfg.logger.as_ref() {
+                        info!(log, "found new datapath, installing programs...";
+                              "id" => r.id
+                        );
+                    }
+                }
+
+                dp_to_flowmap.insert(recv_addr.clone(), HashMap::<u32, U::Flow>::default());
+
+                let backend = b.sender(recv_addr);
+                for buf in &install_msgs {
+                    backend.send_msg(&buf[..])?;
+                }
+
+            }
             Msg::Cr(c) => {
-                if flows.remove(&c.sid).is_some() {
+                let flowmap = match dp_to_flowmap.get_mut(&recv_addr) {
+                    Some(fm) => fm,
+                    None => {
+                        if let Some(log) = cfg.logger.as_ref() {
+                            info!(log, "received create from unknown datapath, ignoring...");
+                        }
+                        continue;
+                    }
+                };
+
+                if flowmap.remove(&c.sid).is_some() {
                     if let Some(log) = cfg.logger.as_ref() {
                         debug!(log, "re-creating already created flow"; "sid" => c.sid);
                     }
@@ -549,7 +571,7 @@ where
                 let f = alg.new_flow(
                     Datapath {
                         sock_id: c.sid,
-                        sender: backend.clone(),
+                        sender: b.sender(recv_addr),
                         programs: scope_map.clone(),
                     },
                     DatapathInfo {
@@ -562,15 +584,24 @@ where
                         dst_port: c.dst_port,
                     },
                 );
-                flows.insert(c.sid, f);
+                flowmap.insert(c.sid, f);
             }
             Msg::Ms(m) => {
-                if flows.contains_key(&m.sid) {
+                let flowmap = match dp_to_flowmap.get_mut(&recv_addr) {
+                    Some(fm) => fm,
+                    None => {
+                        if let Some(log) = cfg.logger.as_ref() {
+                            info!(log, "received create from unknown datapath, ignoring...");
+                        }
+                        continue;
+                    }
+                };
+                if flowmap.contains_key(&m.sid) {
                     if m.num_fields == 0 {
-                        let mut alg = flows.remove(&m.sid).unwrap();
+                        let mut alg = flowmap.remove(&m.sid).unwrap();
                         alg.close();
                     } else {
-                        let alg = flows.get_mut(&m.sid).unwrap();
+                        let alg = flowmap.get_mut(&m.sid).unwrap();
                         alg.on_report(
                             m.sid,
                             Report {
