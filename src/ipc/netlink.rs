@@ -142,15 +142,17 @@ impl<T> Socket<T> {
 
 use super::Blocking;
 impl super::Ipc for Socket<Blocking> {
+    type Addr = ();
+
     fn name() -> String {
         String::from("netlink")
     }
 
-    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
-        self.__recv(buf, nix::sys::socket::MsgFlags::empty())
+    fn recv(&self, buf: &mut [u8]) -> Result<(usize, Self::Addr)> {
+        self.__recv(buf, nix::sys::socket::MsgFlags::empty()).map(|s| (s,()))
     }
 
-    fn send(&self, buf: &[u8]) -> Result<()> {
+    fn send(&self, buf: &[u8], _to: &Self::Addr) -> Result<()> {
         self.__send(buf)
     }
 
@@ -161,15 +163,17 @@ impl super::Ipc for Socket<Blocking> {
 
 use super::Nonblocking;
 impl super::Ipc for Socket<Nonblocking> {
+    type Addr = ();
+
     fn name() -> String {
         String::from("netlink")
     }
 
-    fn recv(&self, buf: &mut [u8]) -> Result<usize> {
-        self.__recv(buf, nix::sys::socket::MSG_DONTWAIT)
+    fn recv(&self, buf: &mut [u8]) -> Result<(usize, Self::Addr)> {
+        self.__recv(buf, nix::sys::socket::MSG_DONTWAIT).map(|s| (s,()))
     }
 
-    fn send(&self, buf: &[u8]) -> Result<()> {
+    fn send(&self, buf: &[u8], _to: &Self::Addr) -> Result<()> {
         self.__send(buf)
     }
 

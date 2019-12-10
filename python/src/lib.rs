@@ -264,7 +264,7 @@ fn py_connect(py: pyo3::Python<'static>, ipc: String, alg: PyObject, debug: bool
     match ipc.as_str() {
         "unix" => {
             use portus::ipc::unix::Socket;
-            let b = Socket::<ipc::Blocking>::new("in", "out")
+            let b = Socket::<ipc::Blocking>::new("portus")
                 .map(|sk| BackendBuilder { sock: sk })
                 .expect("create unix socket");
             portus::run::<_, PyCongAlg>(b, portus::Config { logger: Some(log) }, py_cong_alg)

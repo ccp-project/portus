@@ -11,24 +11,26 @@ impl FakeIpc {
 }
 
 impl Ipc for FakeIpc {
+    type Addr = ();
+
     fn name() -> String {
         String::from("fake")
     }
 
-    fn send(&self, msg: &[u8]) -> Result<(), super::Error> {
+    fn send(&self, msg: &[u8], _to: Self:Addr) -> Result<(), super::Error> {
         let mut x = self.0.lock().unwrap();
         (*x).extend(msg);
         Ok(())
     }
 
     // return the number of bytes read if successful.
-    fn recv(&self, msg: &mut [u8]) -> super::Result<usize> {
+    fn recv(&self, msg: &mut [u8]) -> super::Result<(usize, Self::Addr)> {
         use std::cmp;
         let x = self.0.lock().unwrap();
         let w = cmp::min(msg.len(), (*x).len());
         let dest_slice = &mut msg[0..w];
         dest_slice.copy_from_slice(&(*x)[0..w]);
-        Ok(w)
+        Ok(w, ())
     }
 
     fn close(&mut self) -> Result<(), super::Error> {

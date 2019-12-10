@@ -93,6 +93,7 @@ impl<'a> RawMsg<'a> {
             create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
             measure::MEASURE => Ok(mem::transmute(&self.bytes[0..8])),
             update_field::UPDATE_FIELD => Ok(mem::transmute(&self.bytes[0..4])),
+            ready::READY => Ok(mem::transmute(&self.bytes[0..(4 * 1)])),
             _ => Ok(&[]),
         }
     }
@@ -156,6 +157,7 @@ pub mod changeprog;
 pub mod create;
 pub mod install;
 pub mod measure;
+pub mod ready;
 mod testmsg;
 pub mod update_field;
 
@@ -197,6 +199,7 @@ pub enum Msg<'a> {
     Cr(create::Msg),
     Ms(measure::Msg),
     Ins(install::Msg),
+    Rdy(ready::Msg),
     Other(RawMsg<'a>),
 }
 
@@ -206,6 +209,7 @@ impl<'a> Msg<'a> {
             create::CREATE => Ok(Msg::Cr(create::Msg::from_raw_msg(m)?)),
             measure::MEASURE => Ok(Msg::Ms(measure::Msg::from_raw_msg(m)?)),
             install::INSTALL => Ok(Msg::Ins(install::Msg::from_raw_msg(m)?)),
+            ready::READY => Ok(Msg::Rdy(ready::Msg::from_raw_msg(m)?)),
             update_field::UPDATE_FIELD => unimplemented!(),
             _ => Ok(Msg::Other(m)),
         }

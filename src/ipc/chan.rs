@@ -43,22 +43,24 @@ impl<T> Socket<T> {
 
 use super::Blocking;
 impl super::Ipc for Socket<Blocking> {
+    type Addr = ();
+
     fn name() -> String {
         Self::__name()
     }
 
-    fn send(&self, msg: &[u8]) -> Result<()> {
+    fn send(&self, msg: &[u8], _to: &Self::Addr) -> Result<()> {
         self.__send(msg)
     }
 
-    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
+    fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)> {
         let r = self
             .recv
             .as_ref()
             .ok_or_else(|| Error(String::from("Receive channel side missing")))?;
         let buf = r.recv_timeout(std::time::Duration::from_secs(1))?;
         msg[..buf.len()].copy_from_slice(&buf);
-        Ok(buf.len())
+        Ok((buf.len(), ()))
     }
 
     fn close(&mut self) -> Result<()> {
@@ -68,22 +70,24 @@ impl super::Ipc for Socket<Blocking> {
 
 use super::Nonblocking;
 impl super::Ipc for Socket<Nonblocking> {
+    type Addr = ();
+
     fn name() -> String {
         Self::__name()
     }
 
-    fn send(&self, msg: &[u8]) -> Result<()> {
+    fn send(&self, msg: &[u8], _to: &Self::Addr) -> Result<()> {
         self.__send(msg)
     }
 
-    fn recv(&self, msg: &mut [u8]) -> Result<usize> {
+    fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)> {
         let r = self
             .recv
             .as_ref()
             .ok_or_else(|| Error(String::from("Receive channel side missing")))?;
         let buf = r.try_recv()?;
         msg[..buf.len()].copy_from_slice(&buf);
-        Ok(buf.len())
+        Ok((buf.len(), ()))
     }
 
     fn close(&mut self) -> Result<()> {
