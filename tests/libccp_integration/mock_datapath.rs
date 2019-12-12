@@ -4,6 +4,7 @@ use failure;
 use failure::bail;
 use minion::Cancellable;
 use slog;
+use std::sync::Arc;
 
 use super::ACKED_PRIMITIVE;
 
@@ -18,7 +19,6 @@ impl libccp::DatapathOps for MockDatapath {
     }
 }
 
-use std::sync::Arc;
 pub struct DatapathMessageReader(Arc<libccp::Datapath>, crossbeam::channel::Receiver<Vec<u8>>);
 
 impl Cancellable for DatapathMessageReader {

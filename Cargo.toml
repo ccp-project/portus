@@ -39,4 +39,4 @@ features = ["full", "visit", "fold", "extra-traits","parsing"]
 [dev-dependencies]
 failure = "0.1"
 minion = "0.1"
-libccp = "0.0.7"
+libccp = "0.0.12"

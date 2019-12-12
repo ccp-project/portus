@@ -158,8 +158,8 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
                         sc.get(reg_name)
                             .ok_or_else(|| Error(format!("Unknown field: {:?}", reg_name)))
                             .and_then(|reg| match *reg {
-                                Reg::Control(idx, ref t) => {
-                                    Ok((Reg::Control(idx, t.clone()), u64::from(new_value)))
+                                Reg::Control(idx, ref t, v) => {
+                                    Ok((Reg::Control(idx, t.clone(), v), u64::from(new_value)))
                                 }
                                 Reg::Implicit(idx, ref t) if idx == 4 || idx == 5 => {
                                     Ok((Reg::Implicit(idx, t.clone()), u64::from(new_value)))
@@ -199,8 +199,8 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
                 sc.get(reg_name)
                     .ok_or_else(|| Error(format!("Unknown field: {:?}", reg_name)))
                     .and_then(|reg| match *reg {
-                        Reg::Control(idx, ref t) => {
-                            Ok((Reg::Control(idx, t.clone()), u64::from(new_value)))
+                        Reg::Control(idx, ref t, v) => {
+                            Ok((Reg::Control(idx, t.clone(), v), u64::from(new_value)))
                         }
                         Reg::Implicit(idx, ref t) if idx == 4 || idx == 5 => {
                             Ok((Reg::Implicit(idx, t.clone()), u64::from(new_value)))

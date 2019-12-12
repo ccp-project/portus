@@ -136,8 +136,8 @@ impl Prog {
                     scope.new_report(is_volatile, var, typ);
                 }
 
-                for (_is_volatile, var, typ) in controls {
-                    scope.new_control(var, typ);
+                for (is_volatile, var, typ) in controls {
+                    scope.new_control(is_volatile, var, typ);
                 }
 
                 Ok(rest)
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn defs() {
-        let foo = b"(def (Bar 0) (Report (Foo 0) (volatile Baz 0)) (Qux 0))";
+        let foo = b"(def (Bar 0) (Report (Foo 0) (volatile Baz 0)) (Qux 0) (volatile Qux2 0))";
         use nom::Needed;
         match super::defs(CompleteByteSlice(foo)) {
             Ok((r, me)) => {
@@ -209,6 +209,7 @@ mod tests {
                         ),
                         (false, Type::Name(String::from("Bar")), Type::Num(Some(0))),
                         (false, Type::Name(String::from("Qux")), Type::Num(Some(0))),
+                        (true, Type::Name(String::from("Qux2")), Type::Num(Some(0))),
                     ]
                 );
             }
@@ -426,8 +427,8 @@ mod tests {
         let (ast, sc) = Prog::new_with_scope(foo).unwrap();
         assert_eq!(sc, {
             let mut expected_scope = Scope::new();
-            expected_scope.new_control(String::from("foo"), Type::Num(Some(0)));
-            expected_scope.new_control(String::from("bar"), Type::Num(Some(0)));
+            expected_scope.new_control(false, String::from("foo"), Type::Num(Some(0)));
+            expected_scope.new_control(false, String::from("bar"), Type::Num(Some(0)));
             expected_scope
         });
 

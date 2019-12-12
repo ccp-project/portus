@@ -107,14 +107,16 @@ impl IntoIterator for Reg {
 
     fn into_iter(self) -> Self::IntoIter {
         let reg = match self {
-            Reg::Control(i, _) => {
+            Reg::Control(i, _, is_volatile) => {
                 if i > 15 {
                     Err(Error::from(format!(
                         "Control Register index too big (max 15): {:?}",
                         i
                     )))
                 } else {
-                    Ok((0u8, u32::from(i)))
+                    // VOLATILE_CONTROL_REG 8
+                    // NONVOLATILE_CONTROL_REG 0
+                    Ok((if is_volatile { 8u8 } else { 0u8 }, u32::from(i)))
                 }
             }
             Reg::ImmBool(bl) => Ok((1u8, bl as u32)),

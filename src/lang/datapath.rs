@@ -24,7 +24,7 @@ pub(crate) fn check_atom_type(e: &Expr) -> Result<Type> {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 /// A datapath register.
 pub enum Reg {
-    Control(u8, Type),
+    Control(u8, Type, bool),
     ImmNum(u64),
     ImmBool(bool),
     Implicit(u8, Type),
@@ -40,7 +40,7 @@ impl Reg {
         match *self {
             Reg::ImmNum(n) => Ok(Type::Num(Some(n))),
             Reg::ImmBool(b) => Ok(Type::Bool(Some(b))),
-            Reg::Control(_, ref t)
+            Reg::Control(_, ref t, _)
             | Reg::Implicit(_, ref t)
             | Reg::Local(_, ref t)
             | Reg::Primitive(_, ref t)
@@ -295,7 +295,8 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     // left must be a mutable register
                     // and if right is a Reg::None, we have to replace it
                     match (&left, &right) {
-                        (&Reg::Report(_, _, _), &Reg::None) | (&Reg::Control(_, _), &Reg::None) => {
+                        (&Reg::Report(_, _, _), &Reg::None)
+                        | (&Reg::Control(_, _, _), &Reg::None) => {
                             let last_instr = instrs.last_mut().map(|last| {
                                 // Double-check that the instruction being replaced
                                 // actually is a Reg::None before we go replace it
@@ -317,7 +318,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                             right_expr,
                         ))),
                         (&Reg::Implicit(_, _), _)
-                        | (&Reg::Control(_, _), _)
+                        | (&Reg::Control(_, _, _), _)
                         | (&Reg::Local(_, _), _)
                         | (&Reg::Report(_, _, _), _)
                         | (&Reg::Tmp(_, _), _) => {
@@ -530,10 +531,10 @@ impl Scope {
         r
     }
 
-    pub(crate) fn new_control(&mut self, name: String, t: Type) -> Reg {
+    pub(crate) fn new_control(&mut self, is_volatile: bool, name: String, t: Type) -> Reg {
         let id = self.num_control;
         self.num_control += 1;
-        let r = Reg::Control(id, t);
+        let r = Reg::Control(id, t, is_volatile);
         self.named.insert(name, r.clone());
         r
     }
@@ -561,8 +562,8 @@ impl Scope {
                     *old_reg = Reg::Local(idx, t.clone());
                     Ok(old_reg.clone())
                 }
-                Reg::Control(idx, _) => {
-                    *old_reg = Reg::Control(idx, t.clone());
+                Reg::Control(idx, _, v) => {
+                    *old_reg = Reg::Control(idx, t.clone(), v);
                     Ok(old_reg.clone())
                 }
                 _ => Err(Error::from(format!(
@@ -594,7 +595,7 @@ impl Iterator for ScopeDefInstrIter {
         loop {
             let (_, reg) = self.v.next()?;
             match reg {
-                Reg::Report(_, Type::Num(Some(n)), _) | Reg::Control(_, Type::Num(Some(n))) => {
+                Reg::Report(_, Type::Num(Some(n)), _) | Reg::Control(_, Type::Num(Some(n)), _) => {
                     return Some(Instr {
                         res: reg.clone(),
                         op: Op::Def,
@@ -602,7 +603,8 @@ impl Iterator for ScopeDefInstrIter {
                         right: Reg::ImmNum(n),
                     });
                 }
-                Reg::Report(_, Type::Bool(Some(b)), _) | Reg::Control(_, Type::Bool(Some(b))) => {
+                Reg::Report(_, Type::Bool(Some(b)), _)
+                | Reg::Control(_, Type::Bool(Some(b)), _) => {
                     return Some(Instr {
                         res: reg.clone(),
                         op: Op::Def,
