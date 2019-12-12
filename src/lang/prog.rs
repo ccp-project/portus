@@ -1,4 +1,5 @@
 use nom;
+use nom::types::CompleteByteSlice;
 
 use super::ast::{atom, comment, expr, exprs, name, Expr};
 use super::datapath::{check_atom_type, Scope, Type};
@@ -114,12 +115,18 @@ named_complete!(
     many1!(do_parse!(opt!(comment) >> e: event >> (e)))
 );
 
+fn get_error(src: CompleteByteSlice) -> Error {
+    match events(src) {
+        Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Error::from(e),
+        _ => Error::from("none"),
+    }
+}
+
 impl Prog {
     /// Turn raw bytes into an AST representation, including implementing syntactic sugar features
     /// such as `(report)` and `(fallthrough)`.
     pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
-        use nom::types::CompleteByteSlice;
         use nom::Needed;
         let body = match defs(CompleteByteSlice(source)) {
             Ok((rest, flow_state)) => {
@@ -152,10 +159,14 @@ impl Prog {
         }?;
 
         let evs = match events(body) {
-            Ok((rest, _)) if !rest.is_empty() => Err(Error::from(format!(
-                "compile error: \"{}\"",
-                std::str::from_utf8(rest.0)?
-            ))),
+            Ok((rest, _)) if !rest.is_empty() => {
+                let e = get_error(rest);
+                Err(Error::from(format!(
+                    "compile error: \"{:?}\" in \"{}\"",
+                    e,
+                    std::str::from_utf8(rest.0)?
+                )))
+            }
             Ok((_, me)) => me.into_iter().collect(),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(Error::from(e)),
             Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from("need more src")),
@@ -506,5 +517,52 @@ mod tests {
         )";
 
         Prog::new_with_scope(foo).unwrap_err();
+    }
+
+    #[test]
+    fn test_bad_clause_fails() {
+        let foo = b"
+	(def
+	    (Report
+		(volatile acked 0)
+		(volatile sacked 0)
+		(volatile loss 0)
+		(volatile ewmaRTT 0)
+		(volatile firstRtt +infinity)
+		(volatile rtt 0)
+		(volatile minrtt +infinity)
+	    )
+	    (volatile firstAck true)
+	    (volatile timeout false)
+	)
+	(when (&& firstAck true)
+	    (:= firstAck false)
+	    (:= Report.firstRtt Flow.rtt_sample_us)
+	    (:= Report.ewmaRTT Flow.rtt_sample_us)
+	    (fallthrough)
+	)
+	(when true
+	    (:= Report.rtt Flow.rtt_sample_us)
+	    (:= Report.acked (+ Report.acked Ack.bytes_acked))
+	    (:= Report.sacked (+ Report.sacked Ack.packets_misordered))
+	    (:= Report.loss Ack.lost_pkts_sample)
+	    (:= Report.ewmaRTT (/ (* Report.ewmaRTT 7) 8))
+	    (:= Report.ewmaRTT (+ Report.ewmaRTT (/ Flow.rtt_sample_us 8)))
+	    (:= Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
+	    (:= timeout Flow.was_timeout)
+	    (fallthrough)
+	)
+	(when (timeout)
+	    (report)
+	    (:= Micros 0)
+	)
+	(when (> Micros (* 2 Flow.rtt_sample_us))
+	    (report)
+	    (:= Micros 0)
+	)
+        ";
+
+        let err = Prog::new_with_scope(foo).unwrap_err();
+        println!("{:?}", err);
     }
 }

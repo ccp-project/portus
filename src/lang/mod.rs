@@ -131,12 +131,23 @@ impl<'a> From<&'a str> for Error {
 }
 impl<I, E> From<nom::Err<I, E>> for Error {
     fn from(e: nom::Err<I, E>) -> Error {
-        Error(String::from(e.into_error_kind().description()))
+        match e {
+            nom::Err::Error(c) | nom::Err::Failure(c) => Self::from(c),
+            _ => Error(String::from(e.into_error_kind().description())),
+        }
     }
 }
 impl<I, E> From<nom::Context<I, E>> for Error {
     fn from(e: nom::Context<I, E>) -> Error {
-        Error(String::from(e.into_error_kind().description()))
+        match e {
+            nom::Context::Code(_, _) => Error(String::from(e.into_error_kind().description())),
+            nom::Context::List(ks) => Error(String::from(
+                ks.into_iter()
+                    .map(|(_, k)| k.description().to_string())
+                    .collect::<Vec<String>>()
+                    .join(" -> "),
+            )),
+        }
     }
 }
 impl From<std::string::FromUtf8Error> for Error {
