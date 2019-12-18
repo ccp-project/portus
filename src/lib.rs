@@ -605,7 +605,17 @@ where
                 //return Err(Error(String::from("The start() listener should never receive an install \
                 //    message, since it is on the CCP side.")));
             }
-            _ => continue,
+            Msg::Other(m) => {
+                if let Some(log) = cfg.logger.as_ref() {
+                    warn!(log, "got unknown message";
+                          "size" => m.len,
+                          "type" => m.typ,
+                          "sid" => m.sid,
+                          "addr" => format!("{:#?}", recv_addr),
+                    );
+                }
+                continue
+            }
         }
     }
     // if the thread has been killed, return that as error
