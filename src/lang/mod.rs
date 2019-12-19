@@ -141,12 +141,15 @@ impl<I, E> From<nom::Context<I, E>> for Error {
     fn from(e: nom::Context<I, E>) -> Error {
         match e {
             nom::Context::Code(_, _) => Error(String::from(e.into_error_kind().description())),
+            #[cfg(feature = "lang-verbose-errors")]
             nom::Context::List(ks) => Error(String::from(
                 ks.into_iter()
                     .map(|(_, k)| k.description().to_string())
                     .collect::<Vec<String>>()
                     .join(" -> "),
             )),
+            #[cfg(not(feature = "lang-verbose-errors"))]
+            _ => Error(String::from(e.into_error_kind().description())),
         }
     }
 }

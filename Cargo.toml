@@ -1,6 +1,6 @@
 [package]
 name = "portus"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["Akshay Narayan <akshayn@csail.mit.edu>", "Frank Cangialosi <frankc@csail.mit.edu>", "Deepti Raghavan <deeptir@cs.stanford.edu>"]
 description = "A Congestion Control Plane"
 homepage = "https://ccp-project.github.io"
@@ -9,6 +9,10 @@ repository = "https://github.com/ccp-project/portus"
 readme = "./README.md"
 license = "ISC"
 edition = "2018"
+
+[features]
+default = []
+lang-verbose-errors = ["nom/verbose-errors"]
 
 [dependencies]
 bytes = "0.4.5"
