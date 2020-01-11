@@ -83,5 +83,5 @@ impl IntegrationTest for TestTiming {
 fn timing() {
     let log = libccp_integration::logger();
     info!(log, "starting timing test");
-    libccp_integration::run_test::<TestTiming>(log, 1);
+    libccp_integration::run_test::<TestTiming>(log, 1, false);
 }

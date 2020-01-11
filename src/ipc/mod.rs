@@ -1,8 +1,8 @@
 //! A library wrapping various IPC mechanisms with a datagram-oriented
 //! messaging layer. This is how CCP communicates with the datapath.
 
-use std::rc::{Rc, Weak};
-use std::sync::{atomic, Arc};
+//use std::rc::{Rc, Weak};
+use std::sync::{atomic, Arc, Weak};
 
 use super::Error;
 use super::Result;
@@ -30,24 +30,40 @@ pub trait Ipc: 'static + Send {
     fn close(&mut self) -> Result<()>;
 }
 
+/// This trait allows for the backend to be either single or mutli-threaded
+pub trait Backend<T: Ipc> {
+    //fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self;
+    fn sender(&self) -> BackendSender<T>;
+    fn broadcaster(&self) -> BackendBroadcaster<T>;
+    fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool>;
+    fn next(&mut self) -> Option<Msg>;
+}
+
 /// Marker type specifying that the IPC socket should make blocking calls to the underlying socket
 pub struct Blocking;
 /// Marker type specifying that the IPC socket should make nonblocking calls to the underlying socket
 pub struct Nonblocking;
 
+pub trait BackendBuilder<T>
+where
+    T: Ipc + std::marker::Sync,
+{
+    type Back: Backend<T>;
+    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Self::Back;
+}
 /// Backend builder contains the objects
 /// needed to build a new backend.
-pub struct BackendBuilder<T: Ipc> {
+pub struct SingleBackendBuilder<T: Ipc> {
     pub sock: T,
 }
 
-impl<T: Ipc> BackendBuilder<T> {
-    pub fn build<'a>(
-        self,
-        atomic_bool: Arc<atomic::AtomicBool>,
-        receive_buf: &'a mut [u8],
-    ) -> Backend<'a, T> {
-        Backend::new(self.sock, atomic_bool, receive_buf)
+impl<T> BackendBuilder<T> for SingleBackendBuilder<T>
+where
+    T: Ipc + std::marker::Sync,
+{
+    type Back = SingleBackend<T>;
+    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Self::Back {
+        SingleBackend::new(self.sock, atomic_bool)
     }
 }
 
@@ -69,47 +85,155 @@ impl<T: Ipc> Clone for BackendSender<T> {
     }
 }
 
+pub struct BackendBroadcaster<T: Ipc>(Vec<BackendSender<T>>);
+
+impl<T: Ipc> BackendBroadcaster<T> {
+    pub fn broadcast_msg(&self, msg: &[u8]) -> Result<()> {
+        for s in &self.0 {
+            s.send_msg(msg)?;
+        }
+        Ok(())
+    }
+}
+
+pub struct MultiBackendBuilder<T: Ipc> {
+    pub socks: Vec<T>,
+}
+impl<T> BackendBuilder<T> for MultiBackendBuilder<T>
+where
+    T: Ipc + std::marker::Sync,
+{
+    type Back = MultiBackend<T>;
+    fn build(self, atomic_bool: Arc<atomic::AtomicBool>) -> Self::Back {
+        MultiBackend::new(self.socks, atomic_bool)
+    }
+}
+
+use crossbeam::channel::{unbounded, Receiver, Select};
+pub struct MultiBackend<T: Ipc> {
+    last_recvd: Option<usize>,
+    continue_listening: Arc<atomic::AtomicBool>,
+    sel: Select<'static>,
+    backends: Vec<BackendSender<T>>,
+    receivers: &'static [Receiver<Option<Msg>>],
+    receivers_ptr: *mut [Receiver<Option<Msg>>],
+}
+
+impl<T> MultiBackend<T>
+where
+    T: Ipc + std::marker::Sync,
+{
+    pub fn new(socks: Vec<T>, continue_listening: Arc<atomic::AtomicBool>) -> Self {
+        let mut backends = Vec::new();
+        let mut receivers = Vec::new();
+
+        for sock in socks {
+            let mut backend = SingleBackend::new(sock, Arc::clone(&continue_listening));
+            backends.push(backend.sender());
+
+            let (s, r) = unbounded();
+            receivers.push(r);
+
+            std::thread::spawn(move || loop {
+                let m = backend.next();
+                let done = m.is_none();
+                if s.send(m).is_err() {
+                    panic!("send failed: receiver not listening");
+                }
+                if done {
+                    break;
+                }
+            });
+        }
+
+        let mut sel = Select::new();
+        let recv_ptr = Box::into_raw(Vec::into_boxed_slice(receivers));
+        let recv_slice: &'static [Receiver<Option<Msg>>] = unsafe { &*recv_ptr };
+        for r in recv_slice {
+            sel.recv(r);
+        }
+
+        MultiBackend {
+            last_recvd: None,
+            continue_listening,
+            sel,
+            backends,
+            receivers: recv_slice,
+            receivers_ptr: recv_ptr,
+        }
+    }
+}
+impl<T: Ipc> Drop for MultiBackend<T> {
+    fn drop(&mut self) {
+        // clear the select
+        std::mem::replace(&mut self.sel, Select::new());
+        // recover the box, but don't drop it just yet so we can clear the slice first
+        let _b = unsafe { Box::from_raw(self.receivers_ptr) };
+        // clear the slice
+        std::mem::replace(&mut self.receivers, &[]);
+        // now we can drop the box safely
+    }
+}
+
+impl<T: Ipc> Backend<T> for MultiBackend<T> {
+    fn sender(&self) -> BackendSender<T> {
+        match self.last_recvd {
+            Some(i) => self.backends[i as usize].clone(),
+            None => {
+                panic!("No messages have been received yet, so there is no corresponding sender")
+            }
+        }
+    }
+
+    fn broadcaster(&self) -> BackendBroadcaster<T> {
+        BackendBroadcaster(self.backends.clone())
+    }
+
+    /// Return a copy of the flag variable that indicates that the
+    /// `Backend` should continue listening (i.e., not exit).
+    fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
+        Arc::clone(&(self.continue_listening))
+    }
+
+    fn next(&mut self) -> Option<Msg> {
+        let oper = self.sel.select();
+        let index = oper.index();
+        self.last_recvd = Some(index);
+        oper.recv(&self.receivers[index]).unwrap() // TODO don't just unwrap
+    }
+}
+
 /// Backend will yield incoming IPC messages forever via `next()`.
 /// It owns the socket; `BackendSender` holds weak references.
 /// The atomic bool is a way to stop iterating.
-pub struct Backend<'a, T: Ipc> {
-    sock: Rc<T>,
+pub struct SingleBackend<T: Ipc> {
+    sock: Arc<T>,
     continue_listening: Arc<atomic::AtomicBool>,
-    receive_buf: &'a mut [u8],
+    receive_buf: [u8; 1024],
     tot_read: usize,
     read_until: usize,
 }
 
 use crate::serialize::Msg;
-impl<'a, T: Ipc> Backend<'a, T> {
-    pub fn new(
-        sock: T,
-        continue_listening: Arc<atomic::AtomicBool>,
-        receive_buf: &'a mut [u8],
-    ) -> Backend<'a, T> {
-        Backend {
-            sock: Rc::new(sock),
-            continue_listening,
-            receive_buf,
-            tot_read: 0,
-            read_until: 0,
-        }
+impl<T: Ipc> Backend<T> for SingleBackend<T> {
+    fn sender(&self) -> BackendSender<T> {
+        BackendSender(Arc::downgrade(&self.sock))
     }
 
-    pub fn sender(&self) -> BackendSender<T> {
-        BackendSender(Rc::downgrade(&self.sock))
+    fn broadcaster(&self) -> BackendBroadcaster<T> {
+        BackendBroadcaster(vec![self.sender()])
     }
 
     /// Return a copy of the flag variable that indicates that the
     /// `Backend` should continue listening (i.e., not exit).
-    pub fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
+    fn clone_atomic_bool(&self) -> Arc<atomic::AtomicBool> {
         Arc::clone(&(self.continue_listening))
     }
 
     /// Get the next IPC message.
     // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
     // of `self`, so we cannot implement that trait.
-    pub fn next(&mut self) -> Option<Msg<'_>> {
+    fn next(&mut self) -> Option<Msg> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
             let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
@@ -125,6 +249,18 @@ impl<'a, T: Ipc> Backend<'a, T> {
             Some(msg)
         }
     }
+}
+
+impl<T: Ipc> SingleBackend<T> {
+    pub fn new(sock: T, continue_listening: Arc<atomic::AtomicBool>) -> Self {
+        SingleBackend {
+            sock: Arc::new(sock),
+            continue_listening,
+            receive_buf: [0u8; 1024],
+            tot_read: 0,
+            read_until: 0,
+        }
+    }
 
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
@@ -135,7 +271,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
                 return Err(Error(String::from("Done")));
             }
 
-            let read = match self.sock.recv(self.receive_buf) {
+            let read = match self.sock.recv(&mut self.receive_buf) {
                 Ok(l) => l,
                 _ => continue,
             };
@@ -149,9 +285,9 @@ impl<'a, T: Ipc> Backend<'a, T> {
     }
 }
 
-impl<'a, T: Ipc> Drop for Backend<'a, T> {
+impl<T: Ipc> Drop for SingleBackend<T> {
     fn drop(&mut self) {
-        Rc::get_mut(&mut self.sock)
+        Arc::get_mut(&mut self.sock)
             .ok_or_else(|| {
                 Error(String::from(
                     "Could not get exclusive ref to socket to close",

@@ -69,5 +69,5 @@ impl IntegrationTest for TestPresetVars {
 fn preset() {
     let log = libccp_integration::logger();
     info!(log, "starting preset test");
-    libccp_integration::run_test::<TestPresetVars>(log, 1);
+    libccp_integration::run_test::<TestPresetVars>(log, 1, false);
 }

@@ -102,7 +102,7 @@ mod errors;
 pub use crate::errors::*;
 
 use crate::ipc::Ipc;
-use crate::ipc::{BackendBuilder, BackendSender};
+use crate::ipc::{BackendBroadcaster, BackendBuilder, BackendSender};
 use crate::lang::{Bin, Reg, Scope};
 use crate::serialize::Msg;
 
@@ -222,7 +222,12 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
     }
 }
 
-fn send_and_install<I>(sock_id: u32, sender: &BackendSender<I>, bin: Bin, sc: &Scope) -> Result<()>
+fn send_and_install<I>(
+    sock_id: u32,
+    sender: &BackendBroadcaster<I>,
+    bin: Bin,
+    sc: &Scope,
+) -> Result<()>
 where
     I: Ipc,
 {
@@ -234,7 +239,7 @@ where
         instrs: bin,
     };
     let buf = serialize::serialize(&msg)?;
-    sender.send_msg(&buf[..])?;
+    sender.broadcast_msg(&buf[..])?;
     Ok(())
 }
 
@@ -426,10 +431,11 @@ impl CCPHandle {
 /// Run() or spawn() create arc<AtomicBool> objects,
 /// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
 /// boolean to kill the thread.
-pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> Result<!>
+pub fn run<I, U, B>(backend_builder: B, cfg: Config, alg: U) -> Result<!>
 where
-    I: Ipc,
+    I: Ipc + Sync,
     U: CongAlg<I>,
+    B: BackendBuilder<I>,
 {
     // call run_inner
     match run_inner(
@@ -452,10 +458,11 @@ where
 /// 3. The caller calls `CCPHandle::kill()`
 ///
 /// See [`run`](./fn.run.html) for more information.
-pub fn spawn<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> CCPHandle
+pub fn spawn<I, U, B>(backend_builder: B, cfg: Config, alg: U) -> CCPHandle
 where
-    I: Ipc,
+    I: Ipc + Sync,
     U: CongAlg<I> + 'static + Send,
+    B: BackendBuilder<I> + 'static + Send,
 {
     let stop_signal = Arc::new(atomic::AtomicBool::new(true));
     CCPHandle {
@@ -464,46 +471,15 @@ where
     }
 }
 
-// Main execution inner loop of ccp.
-// Blocks "forever", or until the iterator stops iterating.
-//
-// `run_inner()`:
-// 1. listens for messages from the datapath
-// 2. call the appropriate message in `U: impl CongAlg`
-// The function can return for two reasons: an error, or the iterator returned None.
-// The latter should only happen for spawn(), and not for run().
-// It returns any error, either from:
-// 1. the IPC channel failing
-// 2. Receiving an install control message (only the datapath should receive these).
-fn run_inner<I, U>(
-    continue_listening: Arc<atomic::AtomicBool>,
-    backend_builder: BackendBuilder<I>,
-    cfg: Config,
-    alg: U,
-) -> Result<()>
-where
-    I: Ipc,
-    U: CongAlg<I>,
-{
-    let mut receive_buf = [0u8; 1024];
-    let mut b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
-    let mut flows = HashMap::<u32, U::Flow>::default();
-    let backend = b.sender();
-
-    if let Some(log) = cfg.logger.as_ref() {
-        info!(log, "starting CCP";
-            "algorithm" => U::name(),
-            "ipc"       => I::name(),
-        );
-    }
-
-    let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
-
-    let programs = alg.datapath_programs();
+fn install_programs<I: Ipc + Sync>(
+    programs: &HashMap<&'static str, String>,
+    mut scope_map: &mut Rc<HashMap<String, Scope>>,
+    b: &BackendBroadcaster<I>,
+) -> Result<()> {
     for (program_name, program) in programs.iter() {
         match lang::compile(program.as_bytes(), &[]) {
             Ok((bin, sc)) => {
-                match send_and_install(0, &backend, bin, &sc) {
+                match send_and_install(0, b, bin, &sc) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(Error(format!(
@@ -523,6 +499,74 @@ where
                 )));
             }
         }
+    }
+    Ok(())
+}
+
+use crate::ipc::Backend;
+// Main execution inner loop of ccp.
+// Blocks "forever", or until the iterator stops iterating.
+//
+// `run_inner()`:
+// 1. listens for messages from the datapath
+// 2. call the appropriate message in `U: impl CongAlg`
+// The function can return for two reasons: an error, or the iterator returned None.
+// The latter should only happen for spawn(), and not for run().
+// It returns any error, either from:
+// 1. the IPC channel failing
+// 2. Receiving an install control message (only the datapath should receive these).
+fn run_inner<I, U, B>(
+    continue_listening: Arc<atomic::AtomicBool>,
+    backend_builder: B,
+    cfg: Config,
+    alg: U,
+) -> Result<()>
+where
+    I: Ipc + Sync,
+    U: CongAlg<I>,
+    B: BackendBuilder<I>,
+{
+    let mut b = backend_builder.build(continue_listening.clone());
+    let mut flows = HashMap::<u32, U::Flow>::default();
+
+    if let Some(log) = cfg.logger.as_ref() {
+        info!(log, "starting CCP";
+            "algorithm" => U::name(),
+            "ipc"       => I::name(),
+        );
+    }
+
+    let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
+
+    let programs = alg.datapath_programs();
+    let broadcaster = b.broadcaster();
+    match install_programs(&programs, &mut scope_map, &broadcaster) {
+        Ok(()) => {} // great, the datapath is ready, keep going!
+        Err(_) => {
+            if let Some(log) = cfg.logger.as_ref() {
+                info!(
+                    log,
+                    "could not connect to datapath, waiting for datapath to initiate..."
+                );
+            }
+            // the datapath is not ready yet, let's wait for it to send us a msg
+            let got = b.next();
+            if got.is_none() {
+                if !continue_listening.load(atomic::Ordering::SeqCst) {
+                    return Ok(());
+                } else {
+                    return Err(Error(String::from("The IPC channel has closed.")));
+                }
+            }
+            if let Some(log) = cfg.logger.as_ref() {
+                info!(log, "got message from datapath, installing programs...");
+            }
+            // got a msg from the datapath, it must be up, so let's try to install programs again
+            install_programs(&programs, &mut scope_map, &broadcaster).unwrap();
+        }
+    }
+    if let Some(log) = cfg.logger.as_ref() {
+        info!(log, "programs installed, CCP ready");
     }
 
     while let Some(msg) = b.next() {
@@ -549,7 +593,7 @@ where
                 let f = alg.new_flow(
                     Datapath {
                         sock_id: c.sid,
-                        sender: backend.clone(),
+                        sender: b.sender(), // backend.clone(),
                         programs: scope_map.clone(),
                     },
                     DatapathInfo {

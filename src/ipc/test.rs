@@ -1,6 +1,8 @@
 use super::Ipc;
 use std::sync::{Arc, Mutex};
 
+use crate::ipc::Backend;
+
 #[derive(Clone)]
 pub struct FakeIpc(Arc<Mutex<Vec<u8>>>);
 
@@ -49,9 +51,8 @@ fn test_unix() {
 
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
-        let sk2 = super::unix::Socket::<Blocking>::new("out", "in").expect("init socket");
-        let mut buf = [0u8; 1024];
-        let b2 = super::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
+        let sk2 = super::unix::Socket::<Blocking>::new(1, "out", "in").expect("init socket");
+        let b2 = super::SingleBackend::new(sk2, Arc::new(atomic::AtomicBool::new(true)));
         let test_msg = TestMsg(String::from("hello, world"));
         let test_msg_buf = serialize::serialize(&test_msg).expect("serialize test msg");
         b2.sender()
@@ -59,16 +60,15 @@ fn test_unix() {
             .expect("send message");
     });
 
-    let sk1 = super::unix::Socket::<Blocking>::new("in", "out").expect("init socket");
-    let mut buf = [0u8; 1024];
-    let mut b1 = super::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
+    let sk1 = super::unix::Socket::<Blocking>::new(1, "in", "out").expect("init socket");
+    let mut b1 = super::SingleBackend::new(sk1, Arc::new(atomic::AtomicBool::new(true)));
     tx.send(true).expect("chan send");
     match b1.next().expect("receive message") {
         // Msg::Other(RawMsg)
         Msg::Other(r) => {
             assert_eq!(r.typ, 0xff);
             assert_eq!(r.len, serialize::HDR_LENGTH + "hello, world".len() as u32);
-            assert_eq!(r.get_bytes().unwrap(), "hello, world".as_bytes());
+            assert_eq!(r.get_raw_bytes(), "hello, world".as_bytes());
         }
         _ => unreachable!(),
     }
@@ -93,8 +93,7 @@ fn test_chan() {
     let c2 = thread::spawn(move || {
         rx.recv().expect("chan rcv");
         let sk2 = super::chan::Socket::<Blocking>::new(s1, r2);
-        let mut buf = [0u8; 1024];
-        let b2 = super::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
+        let b2 = super::SingleBackend::new(sk2, Arc::new(atomic::AtomicBool::new(true)));
         let test_msg = TestMsg(String::from("hello, world"));
         let test_msg_buf = serialize::serialize(&test_msg).expect("serialize test msg");
         b2.sender()
@@ -103,15 +102,14 @@ fn test_chan() {
     });
 
     let sk1 = super::chan::Socket::<Blocking>::new(s2, r1);
-    let mut buf = [0u8; 1024];
-    let mut b1 = super::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
+    let mut b1 = super::SingleBackend::new(sk1, Arc::new(atomic::AtomicBool::new(true)));
     tx.send(true).expect("chan send");
     match b1.next().expect("receive message") {
         // Msg::Other(RawMsg)
         Msg::Other(r) => {
             assert_eq!(r.typ, 0xff);
             assert_eq!(r.len, serialize::HDR_LENGTH + "hello, world".len() as u32);
-            assert_eq!(r.get_bytes().unwrap(), "hello, world".as_bytes());
+            assert_eq!(r.get_raw_bytes(), "hello, world".as_bytes());
         }
         _ => unreachable!(),
     }
