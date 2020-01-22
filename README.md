@@ -12,7 +12,7 @@ Further documentation is available on [docs.rs](https://docs.rs/portus).
 
 ## Setup
 
-1. Install rust, and use the nightly toolchain. See http://rust-lang.org/ for details.
+1. Install rust. See http://rust-lang.org/ for details.
 2. `make`. This will build and lint the portus library and bundled algorithm libraries and binaries, and run unit tests.
 
 ### Notes
