@@ -78,11 +78,12 @@ mod tests {
         }
     );
 
-    extern crate test;
-    use self::test::Bencher;
-
-    #[bench]
-    fn bench_flip_create(b: &mut Bencher) {
-        b.iter(|| test_create_1())
-    }
+    // TODO wait for feature(test)
+    //    extern crate test;
+    //    use self::test::Bencher;
+    //
+    //    #[bench]
+    //    fn bench_flip_create(b: &mut Bencher) {
+    //        b.iter(|| test_create_1())
+    //    }
 }

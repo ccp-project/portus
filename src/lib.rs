@@ -66,12 +66,6 @@
 //! }
 //! ```
 
-#![feature(box_patterns)]
-#![feature(integer_atomics)]
-#![feature(never_type)]
-#![feature(stmt_expr_attributes)]
-#![feature(test)]
-
 extern crate bytes;
 extern crate clap;
 extern crate crossbeam;
@@ -426,7 +420,8 @@ impl CCPHandle {
 /// Run() or spawn() create arc<AtomicBool> objects,
 /// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
 /// boolean to kill the thread.
-pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> Result<!>
+// TODO once feature(never_type) is stabilized, this should return Result<!>
+pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> Result<()>
 where
     I: Ipc,
     U: CongAlg<I>,

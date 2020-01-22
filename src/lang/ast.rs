@@ -227,7 +227,7 @@ impl Expr {
             }
             Expr::None => {}
             Expr::Atom(_) => {}
-            Expr::Sexp(_, box ref mut left, box ref mut right) => {
+            Expr::Sexp(_, ref mut left, ref mut right) => {
                 left.desugar();
                 right.desugar();
             }

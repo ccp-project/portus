@@ -1,5 +1,6 @@
 language: rust
 rust:
+    - stable
     - nightly
 cache: cargo
 install:

@@ -224,6 +224,8 @@ pub fn compile_and_serialize(src: &[u8], updates: &[(&str, u32)]) -> Result<(Vec
     compile(src, updates).and_then(|(b, s)| Ok((b.serialize()?, s)))
 }
 
+// TODO wait for feature(test)
+/*
 #[cfg(test)]
 mod tests {
     extern crate test;
@@ -306,3 +308,4 @@ mod tests {
         b.iter(|| super::compile_and_serialize(fold, &[]).unwrap())
     }
 }
+*/

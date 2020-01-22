@@ -202,7 +202,7 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
             Prim::Num(n) => Ok((vec![], Reg::ImmNum(n as u64))),
         },
         Expr::Cmd(_) | Expr::None => unreachable!(),
-        Expr::Sexp(ref o, box ref left_expr, box ref right_expr) => {
+        Expr::Sexp(ref o, ref left_expr, ref right_expr) => {
             let (mut instrs, mut left) = compile_expr(left_expr, &mut scope)?;
             let (mut right_instrs, right) = compile_expr(right_expr, &mut scope)?;
             instrs.append(&mut right_instrs);

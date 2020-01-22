@@ -69,9 +69,9 @@ mod tests {
 
         let buf: Vec<u8> =
             crate::serialize::serialize::<super::Msg>(&m.clone()).expect("serialize");
+        #[rustfmt::skip]
         assert_eq!(
             buf,
-            #[rustfmt::skip]
             vec![
                 4, 0,                                     // CHANGEPROG
                 29, 0,                                    // length = 12
