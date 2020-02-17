@@ -1,5 +1,6 @@
 use super::{Error, Result};
-use nom;
+use nom::types::CompleteByteSlice;
+use nom::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Prim {
@@ -88,7 +89,6 @@ fn check_expr(op: Op, left: Expr, right: Expr) -> Result<Expr> {
     }
 }
 
-use nom::multispace;
 named_complete!(
     sexp<Result<Expr>>,
     ws!(delimited!(
@@ -106,8 +106,6 @@ named_complete!(
     ))
 );
 
-use nom::digit;
-use nom::types::CompleteByteSlice;
 use std::str::FromStr;
 named_complete!(
     pub num<u64>,
@@ -120,7 +118,6 @@ named_complete!(
     )
 );
 
-use nom::is_alphanumeric;
 named_complete!(
     pub name<String>,
     map_res!(
@@ -188,7 +185,6 @@ named_complete!(
 impl Expr {
     // TODO make return Iter
     pub fn new(src: &[u8]) -> Result<Vec<Self>> {
-        use nom::Needed;
         match exprs(CompleteByteSlice(src)) {
             Ok((rest, _)) if !rest.is_empty() => Err(Error::from(format!(
                 "compile error: \"{}\"",

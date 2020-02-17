@@ -99,9 +99,6 @@
 //! "Flow.rtt_sample_us"    | Round-trip time
 //! "Flow.was_timeout"      | Did a timeout occur?
 
-use nom;
-use std;
-
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]

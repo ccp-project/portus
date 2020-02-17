@@ -1,5 +1,5 @@
-use nom;
 use nom::types::CompleteByteSlice;
+use nom::*;
 
 use super::ast::{atom, comment, expr, exprs, name, Expr};
 use super::datapath::{check_atom_type, Scope, Type};
@@ -31,9 +31,8 @@ named_complete!(
     ws!(delimited!(
         tag!("("),
         tuple!(
-            map!(opt!(tag!("volatile")), |v: Option<
-                nom::types::CompleteByteSlice,
-            >| v.is_some()),
+            map!(opt!(tag!("volatile")), |v: Option<CompleteByteSlice>| v
+                .is_some()),
             map!(name, Type::Name),
             map_res!(atom, |a: Result<Expr>| a.and_then(|i| check_atom_type(&i)))
         ),
@@ -127,7 +126,6 @@ impl Prog {
     /// such as `(report)` and `(fallthrough)`.
     pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
-        use nom::Needed;
         let body = match defs(CompleteByteSlice(source)) {
             Ok((rest, flow_state)) => {
                 let (reports, controls): (Vec<(bool, String, Type)>, Vec<(bool, String, Type)>) =

@@ -66,20 +66,8 @@
 //! }
 //! ```
 
-extern crate bytes;
-extern crate clap;
-extern crate crossbeam;
-extern crate fnv;
-extern crate libc;
-extern crate nix;
-#[macro_use]
-extern crate nom;
-extern crate time;
-
 #[macro_use]
 extern crate slog;
-extern crate slog_async;
-extern crate slog_term;
 
 use std::collections::HashMap;
 use std::rc::Rc;
