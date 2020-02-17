@@ -82,6 +82,7 @@ pub mod test_helper;
 pub mod algs;
 mod errors;
 pub use crate::errors::*;
+pub use portus_export::register_ccp_alg;
 
 use crate::ipc::Ipc;
 use crate::ipc::{BackendBuilder, BackendSender};
