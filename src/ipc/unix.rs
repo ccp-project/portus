@@ -1,10 +1,15 @@
 use std;
-use std::os::unix::net::UnixDatagram;
+//use std::os::unix::net::UnixDatagram;
+use unix_socket::{UnixDatagram};
+
+#[cfg(target_os = "linux")]
+use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt;
+use unix_socket::os::linux::SocketAddrExt;
 
 use super::Error;
 use super::Result;
 use std::marker::PhantomData;
-use std::path::PathBuf;
 
 pub struct Socket<T> {
     sk: UnixDatagram,
@@ -13,20 +18,7 @@ pub struct Socket<T> {
 
 impl<T> Socket<T> {
     fn __new(bind_to: &str) -> Result<Self> {
-        let bind_to_addr = format!("/tmp/ccp/{}", bind_to.to_string());
-        // create dir if not already exists
-        match std::fs::create_dir_all("/tmp/ccp/").err() {
-            Some(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-            Some(e) => Err(e),
-            None => Ok(()),
-        }?;
-
-        // unlink before bind
-        match std::fs::remove_file(&bind_to_addr).err() {
-            Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Some(e) => Err(e),
-            None => Ok(()),
-        }?;
+        let bind_to_addr = format!("\0/ccp/{}", bind_to.to_string());
         let sock = UnixDatagram::bind(bind_to_addr)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
 
@@ -38,7 +30,7 @@ impl<T> Socket<T> {
 }
 
 impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
-    type Addr = PathBuf;
+    type Addr = OsString;
 
     fn name() -> String {
         String::from("unix")
@@ -51,14 +43,57 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
             .map_err(Error::from)
     }
 
+    #[cfg(target_os = "linux")]
     fn recv(&self, msg: &mut [u8]) -> Result<(usize,Self::Addr)> {
-        self.sk.recv_from(msg).map_err(Error::from).and_then(|(size,addr)|
-            match addr.as_pathname() {
-                Some(p) => Ok((size,p.to_path_buf())),
-                None => Err(Error(String::from("no recv addr")))
+        let res = loop {
+            match self.sk.recv_from(msg).and_then(|(size,addr)| {
+                if addr.is_unnamed() {
+                    Err(std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, ""))
+                } else {
+                    if let Some(path) = addr.as_pathname() {
+                        Ok((size, path.to_path_buf().into_os_string()))
+                    } else if let Some(path) = addr.as_abstract() {
+                        let mut real_path = OsString::with_capacity(path.len() + 1);
+                        real_path.push("\0");
+                        real_path.push(OsStr::from_bytes(&path));
+                        Ok((size,real_path))
+                    } else {
+                        unreachable!("named socketaddr must be path or abstract");
+                    }
+                }
+            }) {
+                Ok(r) => break Ok(r),
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::Interrupted {
+                        continue
+                    } else if e.kind() != std::io::ErrorKind::WouldBlock {
+                        break Err(Error::from(e))
+                    } else {
+                        break Ok((0, OsString::new()))
+                    }
+                }
             }
+        };
+        res
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn recv(&self, msg: &mut [u8]) -> Result<(usize,Self::Addr)> {
+        self.sk.recv_from(msg).map_err(Error::from).and_then(|(size,addr)|  {
+
+            if addr.is_unnamed() {
+                Err(Error(String::from("no recv addr")))
+            } else {
+                if let Some(path) = addr.as_pathname() {
+                    Ok((size, path.to_path_buf().into_os_string()))
+                } else {
+                    unreachable!("named socketaddr must be path (abstract does not exist on non-linux)");
+                }
+            }
+        }
         )
     }
+
 
     fn close(&mut self) -> Result<()> {
         use std::net::Shutdown;

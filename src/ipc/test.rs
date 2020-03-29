@@ -17,7 +17,7 @@ impl Ipc for FakeIpc {
         String::from("fake")
     }
 
-    fn send(&self, msg: &[u8], _to: Self:Addr) -> Result<(), super::Error> {
+    fn send(&self, msg: &[u8], _to: Self::Addr) -> Result<(), super::Error> {
         let mut x = self.0.lock().unwrap();
         (*x).extend(msg);
         Ok(())

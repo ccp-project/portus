@@ -541,17 +541,17 @@ where
                     }
                 }
 
-                if let Some(log) = cfg.logger.as_ref() {
-                    debug!(log, "creating new flow";
-                           "sid" => c.sid,
-                           "init_cwnd" => c.init_cwnd,
-                           "mss"  =>  c.mss,
-                           "src_ip"  =>  c.src_ip,
-                           "src_port"  =>  c.src_port,
-                           "dst_ip"  =>  c.dst_ip,
-                           "dst_port"  =>  c.dst_port,
-                    );
-                }
+                //if let Some(log) = cfg.logger.as_ref() {
+                //    debug!(log, "creating new flow";
+                //           "sid" => c.sid,
+                //           "init_cwnd" => c.init_cwnd,
+                //           "mss"  =>  c.mss,
+                //           "src_ip"  =>  c.src_ip,
+                //           "src_port"  =>  c.src_port,
+                //           "dst_ip"  =>  c.dst_ip,
+                //           "dst_port"  =>  c.dst_port,
+                //    );
+                //}
 
                 let f = alg.new_flow(
                     Datapath {
