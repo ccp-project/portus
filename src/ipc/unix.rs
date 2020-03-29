@@ -1,5 +1,6 @@
 use std;
-use std::os::unix::net::UnixDatagram;
+//use std::os::unix::net::UnixDatagram;
+use unix_socket::UnixDatagram;
 
 use super::Error;
 use super::Result;
@@ -13,20 +14,7 @@ pub struct Socket<T> {
 
 impl<T> Socket<T> {
     fn __new(bind_to: &str) -> Result<Self> {
-        let bind_to_addr = format!("/tmp/ccp/{}", bind_to.to_string());
-        // create dir if not already exists
-        match std::fs::create_dir_all("/tmp/ccp/").err() {
-            Some(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-            Some(e) => Err(e),
-            None => Ok(()),
-        }?;
-
-        // unlink before bind
-        match std::fs::remove_file(&bind_to_addr).err() {
-            Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Some(e) => Err(e),
-            None => Ok(()),
-        }?;
+        let bind_to_addr = format!("\0/ccp/{}", bind_to.to_string());
         let sock = UnixDatagram::bind(bind_to_addr)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
 
