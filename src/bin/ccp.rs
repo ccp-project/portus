@@ -42,6 +42,7 @@ fn log_error(msg: &str) -> ! {
 
 fn find_algs(root: PathBuf) -> Vec<Alg> {
     WalkDir::new(root)
+        .follow_links(true)
         .max_depth(1)
         .min_depth(1)
         .into_iter()
@@ -96,7 +97,7 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 libc = "0.2"
 clap = "2.32"
-portus = "^0.5"
+portus = { git = "https://github.com/ccp-project/portus", branch = "many_to_one" }
 "#
         .to_owned(),
     );
