@@ -516,7 +516,7 @@ where
         );
     }
 
-    while let Some((msg, recv_addr)) = b.next() {
+    while let Some((msg, recv_addr)) = b.next(cfg.logger.as_ref()) {
         match msg {
             Msg::Rdy(r) => {
                 if dp_to_flowmap.remove(&recv_addr).is_some() {

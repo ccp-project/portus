@@ -11,7 +11,7 @@ use nix::sys::socket;
 pub struct Socket<T>(c_int, PhantomData<T>);
 
 const NL_CFG_F_NONROOT_RECV: c_int = 1;
-const NL_CFG_F_NONROOT_SEND: c_int = (1 << 1);
+const NL_CFG_F_NONROOT_SEND: c_int = 1 << 1;
 const NLMSG_HDRSIZE: usize = 0x10;
 
 impl<T> Socket<T> {

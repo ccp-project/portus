@@ -180,6 +180,11 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
             typ, len, sid
         )));
     }
+    if len > buf.get_ref().len() as u32 {
+        return Err(super::Error(format!(
+            "header len claims {} but buf size is {}", len, buf.get_ref().len()
+        )));
+    }
 
     let i = buf.position();
     Ok(RawMsg {
@@ -217,11 +222,21 @@ impl<'a> Msg<'a> {
 
     pub fn from_buf(buf: &[u8]) -> Result<(Msg, usize)> {
         deserialize(buf)
-            .map(|m| {
-                let len = m.len;
-                (m, len as usize)
-            })
-            .and_then(|(m, l)| Ok((Msg::from_raw_msg(m)?, l)))
+            .map_or_else(
+                |e| {
+                    eprintln!("{:#?}", e);
+                    Ok((RawMsg {
+                        typ : 255,
+                        len : 0,
+                        sid : 0,
+                        bytes: &buf,
+                    }, buf.len()))
+                },
+                |m| {
+                    let len = m.len;
+                    Ok((m, len as usize))
+                }
+            ).and_then(|(m, l)| Ok((Msg::from_raw_msg(m)?, l)))
     }
 }
 

@@ -95,7 +95,7 @@ fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Durat
             let then = time::get_time();
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
-            if let (portus::serialize::Msg::Other(raw),_addr) = l.next().expect("receive echo") {
+            if let (portus::serialize::Msg::Other(raw),_addr) = l.next(None).expect("receive echo") {
                 let then = TimeMsg::from_raw_msg(raw).expect("get time from raw");
                 time::get_time() - then.0
             } else {
@@ -141,7 +141,7 @@ macro_rules! netlink_bench {
                     })
                     .expect("nl ipc initialization");
                 tx.send(vec![]).expect("ok to insmod");
-                nl.next().expect("receive echo");
+                nl.next(None).expect("receive echo");
                 let sender = nl.sender(());
                 let res = (0..iter)
                     .map(|_| {
@@ -150,7 +150,7 @@ macro_rules! netlink_bench {
                             .expect("serialize");
 
                         sender.send_msg(&msg[..]).expect("send ts");
-                        if let (portus::serialize::Msg::Other(raw),_addr) = nl.next().expect("recv echo") {
+                        if let (portus::serialize::Msg::Other(raw),_addr) = nl.next(None).expect("recv echo") {
                             let portus_rt = time::get_time();
                             let kern_recv_msg =
                                 NlTimeMsg::from_raw_msg(raw).expect("get time from raw");
