@@ -280,7 +280,7 @@ macro_rules! unix_bench {
                     })
                     .expect("unix ipc initialization");
                 ready_rx.recv().expect("sync");
-                tx.send(bench(unix.sender(std::path::PathBuf::from("/tmp/ccp/bench_tx")), unix, iter))
+                tx.send(bench(unix.sender(std::ffi::OsString::from("/tmp/ccp/bench_tx")), unix, iter))
                     .expect("report rtts");
             });
 

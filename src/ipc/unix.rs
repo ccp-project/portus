@@ -3,7 +3,7 @@ use std;
 use unix_socket::{UnixDatagram};
 
 #[cfg(target_os = "linux")]
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
 use unix_socket::os::linux::SocketAddrExt;
 
@@ -31,7 +31,7 @@ impl<T> Socket<T> {
 }
 
 impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
-    type Addr = PathBuf;
+    type Addr = OsString;
 
     fn name() -> String {
         String::from("unix")
@@ -51,9 +51,12 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
                 Err(std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, ""))
             } else {
                 if let Some(path) = addr.as_pathname() {
-                    Ok((size, path.to_path_buf()))
+                    Ok((size, path.to_path_buf().into_os_string()))
                 } else if let Some(path) = addr.as_abstract() {
-                    Ok((size, PathBuf::from(OsStr::from_bytes(&path))))
+                    let mut real_path = OsString::with_capacity(path.len() + 1);
+                    real_path.push("\0");
+                    real_path.push(OsStr::from_bytes(&path));
+                    Ok((size,real_path))
                 } else {
                     unreachable!("named socketaddr must be path or abstract");
                 }
@@ -62,7 +65,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
             if e.kind() != std::io::ErrorKind::WouldBlock {
                 Err(Error::from(e))
             } else {
-                Ok((0, PathBuf::new()))
+                Ok((0, OsString::new()))
             }
         })
     }
@@ -75,7 +78,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
                 Err(Error(String::from("no recv addr")))
             } else {
                 if let Some(path) = addr.as_pathname() {
-                    Ok((size, path.to_path_buf()))
+                    Ok((size, path.to_path_buf().into_os_string()))
                 } else {
                     unreachable!("named socketaddr must be path (abstract does not exist on non-linux)");
                 }
