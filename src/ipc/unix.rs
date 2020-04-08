@@ -10,7 +10,6 @@ use unix_socket::os::linux::SocketAddrExt;
 use super::Error;
 use super::Result;
 use std::marker::PhantomData;
-use std::path::PathBuf;
 
 pub struct Socket<T> {
     sk: UnixDatagram,
