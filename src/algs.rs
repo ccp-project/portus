@@ -110,12 +110,15 @@ macro_rules! start {
         use $crate::ipc::Blocking;
         $crate::start!($ipc, $log, $alg, Blocking)
     }};
-    ($ipc:expr, $log:expr, $alg: expr, $blk: ty) => {{
+    ($ipc:expr, $log:expr, $alg:expr, $blk:ty) => {{
+        $crate::start!($ipc, $log, $alg, $blk, "portus")
+    }};
+    ($ipc:expr, $log:expr, $alg:expr, $blk:ty, $bindaddr:expr) => {{
         use $crate::ipc::BackendBuilder;
         match $ipc {
             "unix" => {
                 use $crate::ipc::unix::Socket;
-                let b = Socket::<$blk>::new("portus")
+                let b = Socket::<$blk>::new($bindaddr)
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
                 $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
