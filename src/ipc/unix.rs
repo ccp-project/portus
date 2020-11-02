@@ -65,6 +65,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
                 Ok(r) => break Ok(r),
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::Interrupted {
+                        eprintln!("[ccp] got EINTR, ignoring...");
                         continue
                     } else if e.kind() != std::io::ErrorKind::WouldBlock {
                         break Err(Error::from(e))
