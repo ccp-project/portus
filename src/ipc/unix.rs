@@ -45,28 +45,36 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
 
     #[cfg(target_os = "linux")]
     fn recv(&self, msg: &mut [u8]) -> Result<(usize,Self::Addr)> {
-        self.sk.recv_from(msg).and_then(|(size,addr)| {
-            if addr.is_unnamed() {
-                Err(std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, ""))
-            } else {
-                if let Some(path) = addr.as_pathname() {
-                    Ok((size, path.to_path_buf().into_os_string()))
-                } else if let Some(path) = addr.as_abstract() {
-                    let mut real_path = OsString::with_capacity(path.len() + 1);
-                    real_path.push("\0");
-                    real_path.push(OsStr::from_bytes(&path));
-                    Ok((size,real_path))
+        let res = loop {
+            match self.sk.recv_from(msg).and_then(|(size,addr)| {
+                if addr.is_unnamed() {
+                    Err(std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, ""))
                 } else {
-                    unreachable!("named socketaddr must be path or abstract");
+                    if let Some(path) = addr.as_pathname() {
+                        Ok((size, path.to_path_buf().into_os_string()))
+                    } else if let Some(path) = addr.as_abstract() {
+                        let mut real_path = OsString::with_capacity(path.len() + 1);
+                        real_path.push("\0");
+                        real_path.push(OsStr::from_bytes(&path));
+                        Ok((size,real_path))
+                    } else {
+                        unreachable!("named socketaddr must be path or abstract");
+                    }
+                }
+            }) {
+                Ok(r) => break Ok(r),
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::Interrupted {
+                        continue
+                    } else if e.kind() != std::io::ErrorKind::WouldBlock {
+                        break Err(Error::from(e))
+                    } else {
+                        break Ok((0, OsString::new()))
+                    }
                 }
             }
-        }).or_else(|e| {
-            if e.kind() != std::io::ErrorKind::WouldBlock {
-                Err(Error::from(e))
-            } else {
-                Ok((0, OsString::new()))
-            }
-        })
+        };
+        res
     }
 
     #[cfg(not(target_os = "linux"))]
