@@ -148,6 +148,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
         loop {
             // if continue_loop has been set to false, stop iterating
             if !self.continue_listening.load(atomic::Ordering::SeqCst) {
+                eprintln!("[ccp] recieved kill signal");
                 return Err(Error(String::from("Done")));
             }
 

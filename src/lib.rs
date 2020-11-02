@@ -462,6 +462,7 @@ where
         info!(log, "starting CCP";
             "algorithm" => U::name(),
             "ipc"       => I::name(),
+            "v" => "0.5.7",
         );
     }
 
@@ -620,6 +621,7 @@ where
     }
     // if the thread has been killed, return that as error
     if !continue_listening.load(atomic::Ordering::SeqCst) {
+        eprintln!("[ccp] shutting down");
         Ok(())
     } else {
         Err(Error(String::from("The IPC channel has closed.")))
