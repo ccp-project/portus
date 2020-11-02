@@ -12,7 +12,7 @@ fn test_ser_over_ipc() {
         let mut buf = [0u8; 1024];
         let mut b1 = ipc::Backend::new(sk1, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
         tx.send(true).expect("ready chan send");
-        let msg = b1.next().expect("receive message");
+        let msg = b1.next(None).expect("receive message");
         assert_eq!(
             msg,
             serialize::Msg::Ms(serialize::measure::Msg {
@@ -74,7 +74,7 @@ fn bench_ser_over_ipc(b: &mut Bencher) {
         // send a message
         let buf = serialize::serialize(&m.clone()).expect("serialize");
         b2.sender().send_msg(&buf[..]).expect("send message");
-        let msg = b1.next().expect("receive message");
+        let msg = b1.next(None).expect("receive message");
         assert_eq!(
             msg,
             serialize::Msg::Ms(serialize::measure::Msg {
