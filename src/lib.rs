@@ -410,21 +410,45 @@ impl CCPHandle {
 /// Run() or spawn() create arc<AtomicBool> objects,
 /// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
 /// boolean to kill the thread.
-pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> Result<!>
+pub fn run<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U) -> Result<()>
 where
     I: Ipc,
     U: CongAlg<I>,
 {
     // call run_inner
-    match run_inner(
+    run_inner(
         Arc::new(atomic::AtomicBool::new(true)),
         backend_builder,
         cfg,
         alg,
-    ) {
-        Ok(_) => unreachable!(),
-        Err(e) => Err(e),
-    }
+    )
+}
+
+/// Same as run but takes pointer to a kill switch instead of creating it as in spawn.
+pub fn run_with_handle<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U, handle_ptr: *const atomic::AtomicBool) -> Result<()>
+where
+    I: Ipc,
+    U: CongAlg<I>,
+{
+    //2:
+    //if handle_ptr.is_null() {
+    //    return Err(Error(format!("handle is null")));
+    //}
+    //let handle_val = unsafe { *handle_ptr };
+    //let handle = atomic::AtomicBool::from(handle_val);
+
+    //3:
+    let handle = unsafe { Arc::from_raw(handle_ptr) } ;
+
+    // call run_inner
+    run_inner(
+        //1 : Arc::new(atomic::AtomicBool::new(true)),
+        //2 : Arc::new(handle),
+        handle,
+        backend_builder,
+        cfg,
+        alg,
+    )
 }
 
 /// Spawn a thread which will perform the CCP execution loop. Returns
