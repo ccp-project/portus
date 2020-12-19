@@ -1,6 +1,9 @@
+extern crate nix;
+
 use std;
 //use std::os::unix::net::UnixDatagram;
 use unix_socket::{UnixDatagram};
+use std::os::unix::io::AsRawFd;
 
 #[cfg(target_os = "linux")]
 use std::ffi::{OsStr, OsString};
@@ -21,6 +24,10 @@ impl<T> Socket<T> {
         let bind_to_addr = format!("\0/ccp/{}", bind_to.to_string());
         let sock = UnixDatagram::bind(bind_to_addr)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
+        let snd_res = nix::sys::socket::setsockopt(sock.as_raw_fd(), nix::sys::socket::sockopt::SndBuf, &10485760);
+        eprintln!("set sndbuf size res={}", snd_res.is_ok());
+        let rcv_res = nix::sys::socket::setsockopt(sock.as_raw_fd(), nix::sys::socket::sockopt::RcvBuf, &10485760);
+        eprintln!("set rcvbuf size res={}", rcv_res.is_ok());
 
         Ok(Socket {
             sk: sock,
