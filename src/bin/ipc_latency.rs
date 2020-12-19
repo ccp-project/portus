@@ -270,7 +270,7 @@ macro_rules! unix_bench {
             // listen
             let c1 = thread::spawn(move || {
                 let mut receive_buf = [0u8; 1024];
-                let unix = portus::ipc::unix::Socket::<$mode>::new("bench_rx")
+                let unix = portus::ipc::unix::Socket::<$mode>::new("bench_rx", 0, 0)
                     .map(|sk| {
                         Backend::new(
                             sk,
@@ -286,7 +286,7 @@ macro_rules! unix_bench {
 
             // echo-er
             let c2 = thread::spawn(move || {
-                let sk = portus::ipc::unix::Socket::<Blocking>::new("bench_tx").expect("sk init");
+                let sk = portus::ipc::unix::Socket::<Blocking>::new("bench_tx", 0, 0).expect("sk init");
                 let mut buf = [0u8; 1024];
                 ready_tx.send(true).expect("sync");
                 for _ in 0..iter {
