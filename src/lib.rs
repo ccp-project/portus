@@ -247,6 +247,7 @@ pub struct DatapathInfo {
 /// Use `get_field` to query its values using the names defined in the fold function.
 pub struct Report {
     pub program_uid: u32,
+    pub from: String,
     fields: Vec<u64>,
 }
 
@@ -498,9 +499,10 @@ where
     let mut dp_to_flowmap = HashMap::<I::Addr, HashMap::<u32, U::Flow>>::new();
 
     if let Some(log) = cfg.logger.as_ref() {
-        info!(log, "starting CCP";
+        info!(log, "starting CCP (local)";
             "algorithm" => U::name(),
             "ipc"       => I::name(),
+            "v" => "5",
         );
     }
 
@@ -550,7 +552,7 @@ where
                 } else {
                     if let Some(log) = cfg.logger.as_ref() {
                         info!(log, "found new datapath, installing programs...";
-                              "id" => r.id
+                             "addr" => format!("{:#?}", recv_addr),
                         );
                     }
                 }
@@ -630,6 +632,7 @@ where
                             m.sid,
                             Report {
                                 program_uid: m.program_uid,
+                                from: format!("{:#?}", recv_addr),
                                 fields: m.fields,
                             },
                         )
@@ -658,6 +661,7 @@ where
     }
     // if the thread has been killed, return that as error
     if !continue_listening.load(atomic::Ordering::SeqCst) {
+        eprintln!("[ccp] shutting down");
         Ok(())
     } else {
         Err(Error(String::from("The IPC channel has closed.")))
