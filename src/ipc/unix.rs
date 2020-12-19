@@ -1,6 +1,9 @@
+extern crate nix;
+
 use std;
 //use std::os::unix::net::UnixDatagram;
 use unix_socket::{UnixDatagram};
+use std::os::unix::io::AsRawFd;
 
 #[cfg(target_os = "linux")]
 use std::ffi::{OsStr, OsString};
@@ -17,10 +20,18 @@ pub struct Socket<T> {
 }
 
 impl<T> Socket<T> {
-    fn __new(bind_to: &str) -> Result<Self> {
+    fn __new(bind_to: &str, sndbuf_bytes: usize, rcvbuf_bytes: usize) -> Result<Self> {
         let bind_to_addr = format!("\0/ccp/{}", bind_to.to_string());
         let sock = UnixDatagram::bind(bind_to_addr)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
+        if sndbuf_bytes > 0 {
+            let snd_res = nix::sys::socket::setsockopt(sock.as_raw_fd(), nix::sys::socket::sockopt::SndBuf, &sndbuf_bytes);
+            eprintln!("[ccp] set sndbuf_bytes={} res={}", sndbuf_bytes, snd_res.is_ok());
+        }
+        if rcvbuf_bytes > 0 {
+            let rcv_res = nix::sys::socket::setsockopt(sock.as_raw_fd(), nix::sys::socket::sockopt::RcvBuf, &rcvbuf_bytes);
+            eprintln!("[ccp] set rcvbuf_bytes={} res={}", rcvbuf_bytes, rcv_res.is_ok());
+        }
 
         Ok(Socket {
             sk: sock,
@@ -104,15 +115,15 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
 
 use super::Blocking;
 impl Socket<Blocking> {
-    pub fn new(bind_to: &str) -> Result<Self> {
-        Socket::__new(bind_to)
+    pub fn new(bind_to: &str, sndbuf_bytes: usize, rcvbuf_bytes: usize) -> Result<Self> {
+        Socket::__new(bind_to, sndbuf_bytes, rcvbuf_bytes)
     }
 }
 
 use super::Nonblocking;
 impl Socket<Nonblocking> {
-    pub fn new(bind_to: &str) -> Result<Self> {
-        let sk = Socket::__new(bind_to)?;
+    pub fn new(bind_to: &str, sndbuf_bytes: usize, rcvbuf_bytes: usize) -> Result<Self> {
+        let sk = Socket::__new(bind_to, sndbuf_bytes, rcvbuf_bytes)?;
         sk.sk.set_nonblocking(true).map_err(Error::from)?;
         Ok(sk)
     }

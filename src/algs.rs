@@ -118,7 +118,8 @@ macro_rules! start {
         match $ipc {
             "unix" => {
                 use $crate::ipc::unix::Socket;
-                let b = Socket::<$blk>::new($bindaddr)
+                // 0,0 for default sndbuf and rcvbuf size
+                let b = Socket::<$blk>::new($bindaddr, 0, 0)
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
                 $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
