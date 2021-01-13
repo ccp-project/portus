@@ -13,33 +13,39 @@ edition = "2018"
 [features]
 default = []
 lang-verbose-errors = ["nom/verbose-errors"]
+ccp-quote = ["quote"]
+ccp-bin = ["structopt", "proc-macro2", "colored", "regex", "libloading", "ccp-quote", "toml", "syn", "walkdir"]
 
 [dependencies]
 bytes = "0.4.5"
 clap = "2.32"
-colored = "1.7"
 crossbeam = "0.7"
-fnv = "1"
 itertools = "0.8"
 libc = "0.2"
-libloading = "0.5"
 nix = "0.9.0"
 nom = "4"
 portus_export = "0.1"
-proc-macro2 = "0.4"
-quote = "0.6"
-regex = "1.1"
 slog = "2"
 slog-async = "2"
 slog-term = "2"
-structopt = "0.2"
 time = "0.1"
-toml = "0.4"
-walkdir = "2"
+structopt = { version = "0.2", optional = true }
+proc-macro2 = { version = "0.4", optional = true }
+colored = { version = "1.7", optional = true }
+regex = { version = "1.1", optional = true }
+libloading = { version = "0.5", optional = true }
+quote = { version = "0.6", optional = true }
+toml = { version = "0.4", optional = true }
+syn = { version = "0.15", optional = true, features = ["full", "visit", "fold", "extra-traits","parsing"] }
+walkdir = { version = "2", optional = true }
 
-[dependencies.syn]
-version = "0.15"
-features = ["full", "visit", "fold", "extra-traits","parsing"]
+[[bin]]
+name = "ccp"
+required-features = ["ccp-bin"]
+
+[[bin]]
+name = "cargo-compile-fast-path"
+required-features = ["ccp-quote"]
 
 [dev-dependencies]
 failure = "0.1"

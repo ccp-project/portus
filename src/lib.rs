@@ -19,7 +19,6 @@
 //! minimum RTT observed over 42 millisecond intervals.
 //!
 //! ```
-//! extern crate fnv;
 //! extern crate portus;
 //! use std::collections::HashMap;
 //! use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
@@ -331,7 +330,6 @@ pub trait CongAlg<I: Ipc> {
     ///
     /// For example,
     /// ```
-    /// extern crate fnv;
     /// use std::collections::HashMap;
     /// let mut h = HashMap::new();
     /// h.insert("prog1", "...(program)...".to_string());

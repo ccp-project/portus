@@ -1,4 +1,3 @@
-extern crate fnv;
 extern crate portus;
 #[macro_use]
 extern crate slog;
