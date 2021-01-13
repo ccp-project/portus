@@ -342,14 +342,15 @@ pub trait CongAlg<I: Ipc> {
     fn new_flow(&self, control: Datapath<I>, info: DatapathInfo) -> Self::Flow;
 }
 
+// TODO fix the doctest.
 /// Structs implementing [`portus::CongAlg`](./trait.CongAlg.html) must also implement this trait
 /// (and must be annotated with [`portus_export::register_ccp_alg`]())
 ///
 /// The expected use of this trait in a calling program is as follows:
-/// ```no-run
+/// ```text
 /// let args = CongAlgBuilder::args();
 /// let matches = app.get_matches_from(std::env::args_os());
-/// let alg = CongAlgBuilder::with_arg_matches(matches);
+/// let alg = CongAlgBuilder::with_arg_matches(matches, None);
 /// ```
 pub trait CongAlgBuilder<'a, 'b> {
     /// This function should return a new

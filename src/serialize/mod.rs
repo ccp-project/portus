@@ -2,7 +2,7 @@
 //!
 //! Messages have a common CCP header:
 //!
-//! ```no-run
+//! ```text
 //! -----------------------------------
 //! | Msg Type | Len (B)  | Uint32    |
 //! | (2 B)    | (2 B)    | (32 bits) |
