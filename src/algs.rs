@@ -108,14 +108,18 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 macro_rules! start {
     ($ipc:expr, $log:expr, $alg: expr) => {{
         use $crate::ipc::Blocking;
-        $crate::start!($ipc, $log, $alg, Blocking)
+        $crate::start!($ipc, $log, $alg, Blocking, 0)
     }};
-    ($ipc:expr, $log:expr, $alg: expr, $blk: ty) => {{
+    ($ipc:expr, $log:expr, $alg: expr, $id: expr) => {{
+        use $crate::ipc::Blocking;
+        $crate::start!($ipc, $log, $alg, Blocking, $id)
+    }};
+    ($ipc:expr, $log:expr, $alg: expr, $blk: ty, $id: expr) => {{
         use $crate::ipc::BackendBuilder;
         match $ipc {
             "unix" => {
                 use $crate::ipc::unix::Socket;
-                let b = Socket::<$blk>::new("in", "out")
+                let b = Socket::<$blk>::new_with_id($id, "in", "out")
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
                 $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
