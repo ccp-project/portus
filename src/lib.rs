@@ -409,31 +409,28 @@ where
     )
 }
 
-/// Same as run but takes pointer to a kill switch instead of creating it as in spawn.
-pub fn run_with_handle<I, U>(backend_builder: BackendBuilder<I>, cfg: Config, alg: U, handle_ptr: *const atomic::AtomicBool) -> Result<()>
+/// Same as [`run`] but takes pointer to a kill switch instead of creating it as in spawn.
+///
+/// safety: `handle_ptr` must be from
+/// [`Arc::into_raw()`](https://doc.rust-lang.org/std/sync/struct.Arc.html#method.from_raw).
+pub unsafe fn run_with_handle<I, U>(
+    backend_builder: BackendBuilder<I>,
+    cfg: Config,
+    alg: U,
+    handle_ptr: *const atomic::AtomicBool,
+) -> Result<()>
 where
     I: Ipc,
     U: CongAlg<I>,
 {
-    //2:
-    //if handle_ptr.is_null() {
-    //    return Err(Error(format!("handle is null")));
-    //}
-    //let handle_val = unsafe { *handle_ptr };
-    //let handle = atomic::AtomicBool::from(handle_val);
+    if handle_ptr.is_null() {
+        return Err(Error(format!("handle is null")));
+    }
 
-    //3:
-    let handle = unsafe { Arc::from_raw(handle_ptr) } ;
+    let handle = Arc::from_raw(handle_ptr);
 
     // call run_inner
-    run_inner(
-        //1 : Arc::new(atomic::AtomicBool::new(true)),
-        //2 : Arc::new(handle),
-        handle,
-        backend_builder,
-        cfg,
-        alg,
-    )
+    run_inner(handle, backend_builder, cfg, alg)
 }
 
 /// Spawn a thread which will perform the CCP execution loop. Returns
@@ -626,9 +623,8 @@ where
                 }
             }
             Msg::Ins(_) => {
+                // The start() listener should never receive an install message, since it is on the CCP side.
                 unreachable!()
-                //return Err(Error(String::from("The start() listener should never receive an install \
-                //    message, since it is on the CCP side.")));
             }
             Msg::Other(m) => {
                 if let Some(log) = cfg.logger.as_ref() {
@@ -643,6 +639,7 @@ where
             }
         }
     }
+
     // if the thread has been killed, return that as error
     if !continue_listening.load(atomic::Ordering::SeqCst) {
         eprintln!("[ccp] shutting down");
