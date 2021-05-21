@@ -1,15 +1,6 @@
-extern crate fnv;
-extern crate portus;
-#[macro_use]
-extern crate slog;
-extern crate failure;
-extern crate libccp;
-extern crate minion;
-extern crate slog_term;
-extern crate time;
-
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
+use slog::info;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 

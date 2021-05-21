@@ -122,7 +122,9 @@ macro_rules! start {
                 let b = Socket::<$blk>::new($bindaddr, 0, 0)
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::RunBuilder::new(b, $crate::Config { logger: $log })
+                    .default_alg($alg)
+                    .run()
             }
             #[cfg(all(target_os = "linux"))]
             "netlink" => {
@@ -130,7 +132,9 @@ macro_rules! start {
                 let b = Socket::<$blk>::new()
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::RunBuilder::new(b, $crate::Config { logger: $log })
+                    .default_alg($alg)
+                    .run()
             }
             #[cfg(all(target_os = "linux"))]
             "char" => {
@@ -138,7 +142,9 @@ macro_rules! start {
                 let b = Socket::<$blk>::new()
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::run::<_, _>(b, $crate::Config { logger: $log }, $alg)
+                $crate::RunBuilder::new(b, $crate::Config { logger: $log })
+                    .default_alg($alg)
+                    .run()
             }
             _ => unreachable!(),
         }

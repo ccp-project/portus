@@ -1,12 +1,10 @@
 use std::marker::PhantomData;
 use std::sync::mpsc;
 
-use portus;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 use portus::{CongAlg, Datapath, DatapathInfo, DatapathTrait, Flow, Report};
-use slog;
-use slog::Drain;
+use slog::{o, Drain};
 use std::collections::HashMap;
 
 pub const ACKED_PRIMITIVE: u32 = 5; // libccp uses this same value for acked_bytes
@@ -81,7 +79,6 @@ impl<I: Ipc, T: IntegrationTest> Flow for TestBase<I, T> {
 
 use portus::ipc::chan::Socket;
 use portus::ipc::{BackendBuilder, Blocking};
-use std;
 use std::thread;
 
 // Spawn userspace ccp
@@ -90,14 +87,16 @@ fn start_ccp<T: IntegrationTest + 'static + Send>(
     log: slog::Logger,
     tx: mpsc::Sender<Result<(), ()>>,
 ) -> portus::CCPHandle {
-    let b = BackendBuilder { sock: sk };
-    portus::spawn::<Socket<Blocking>, TestBaseConfig<T>>(
-        b,
+    portus::RunBuilder::new(
+        BackendBuilder { sock: sk },
         portus::Config {
             logger: Some(log.clone()),
         },
-        TestBaseConfig(tx, Some(log.clone()), PhantomData::<T>),
     )
+    .default_alg(TestBaseConfig(tx, Some(log.clone()), PhantomData::<T>))
+    .spawn_thread()
+    .run()
+    .unwrap()
 }
 
 // Runs a specific intergration test

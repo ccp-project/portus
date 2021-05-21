@@ -1,12 +1,12 @@
 //! Message sent from datapath to CCP when a new flow starts.
 
 use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
-use crate::Result;
+use crate::{Error, Result};
 use std::io::prelude::*;
 
 pub(crate) const CREATE: u8 = 0;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Msg {
     pub sid: u32,
     pub init_cwnd: u32,
@@ -15,11 +15,12 @@ pub struct Msg {
     pub src_port: u32,
     pub dst_ip: u32,
     pub dst_port: u32,
+    pub cong_alg: Option<String>,
 }
 
 impl AsRawMsg for Msg {
     fn get_hdr(&self) -> (u8, u32, u32) {
-        (CREATE, HDR_LENGTH + 6 * 4, self.sid)
+        (CREATE, HDR_LENGTH + 6 * 4 + 64, self.sid)
     }
 
     fn get_u32s<W: Write>(&self, w: &mut W) -> Result<()> {
@@ -39,12 +40,31 @@ impl AsRawMsg for Msg {
         Ok(())
     }
 
-    fn get_bytes<W: Write>(&self, _: &mut W) -> Result<()> {
+    fn get_bytes<W: Write>(&self, w: &mut W) -> Result<()> {
+        let mut buf = [0u8; 64];
+        if let Some(c) = &self.cong_alg {
+            if c.len() > 63 {
+                return Err(Error(format!("Cong alg name too long")));
+            } else {
+                buf.copy_from_slice(c.as_bytes());
+            }
+        }
+
+        w.write_all(&buf)?;
         Ok(())
     }
 
     fn from_raw_msg(msg: RawMsg) -> Result<Self> {
         let u32s = unsafe { msg.get_u32s() }?;
+        let b = msg.get_bytes()?;
+        let cong_alg = if b[0] == 0 {
+            None
+        } else if let Ok(s) = std::ffi::CStr::from_bytes_with_nul(b) {
+            Some(s.to_str()?.to_owned())
+        } else {
+            None
+        };
+
         Ok(Msg {
             sid: msg.sid,
             init_cwnd: u32s[0],
@@ -53,6 +73,7 @@ impl AsRawMsg for Msg {
             src_port: u32s[3],
             dst_ip: u32s[4],
             dst_port: u32s[5],
+            cong_alg,
         })
     }
 }
@@ -75,15 +96,7 @@ mod tests {
             src_port: 4242,
             dst_ip: 0,
             dst_port: 4242,
+            cong_alg: None,
         }
     );
-
-    // TODO wait for feature(test)
-    //    extern crate test;
-    //    use self::test::Bencher;
-    //
-    //    #[bench]
-    //    fn bench_flip_create(b: &mut Bencher) {
-    //        b.iter(|| test_create_1())
-    //    }
 }

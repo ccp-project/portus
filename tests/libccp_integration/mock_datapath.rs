@@ -1,16 +1,13 @@
-use std;
-
-use failure;
-use failure::bail;
+use anyhow::{bail, Error};
 use minion::Cancellable;
-use slog;
+use slog::Logger;
 use std::sync::Arc;
 
 use super::ACKED_PRIMITIVE;
 
 pub struct MockDatapath {
     pub sk: crossbeam::channel::Sender<Vec<u8>>,
-    pub logger: slog::Logger,
+    pub logger: Logger,
 }
 
 impl libccp::DatapathOps for MockDatapath {
@@ -22,7 +19,7 @@ impl libccp::DatapathOps for MockDatapath {
 pub struct DatapathMessageReader(Arc<libccp::Datapath>, crossbeam::channel::Receiver<Vec<u8>>);
 
 impl Cancellable for DatapathMessageReader {
-    type Error = failure::Error;
+    type Error = Error;
 
     fn for_each(&mut self) -> Result<minion::LoopState, Self::Error> {
         let mut read = match self.1.recv_timeout(std::time::Duration::from_millis(1_000)) {
@@ -73,7 +70,7 @@ impl Drop for MockConnection {
 }
 
 impl Cancellable for MockConnection {
-    type Error = failure::Error;
+    type Error = Error;
 
     fn for_each(&mut self) -> Result<minion::LoopState, Self::Error> {
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -102,14 +99,11 @@ impl Cancellable for MockConnection {
 }
 
 pub fn start(
-    log: slog::Logger,
+    log: Logger,
     num_connections: usize,
     ipc_sender: crossbeam::channel::Sender<Vec<u8>>,
     ipc_receiver: crossbeam::channel::Receiver<Vec<u8>>,
-) -> (
-    minion::Handle<failure::Error>,
-    Vec<minion::Handle<failure::Error>>,
-) {
+) -> (minion::Handle<Error>, Vec<minion::Handle<Error>>) {
     let dp = MockDatapath {
         sk: ipc_sender,
         logger: log.clone(),
@@ -144,7 +138,6 @@ pub fn start(
     let dpr = DatapathMessageReader(dp, ipc_receiver);
     let msg_reader = dpr.spawn();
 
-    let handles: Vec<minion::Handle<failure::Error>> =
-        conns.into_iter().map(|conn| conn.spawn()).collect();
+    let handles: Vec<minion::Handle<Error>> = conns.into_iter().map(|conn| conn.spawn()).collect();
     (msg_reader, handles)
 }
