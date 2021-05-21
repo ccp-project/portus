@@ -222,7 +222,7 @@ mod tests {
                     ]
                 );
             }
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!("{:?}", e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -244,7 +244,7 @@ mod tests {
                     ),]
                 );
             }
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!("{:?}", e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -257,7 +257,7 @@ mod tests {
         match super::defs(CompleteByteSlice(foo)) {
             Ok((r, me)) => panic!("Should not have succeeded: rest {:?}, result {:?}", r, me),
             Err(nom::Err::Error(_)) => (),
-            Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Failure(e)) => panic!("{:?}", e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -283,7 +283,7 @@ mod tests {
                 );
             }
             Ok((_, Err(me))) => {
-                panic!(me);
+                panic!("{}", me);
             }
             Err(nom::Err::Error(_)) => (),
             Err(nom::Err::Failure(e)) => panic!("compilation error: {}", super::Error::from(e)),
@@ -328,9 +328,9 @@ mod tests {
                 );
             }
             Ok((_, Err(me))) => {
-                panic!(me);
+                panic!("{}", me);
             }
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!("{:?}", e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
@@ -398,7 +398,7 @@ mod tests {
                     ],
                 );
             }
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!("{:?}", e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }

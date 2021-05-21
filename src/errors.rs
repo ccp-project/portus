@@ -1,5 +1,7 @@
-use std;
 use std::fmt;
+
+/// CCP custom `Result` type, using `Error` as the `Err` type.
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug)]
 /// CCP custom error type.

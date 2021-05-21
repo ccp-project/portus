@@ -392,7 +392,7 @@ mod tests {
                     ),],
                 );
             }
-            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!(e),
+            Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!("{:?}", e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
         }
