@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use portus::ipc::Ipc;
 use portus::lang::Scope;
 use portus::{CongAlg, Datapath, DatapathInfo, DatapathTrait, Flow, Report};
-use slog::{o, Drain};
+use slog::Drain;
 use std::collections::HashMap;
 
 pub const ACKED_PRIMITIVE: u32 = 5; // libccp uses this same value for acked_bytes
@@ -140,5 +140,5 @@ pub fn logger() -> slog::Logger {
         .build()
         .filter_level(slog::Level::Debug)
         .fuse();
-    slog::Logger::root(human_drain, o!())
+    slog::Logger::root(human_drain, slog::o!())
 }

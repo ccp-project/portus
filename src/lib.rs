@@ -19,8 +19,6 @@
 //! minimum RTT observed over 42 millisecond intervals.
 //!
 //! ```
-//! extern crate fnv;
-//! extern crate portus;
 //! use std::collections::HashMap;
 //! use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
 //! use portus::ipc::Ipc;
@@ -318,7 +316,6 @@ pub trait CongAlg<I: Ipc> {
     ///
     /// For example,
     /// ```
-    /// extern crate fnv;
     /// use std::collections::HashMap;
     /// let mut h = HashMap::new();
     /// h.insert("prog1", "...(program)...".to_string());
@@ -331,15 +328,9 @@ pub trait CongAlg<I: Ipc> {
     fn new_flow(&self, control: Datapath<I>, info: DatapathInfo) -> Self::Flow;
 }
 
-/// Structs implementing [`portus::CongAlg`](./trait.CongAlg.html) must also implement this trait
-/// (and must be annotated with [`portus_export::register_ccp_alg`]())
+/// Tell `portus` how to construct instances of your `impl` [`portus::CongAlg`].
 ///
-/// The expected use of this trait in a calling program is as follows:
-/// ```no-run
-/// let args = CongAlgBuilder::args();
-/// let matches = app.get_matches_from(std::env::args_os());
-/// let alg = CongAlgBuilder::with_arg_matches(matches);
-/// ```
+/// You should also annotate your struct with [`portus_export::register_ccp_alg`]()).
 pub trait CongAlgBuilder<'a, 'b> {
     /// This function should return a new
     /// [`clap::App`](https://docs.rs/clap/2.32.0/clap/struct.App.html) that describes the

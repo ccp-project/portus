@@ -44,7 +44,7 @@ impl AsRawMsg for Msg {
         let mut buf = [0u8; 64];
         if let Some(c) = &self.cong_alg {
             if c.len() > 63 {
-                return Err(Error(format!("Cong alg name too long")));
+                return Err(Error(String::from("Cong alg name too long")));
             } else {
                 buf.copy_from_slice(c.as_bytes());
             }

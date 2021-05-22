@@ -1,6 +1,5 @@
 use super::{AsRawMsg, RawMsg, HDR_LENGTH};
 use crate::Result;
-use std;
 use std::io::prelude::*;
 
 #[derive(Clone, Debug, PartialEq)]

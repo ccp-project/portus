@@ -1,6 +1,8 @@
+#[cfg_attr(test, macro_use)]
+extern crate slog;
+
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
-use slog::info;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
