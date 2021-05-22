@@ -1,5 +1,3 @@
-use std;
-
 use crossbeam::channel;
 
 use super::Error;

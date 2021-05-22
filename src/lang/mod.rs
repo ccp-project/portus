@@ -16,7 +16,7 @@
 //! to prevent double-counting these values in the CCP algorithm logic.
 //!
 //! ### Example
-//! ```no-run
+//! ```text
 //! (def
 //!     (state_var 0)
 //!     (Report
@@ -36,7 +36,7 @@
 //! `(fallthrough)` is specified.
 //!
 //! ### Example
-//! ```no-run
+//! ```text
 //! (when true
 //!     (:= Report.minrtt (min Report.minrtt Flow.rtt_sample_us))
 //!     (fallthrough)

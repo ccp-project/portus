@@ -1,7 +1,3 @@
-extern crate libc;
-extern crate nix;
-
-use std;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::marker::PhantomData;

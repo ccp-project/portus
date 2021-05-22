@@ -1,7 +1,5 @@
 //! Helper type for writing unit tests.
 
-use std;
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct TestMsg(pub String);
 
@@ -19,7 +17,7 @@ impl serialize::AsRawMsg for TestMsg {
 
     fn from_raw_msg(msg: serialize::RawMsg) -> super::Result<Self> {
         let b = msg.get_bytes()?;
-        let got: String = std::str::from_utf8(&b[..])
+        let got: String = std::str::from_utf8(b)
             .expect("parse message to str")
             .chars()
             .take_while(|b| *b != '\0')

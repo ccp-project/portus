@@ -2,7 +2,7 @@
 //!
 //! Messages have a common CCP header:
 //!
-//! ```no-run
+//! ```text
 //! -----------------------------------
 //! | Msg Type | Len (B)  | Uint32    |
 //! | (2 B)    | (2 B)    | (32 bits) |
@@ -24,7 +24,6 @@
 //! External message types can implement `get_bytes()` to pass custom types in the message payload.
 //! In these cases, there is little deserialization overhead from the u32 and u64 parts of the message.
 
-use std;
 use std::io::prelude::*;
 use std::io::Cursor;
 use std::vec::Vec;
