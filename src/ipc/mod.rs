@@ -7,6 +7,9 @@ use std::sync::{atomic, Arc};
 use super::Error;
 use super::Result;
 
+use std::cell::RefCell;
+use super::SocketStats;
+
 /// Thread-channel implementation
 pub mod chan;
 #[cfg(all(target_os = "linux"))]
@@ -57,8 +60,9 @@ impl<T: Ipc> BackendBuilder<T> {
         self,
         atomic_bool: Arc<atomic::AtomicBool>,
         receive_buf: &'a mut [u8],
+        stats: Rc<RefCell<SocketStats>>,
     ) -> Backend<'a, T> {
-        Backend::new(self.sock, atomic_bool, receive_buf)
+        Backend::new(self.sock, atomic_bool, receive_buf, stats)
     }
 }
 
@@ -93,6 +97,7 @@ pub struct Backend<'a, T: Ipc> {
     tot_read: usize,
     read_until: usize,
     last_recv_addr: T::Addr,
+    stats: Rc<RefCell<SocketStats>>,
 }
 
 use crate::serialize::Msg;
@@ -101,6 +106,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
         sock: T,
         continue_listening: Arc<atomic::AtomicBool>,
         receive_buf: &'a mut [u8],
+        stats: Rc<RefCell<SocketStats>>,
     ) -> Backend<'a, T> {
         Backend {
             sock: Rc::new(sock),
@@ -108,7 +114,8 @@ impl<'a, T: Ipc> Backend<'a, T> {
             receive_buf,
             tot_read: 0,
             read_until: 0,
-            last_recv_addr: Default::default()
+            last_recv_addr: Default::default(),
+            stats,
         }
     }
 
@@ -138,6 +145,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
                 Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
             self.read_until += consumed;
 
+            self.stats.borrow_mut().maybe_print();
             Some((msg, self.last_recv_addr.clone()))
         }
     }
@@ -152,6 +160,8 @@ impl<'a, T: Ipc> Backend<'a, T> {
                 return Err(Error(String::from("Done")));
             }
 
+            let mut stats = self.stats.borrow_mut();
+            stats.before_recv();
             let (read, addr) = match self.sock.recv(self.receive_buf) {
                 Ok(r) => r,
                 Err(Error(e)) => {
@@ -163,6 +173,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
                     continue;
                 }
             };
+            stats.after_recv();
 
             // NOTE This may seem precarious, but is safe
             // In the case that `recv` returns a buffer containing multiple messages,

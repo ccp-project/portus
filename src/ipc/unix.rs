@@ -86,7 +86,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn recv(&self, msg: &mut [u8]) -> Result<(usize,Self::Addr)> {
+    fn recv(&mut self, msg: &mut [u8]) -> Result<(usize,Self::Addr)> {
         self.sk.recv_from(msg).map_err(Error::from).and_then(|(size,addr)|  {
 
             if addr.is_unnamed() {

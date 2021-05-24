@@ -89,6 +89,7 @@ extern crate slog_term;
 
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::cell::RefCell;
 use std::sync::{atomic, Arc};
 use std::thread;
 
@@ -122,12 +123,91 @@ pub trait DatapathTrait {
     fn update_field(&self, sc: &Scope, update: &[(&str, u32)]) -> Result<()>;
 }
 
+use std::time::{Duration, Instant};
+
+#[derive(Copy, Clone)]
+pub struct SocketStats {
+    avg_blocked_send: u128,
+    max_blocked_send: u128,
+    n_sent: u128,
+    last_call: Instant,
+    last_print: Instant,
+    n_recv: u128,
+    avg_blocked_recv: u128,
+    avg_proc: u128,
+    max_blocked_recv: u128,
+    max_proc: u128,
+    b_recv: Instant,
+    b_send: Instant,
+}
+
+impl SocketStats {
+    pub fn new() -> Self {
+        Self {
+            avg_blocked_send: 0,
+            max_blocked_send: 0,
+            n_sent: 0,
+            last_call: Instant::now(),
+            last_print: Instant::now(),
+            n_recv: 0,
+            avg_blocked_recv: 0,
+            avg_proc: 0,
+            max_blocked_recv: 0,
+            max_proc: 0,
+            b_send: Instant::now(),
+            b_recv: Instant::now(),
+        }
+    }
+
+    fn before_send(&mut self) {
+        self.b_send = Instant::now();
+    }
+    fn after_send(&mut self) {
+        let sample = self.b_send.elapsed().as_millis();
+        self.n_sent += 1;
+        self.avg_blocked_send = (self.avg_blocked_send * (self.n_sent - 1) + sample) / self.n_sent;
+        self.max_blocked_send = std::cmp::max(self.max_blocked_send, sample);
+    }
+
+    fn before_recv(&mut self) {
+        self.n_recv += 1;
+        let processing_sample = self.last_call.elapsed().as_millis();
+        self.avg_proc = ((self.avg_proc * (self.n_recv -1)) + processing_sample) / self.n_recv;
+        self.max_proc = std::cmp::max(self.max_proc, processing_sample);
+        self.b_recv = Instant::now();
+    }
+
+    fn after_recv(&mut self) {
+        let blocked_sample = self.b_recv.elapsed().as_millis();
+        self.avg_blocked_recv = ((self.avg_blocked_recv * (self.n_recv -1)) + blocked_sample) / self.n_recv;
+        self.max_blocked_recv = std::cmp::max(self.max_blocked_recv, blocked_sample);
+    }
+    
+    fn maybe_print(&mut self) {
+        self.last_call = Instant::now();
+        if self.last_print.elapsed() >= Duration::from_secs(10) {
+            eprintln!("[ccp-debug] recvs={} sends={} avg_recv={} max_recv={} avg_proc={} max_proc={} avg_send={} max_send={}", 
+                self.n_recv, self.n_sent, self.avg_blocked_recv, self.max_blocked_recv, self.avg_proc, self.max_proc, self.avg_blocked_send, self.max_blocked_send);
+            self.last_print = self.last_call;
+            self.n_recv = 0;
+            self.n_sent = 0;
+            self.avg_blocked_recv = 0;
+            self.max_blocked_recv = 0;
+            self.avg_proc = 0;
+            self.max_proc = 0;
+            self.avg_blocked_send = 0;
+            self.max_blocked_send = 0;
+        }
+    }
+}
+
 /// A collection of methods to interact with the datapath.
 #[derive(Clone)]
 pub struct Datapath<T: Ipc> {
     sock_id: u32,
     sender: BackendSender<T>,
     programs: Rc<HashMap<String, Scope>>,
+    stats: Rc<RefCell<SocketStats>>,
 }
 
 impl<T: Ipc> DatapathTrait for Datapath<T> {
@@ -175,7 +255,10 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
                     fields,
                 };
                 let buf = serialize::serialize(&msg)?;
+                let mut stats = self.stats.borrow_mut();
+                stats.before_send();
                 self.sender.send_msg(&buf[..])?;
+                stats.after_send();
                 Ok(sc.clone())
             }
             _ => Err(Error(format!(
@@ -217,7 +300,10 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
         };
 
         let buf = serialize::serialize(&msg)?;
+        let mut stats = self.stats.borrow_mut();
+        stats.before_send();
         self.sender.send_msg(&buf[..])?;
+        stats.after_send();
         Ok(())
     }
 }
@@ -494,8 +580,10 @@ where
     I: Ipc,
     U: CongAlg<I>,
 {
+    let stats = Rc::new(RefCell::new(SocketStats::new()));
+
     let mut receive_buf = [0u8; 1024];
-    let mut b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
+    let mut b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..], Rc::clone(&stats));
     let mut dp_to_flowmap = HashMap::<I::Addr, HashMap::<u32, U::Flow>>::new();
 
     if let Some(log) = cfg.logger.as_ref() {
@@ -544,7 +632,7 @@ where
 
     while let Some((msg, recv_addr)) = b.next(cfg.logger.as_ref()) {
         match msg {
-            Msg::Rdy(r) => {
+            Msg::Rdy(_r) => {
                 if dp_to_flowmap.remove(&recv_addr).is_some() {
                     if let Some(log) = cfg.logger.as_ref() { 
                         info!(log, "new ready from old datapath, clearing old flows and installing programs...");
@@ -599,6 +687,7 @@ where
                         sock_id: c.sid,
                         sender: b.sender(recv_addr),
                         programs: scope_map.clone(),
+                        stats: Rc::clone(&stats),
                     },
                     DatapathInfo {
                         sock_id: c.sid,
