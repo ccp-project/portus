@@ -125,14 +125,14 @@ impl<'a, T: Ipc> Backend<'a, T> {
     /// Get the next IPC message.
     // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
     // of `self`, so we cannot implement that trait.
-    pub fn next(&mut self) -> Option<(Msg<'_>, T::Addr)> {
+    pub fn next(&mut self, logger: Option<&slog::Logger>) -> Option<(Msg<'_>, T::Addr)> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
             let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
             self.read_until += consumed;
             Some((msg, self.last_recv_addr.clone()))
         } else {
-            self.tot_read = self.get_next_read().ok()?;
+            self.tot_read = self.get_next_read(logger).ok()?;
             self.read_until = 0;
             let (msg, consumed) =
                 Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
@@ -144,7 +144,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
 
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
-    fn get_next_read(&mut self) -> Result<usize> {
+    fn get_next_read(&mut self, logger: Option<&slog::Logger>) -> Result<usize> {
         loop {
             // if continue_loop has been set to false, stop iterating
             if !self.continue_listening.load(atomic::Ordering::SeqCst) {
@@ -152,9 +152,17 @@ impl<'a, T: Ipc> Backend<'a, T> {
             }
 
             let (read, addr) = match self.sock.recv(self.receive_buf) {
-                Ok(l) => l,
-                _ => continue,
+                Ok(r) => r,
+                Err(Error(e)) => {
+                    if let Some(log) = logger {
+                        warn!(log, "recv failed";
+                              "err" => format!("{:#?}", e)
+                        );
+                    }
+                    continue;
+                }
             };
+
             // NOTE This may seem precarious, but is safe
             // In the case that `recv` returns a buffer containing multiple messages,
             // `next()` will continue to hit the first `if` branch (and thus will not
