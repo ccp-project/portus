@@ -59,12 +59,14 @@ impl AsRawMsg for Msg {
         let b = msg.get_bytes()?;
         let cong_alg = if b[0] == 0 {
             None
-        } else if let Ok(s) = std::ffi::CStr::from_bytes_with_nul(b) {
-            Some(s.to_str()?.to_owned())
         } else {
-            None
+            let end = b.iter().position(|&c| c == b'\0').unwrap_or(b.len());
+            if let Ok(s) = std::ffi::CStr::from_bytes_with_nul(&b[..end+1]) {
+                Some(s.to_str()?.to_owned())
+            } else {
+                None
+            }
         };
-
         Ok(Msg {
             sid: msg.sid,
             init_cwnd: u32s[0],

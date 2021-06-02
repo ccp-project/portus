@@ -101,6 +101,7 @@ impl<'a> RawMsg<'a> {
     /// For other message types, just return the bytes blob
     pub fn get_bytes(&self) -> Result<&'a [u8]> {
         match self.typ {
+            create::CREATE => Ok(&self.bytes[(4 * 6)..(self.len as usize - HDR_LENGTH as usize)]),
             measure::MEASURE => Ok(&self.bytes[8..(self.len as usize - HDR_LENGTH as usize)]),
             update_field::UPDATE_FIELD => {
                 Ok(&self.bytes[4..(self.len as usize - HDR_LENGTH as usize)])
