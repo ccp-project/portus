@@ -600,6 +600,7 @@ where
                            "src_port"  =>  c.src_port,
                            "dst_ip"  =>  c.dst_ip,
                            "dst_port"  =>  c.dst_port,
+                           "alg" => c.cong_alg.as_ref(),
                     );
                 }
 
