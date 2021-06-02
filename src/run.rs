@@ -330,7 +330,8 @@ use sealed::*;
 /// let b = Socket::<portus::ipc::Blocking>::new("in", "out").map(|sk| BackendBuilder { sock: sk }).expect("ipc initialization");
 /// let rb = RunBuilder::new(b, Config::default())
 ///   .default_alg(AlgOne::default())
-///   .additional_alg(AlgTwo::default());
+///   .additional_alg(AlgTwo::default())
+///   .additional_alg::<AlgOne, _>(None);
 ///   // .spawn_thread() to spawn runtime in a thread
 ///   // .with_stop_handle() to pass in an Arc<AtomicBool> that will stop the runtime
 /// rb.run();
@@ -378,9 +379,9 @@ impl<I: Ipc, U, S> RunBuilder<I, U, S> {
     /// Set an additional congestion control algorithm.
     ///
     /// If the name duplicates one already given, the later one will win.
-    pub fn additional_alg<A: CongAlg<I>>(
+    pub fn additional_alg<A: CongAlg<I>, O: Into<Option<A>>>(
         self,
-        alg: impl Into<Option<A>>,
+        alg: O,
     ) -> RunBuilder<I, AlgList<Option<A>, U>, S> {
         RunBuilder {
             alg: AlgList {
