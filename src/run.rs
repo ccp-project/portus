@@ -153,32 +153,30 @@ mod sealed {
         }
     }
 
-    impl<'a, I: Ipc, T: CongAlg<I> + 'a, U> Pick<'a, I> for AlgList<T, U>
+    impl<'a, I: Ipc, T: CongAlg<I> + 'a, U> Pick<'a, I> for AlgList<Option<T>, U>
     where
         U: Pick<'a, I> + 'a,
         <U as Pick<'a, I>>::Picked: 'a,
     {
         type Picked = Either<&'a T, <U as Pick<'a, I>>::Picked>;
         fn pick(&'a self, name: &str) -> Self::Picked {
-            if self.head_name == name {
-                Either::Left(&self.head)
-            } else {
-                Either::Right(self.tail.pick(name))
+            match self.head {
+                Some(ref head) if self.head_name == name => Either::Left(&head),
+                _ => Either::Right(self.tail.pick(name)),
             }
         }
     }
 
-    impl<'a, I: Ipc, T: CongAlg<I> + 'a, U> Pick<'a, I> for &'a AlgList<T, U>
+    impl<'a, I: Ipc, T: CongAlg<I> + 'a, U> Pick<'a, I> for &'a AlgList<Option<T>, U>
     where
         U: Pick<'a, I> + 'a,
         <U as Pick<'a, I>>::Picked: 'a,
     {
         type Picked = Either<&'a T, <U as Pick<'a, I>>::Picked>;
         fn pick(&'a self, name: &str) -> Self::Picked {
-            if self.head_name == name {
-                Either::Left(&self.head)
-            } else {
-                Either::Right(self.tail.pick(name))
+            match self.head {
+                Some(ref head) if self.head_name == name => Either::Left(&head),
+                _ => Either::Right(self.tail.pick(name)),
             }
         }
     }
@@ -205,7 +203,7 @@ mod sealed {
         }
     }
 
-    impl<H, T, I> CollectDps<I> for AlgList<H, T>
+    impl<H, T, I> CollectDps<I> for AlgList<Option<H>, T>
     where
         I: Ipc,
         H: CongAlg<I>,
@@ -213,14 +211,15 @@ mod sealed {
     {
         fn datapath_programs(&self) -> HashMap<&'static str, String> {
             self.head
-                .datapath_programs()
+                .iter()
+                .flat_map(|x| x.datapath_programs())
                 .into_iter()
                 .chain(self.tail.datapath_programs().into_iter())
                 .collect()
         }
     }
 
-    impl<'a, H, T, I> CollectDps<I> for &'a AlgList<H, T>
+    impl<'a, H, T, I> CollectDps<I> for &'a AlgList<Option<H>, T>
     where
         I: Ipc,
         H: CongAlg<I>,
@@ -228,7 +227,8 @@ mod sealed {
     {
         fn datapath_programs(&self) -> HashMap<&'static str, String> {
             self.head
-                .datapath_programs()
+                .iter()
+                .flat_map(|x| x.datapath_programs())
                 .into_iter()
                 .chain(self.tail.datapath_programs().into_iter())
                 .collect()
@@ -378,11 +378,14 @@ impl<I: Ipc, U, S> RunBuilder<I, U, S> {
     /// Set an additional congestion control algorithm.
     ///
     /// If the name duplicates one already given, the later one will win.
-    pub fn additional_alg<A: CongAlg<I>>(self, alg: A) -> RunBuilder<I, AlgList<A, U>, S> {
+    pub fn additional_alg<A: CongAlg<I>>(
+        self,
+        alg: impl Into<Option<A>>,
+    ) -> RunBuilder<I, AlgList<Option<A>, U>, S> {
         RunBuilder {
             alg: AlgList {
                 head_name: A::name().to_owned(),
-                head: alg,
+                head: alg.into(),
                 tail: self.alg,
             },
             backend_builder: self.backend_builder,
