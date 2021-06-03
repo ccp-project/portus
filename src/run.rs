@@ -396,6 +396,23 @@ impl<I: Ipc, U, S> RunBuilder<I, U, S> {
         }
     }
 
+    pub fn try_additional_alg<A: CongAlg<I>>(
+        self,
+        alg: Option<A>,
+    ) -> RunBuilder<I, AlgList<Option<A>, U>, S> {
+        RunBuilder {
+            alg: AlgList {
+                head_name: A::name().to_owned(),
+                head: alg,
+                tail: self.alg,
+            },
+            backend_builder: self.backend_builder,
+            cfg: self.cfg,
+            stop_handle: self.stop_handle,
+            _phantom: Default::default(),
+        }
+    }
+
     /// Pass an `AtomicBool` stop handle.
     pub fn with_stop_handle(self, handle: Arc<atomic::AtomicBool>) -> Self {
         Self {
