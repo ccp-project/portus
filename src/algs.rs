@@ -78,25 +78,24 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 /// }
 ///
 /// fn main() {
-///     portus::start!("unix", None, MyCongestionControlAlgorithm(Default::default()));
+///     portus::start!("unix", MyCongestionControlAlgorithm(Default::default()));
 /// }
 /// ```
 #[macro_export]
 macro_rules! start {
-    ($ipc:expr, $log:expr, $alg: expr) => {{
+    ($ipc:expr, $alg: expr) => {{
         use $crate::ipc::Blocking;
-        $crate::start!($ipc, $log, $alg, Blocking)
+        $crate::start!($ipc, $alg, Blocking)
     }};
-    ($ipc:expr, $log:expr, $alg:expr, $blk:ty) => {{
-        $crate::start!($ipc, $log, $alg, $blk, "portus")
+    ($ipc:expr, $alg:expr, $blk:ty) => {{
+        $crate::start!($ipc, $alg, $blk, "portus")
     }};
     ($ipc:expr, $alg:expr, $blk:ty, $bindaddr:expr) => {{
         use $crate::ipc::BackendBuilder;
         match $ipc {
             "unix" => {
                 use $crate::ipc::unix::Socket;
-                // 0,0 for default sndbuf and rcvbuf size
-                let b = Socket::<$blk>::new($bindaddr, 0, 0)
+                let b = Socket::<$blk>::new($bindaddr)
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
                 $crate::RunBuilder::new(b).default_alg($alg).run()
