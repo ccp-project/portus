@@ -6,17 +6,13 @@ description = "A Congestion Control Plane"
 homepage = "https://ccp-project.github.io"
 license = "ISC"
 repository = "https://github.com/ccp-project/portus"
+edition = "2018"
 
 [dependencies]
 bytes = "0.4.5"
 clap = "2.29"
-fnv = "1"
 portus = "0.5"
 simple-signal = "1"
-slog = { version = "2" }
-slog-async = "2"
-slog-term = "2"
-time = "0.1"
 
 [dependencies.pyo3]
 version = "0.2.7"

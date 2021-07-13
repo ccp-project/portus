@@ -1,12 +1,6 @@
 #![feature(box_patterns, specialization, const_fn)]
 use std::rc::{Rc, Weak};
 
-extern crate fnv;
-#[macro_use]
-extern crate slog;
-extern crate time;
-
-extern crate portus;
 use portus::ipc;
 use portus::ipc::BackendBuilder;
 use portus::lang::Scope;
