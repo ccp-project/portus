@@ -458,7 +458,6 @@ impl<I: Ipc, U> RunBuilder<I, U, NoSpawn> {
 impl<I, U> RunBuilder<I, U, NoSpawn>
 where
     I: Ipc,
-    U: 'static,
     for<'a> &'a U: Pick<'a, I> + CollectDps<I>,
 {
     pub fn run(self) -> Result<()> {
@@ -502,7 +501,6 @@ fn run_inner<I, U>(
 ) -> Result<()>
 where
     I: Ipc,
-    U: 'static,
     for<'a> &'a U: Pick<'a, I> + CollectDps<I>,
 {
     let mut receive_buf = [0u8; 1024];
