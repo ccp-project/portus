@@ -29,9 +29,7 @@ impl AsRawMsg for Msg {
 
     fn from_raw_msg(msg: RawMsg) -> Result<Self> {
         let u32s = unsafe { msg.get_u32s() }?;
-        Ok(Msg {
-            id: u32s[0]
-        })
+        Ok(Msg { id: u32s[0] })
     }
 }
 
@@ -39,22 +37,15 @@ impl AsRawMsg for Msg {
 mod tests {
     macro_rules! check_ready_msg {
         ($id: ident, $msg: expr) => {
-            check_msg!($id, super::Msg, $msg, crate::serialize::Msg::Rdy(rdym), rdym);
+            check_msg!(
+                $id,
+                super::Msg,
+                $msg,
+                crate::serialize::Msg::Rdy(rdym),
+                rdym
+            );
         };
     }
 
-    check_ready_msg!(
-        test_ready_1,
-        super::Msg {
-            id: 7,
-        }
-    );
-
-    extern crate test;
-    use self::test::Bencher;
-
-    #[bench]
-    fn bench_flip_ready(b: &mut Bencher) {
-        b.iter(|| test_ready_1())
-    }
+    check_ready_msg!(test_ready_1, super::Msg { id: 7 });
 }

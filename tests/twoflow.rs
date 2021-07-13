@@ -1,10 +1,8 @@
-#[cfg_attr(test, macro_use)]
-extern crate slog;
-
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 use std::collections::HashMap;
 use std::time::Instant;
+use tracing::info;
 
 mod libccp_integration;
 use crate::libccp_integration::IntegrationTest;
@@ -43,14 +41,7 @@ impl IntegrationTest for TestTwoFlows {
         Some(sc)
     }
 
-    fn check_test(
-        &mut self,
-        sc: &Scope,
-        _log: &slog::Logger,
-        _t: Instant,
-        sock_id: u32,
-        m: &Report,
-    ) -> bool {
+    fn check_test(&mut self, sc: &Scope, _t: Instant, sock_id: u32, m: &Report) -> bool {
         unsafe {
             let num = m
                 .get_field("Report.value", sc)
@@ -79,7 +70,6 @@ impl IntegrationTest for TestTwoFlows {
 
 #[test]
 fn twoflow() {
-    let log = libccp_integration::logger();
-    info!(log, "starting twoflow test");
-    libccp_integration::run_test::<TestTwoFlows>(log, 2);
+    info!("starting twoflow test");
+    libccp_integration::run_test::<TestTwoFlows>(2);
 }

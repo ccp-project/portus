@@ -1,9 +1,7 @@
-#[cfg_attr(test, macro_use)]
-extern crate slog;
-
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 use std::collections::HashMap;
+use tracing::info;
 
 mod libccp_integration;
 use crate::libccp_integration::IntegrationTest;
@@ -52,7 +50,6 @@ impl IntegrationTest for TestVolatileVars {
     fn check_test(
         &mut self,
         sc: &Scope,
-        _log: &slog::Logger,
         _t: std::time::Instant,
         _sock_id: u32,
         m: &Report,
@@ -75,7 +72,6 @@ impl IntegrationTest for TestVolatileVars {
 
 #[test]
 fn volatile() {
-    let log = libccp_integration::logger();
-    info!(log, "starting volatile test");
-    libccp_integration::run_test::<TestVolatileVars>(log, 1);
+    info!("starting volatile test");
+    libccp_integration::run_test::<TestVolatileVars>(1);
 }

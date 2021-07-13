@@ -1,10 +1,8 @@
-#[cfg_attr(test, macro_use)]
-extern crate slog;
-
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use tracing::info;
 
 mod libccp_integration;
 use crate::libccp_integration::{IntegrationTest, ACKED_PRIMITIVE};
@@ -41,14 +39,7 @@ impl IntegrationTest for TestTiming {
         dp.set_program("TestTiming", None).ok()
     }
 
-    fn check_test(
-        &mut self,
-        sc: &Scope,
-        _log: &slog::Logger,
-        t: Instant,
-        _sock_id: u32,
-        m: &Report,
-    ) -> bool {
+    fn check_test(&mut self, sc: &Scope, t: Instant, _sock_id: u32, m: &Report) -> bool {
         let acked = m
             .get_field("Report.acked", sc)
             .expect("expected acked field in returned measurement") as u32;
@@ -74,7 +65,6 @@ impl IntegrationTest for TestTiming {
 
 #[test]
 fn timing() {
-    let log = libccp_integration::logger();
-    info!(log, "starting timing test");
-    libccp_integration::run_test::<TestTiming>(log, 1);
+    info!("starting timing test");
+    libccp_integration::run_test::<TestTiming>(1);
 }

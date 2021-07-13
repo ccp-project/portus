@@ -1,5 +1,11 @@
+use super::Blocking;
 use super::Ipc;
+use crate::serialize;
+use crate::serialize::Msg;
+use crate::test_helper::TestMsg;
+use std::sync::atomic;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 #[derive(Clone)]
 pub struct FakeIpc(Arc<Mutex<Vec<u8>>>);
@@ -80,15 +86,7 @@ fn test_unix() {
 
 #[test]
 fn test_chan() {
-    use super::Blocking;
-    use crate::serialize;
-    use crate::serialize::Msg;
-    use crate::test_helper::TestMsg;
-    use std::sync::atomic;
-    use std::thread;
-
     let (tx, rx) = crossbeam::channel::unbounded();
-
     let (s1, r1) = crossbeam::channel::unbounded();
     let (s2, r2) = crossbeam::channel::unbounded();
 
