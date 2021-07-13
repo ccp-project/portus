@@ -115,8 +115,8 @@ mod tests {
         });
 
         let mut buf = [0u8; 8];
-        let l = ipc.recv(&mut buf).unwrap();
-        ipc.send(&buf[..l]).unwrap();
+        let (l, _) = ipc.recv(&mut buf).unwrap();
+        ipc.send(&buf[..l], &()).unwrap();
         rx.recv().unwrap();
     }
 }
