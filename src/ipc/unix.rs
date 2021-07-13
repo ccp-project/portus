@@ -1,14 +1,10 @@
-extern crate nix;
-
-use std;
-//use std::os::unix::net::UnixDatagram;
-use unix_socket::{UnixDatagram};
-use std::os::unix::io::AsRawFd;
-
 #[cfg(target_os = "linux")]
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::io::AsRawFd;
+use tracing::trace;
 use unix_socket::os::linux::SocketAddrExt;
+use unix_socket::UnixDatagram;
 
 use super::Error;
 use super::Result;
@@ -20,17 +16,30 @@ pub struct Socket<T> {
 }
 
 impl<T> Socket<T> {
-    fn __new(bind_to: &str, sndbuf_bytes: usize, rcvbuf_bytes: usize) -> Result<Self> {
+    fn __new(
+        bind_to: &str,
+        sndbuf_bytes: Option<usize>,
+        rcvbuf_bytes: Option<usize>,
+    ) -> Result<Self> {
         let bind_to_addr = format!("\0/ccp/{}", bind_to.to_string());
         let sock = UnixDatagram::bind(bind_to_addr)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
-        if sndbuf_bytes > 0 {
-            let snd_res = nix::sys::socket::setsockopt(sock.as_raw_fd(), nix::sys::socket::sockopt::SndBuf, &sndbuf_bytes);
-            eprintln!("[ccp] set sndbuf_bytes={} res={}", sndbuf_bytes, snd_res.is_ok());
+        if let Some(sb) = sndbuf_bytes {
+            let snd_res = nix::sys::socket::setsockopt(
+                sock.as_raw_fd(),
+                nix::sys::socket::sockopt::SndBuf,
+                &sb,
+            );
+            trace!(?sndbuf_bytes, is_ok=?snd_res.is_ok(), "set send buf sockopt");
         }
-        if rcvbuf_bytes > 0 {
-            let rcv_res = nix::sys::socket::setsockopt(sock.as_raw_fd(), nix::sys::socket::sockopt::RcvBuf, &rcvbuf_bytes);
-            eprintln!("[ccp] set rcvbuf_bytes={} res={}", rcvbuf_bytes, rcv_res.is_ok());
+
+        if let Some(rb) = rcvbuf_bytes {
+            let rcv_res = nix::sys::socket::setsockopt(
+                sock.as_raw_fd(),
+                nix::sys::socket::sockopt::RcvBuf,
+                &rb,
+            );
+            trace!(?rcvbuf_bytes, is_ok=?rcv_res.is_ok(), "set rcv buf sockopt");
         }
 
         Ok(Socket {
@@ -48,18 +57,18 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     fn send(&self, msg: &[u8], to: &Self::Addr) -> Result<()> {
-        self.sk
-            .send_to(msg, to)
-            .map(|_| ())
-            .map_err(Error::from)
+        self.sk.send_to(msg, to).map(|_| ()).map_err(Error::from)
     }
 
     #[cfg(target_os = "linux")]
-    fn recv(&self, msg: &mut [u8]) -> Result<(usize,Self::Addr)> {
+    fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)> {
         let res = loop {
-            match self.sk.recv_from(msg).and_then(|(size,addr)| {
+            match self.sk.recv_from(msg).and_then(|(size, addr)| {
                 if addr.is_unnamed() {
-                    Err(std::io::Error::new(std::io::ErrorKind::AddrNotAvailable, ""))
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::AddrNotAvailable,
+                        "",
+                    ))
                 } else {
                     if let Some(path) = addr.as_pathname() {
                         Ok((size, path.to_path_buf().into_os_string()))
@@ -67,7 +76,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
                         let mut real_path = OsString::with_capacity(path.len() + 1);
                         real_path.push("\0");
                         real_path.push(OsStr::from_bytes(&path));
-                        Ok((size,real_path))
+                        Ok((size, real_path))
                     } else {
                         unreachable!("named socketaddr must be path or abstract");
                     }
@@ -76,12 +85,12 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
                 Ok(r) => break Ok(r),
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::Interrupted {
-                        eprintln!("[ccp] got EINTR, ignoring...");
-                        continue
+                        trace!("got EINTR, ignoring...");
+                        continue;
                     } else if e.kind() != std::io::ErrorKind::WouldBlock {
-                        break Err(Error::from(e))
+                        break Err(Error::from(e));
                     } else {
-                        break Ok((0, OsString::new()))
+                        break Ok((0, OsString::new()));
                     }
                 }
             }
@@ -90,22 +99,24 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn recv(&self, msg: &mut [u8]) -> Result<(usize,Self::Addr)> {
-        self.sk.recv_from(msg).map_err(Error::from).and_then(|(size,addr)|  {
-
-            if addr.is_unnamed() {
-                Err(Error(String::from("no recv addr")))
-            } else {
-                if let Some(path) = addr.as_pathname() {
-                    Ok((size, path.to_path_buf().into_os_string()))
+    fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)> {
+        self.sk
+            .recv_from(msg)
+            .map_err(Error::from)
+            .and_then(|(size, addr)| {
+                if addr.is_unnamed() {
+                    Err(Error(String::from("no recv addr")))
                 } else {
-                    unreachable!("named socketaddr must be path (abstract does not exist on non-linux)");
+                    if let Some(path) = addr.as_pathname() {
+                        Ok((size, path.to_path_buf().into_os_string()))
+                    } else {
+                        unreachable!(
+                            "named socketaddr must be path (abstract does not exist on non-linux)"
+                        );
+                    }
                 }
-            }
-        }
-        )
+            })
     }
-
 
     fn close(&mut self) -> Result<()> {
         use std::net::Shutdown;
@@ -115,14 +126,30 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
 
 use super::Blocking;
 impl Socket<Blocking> {
-    pub fn new(bind_to: &str, sndbuf_bytes: usize, rcvbuf_bytes: usize) -> Result<Self> {
+    pub fn new(bind_to: &str) -> Result<Self> {
+        Socket::__new(bind_to, None, None)
+    }
+
+    pub fn new_with_skbuf(
+        bind_to: &str,
+        sndbuf_bytes: Option<usize>,
+        rcvbuf_bytes: Option<usize>,
+    ) -> Result<Self> {
         Socket::__new(bind_to, sndbuf_bytes, rcvbuf_bytes)
     }
 }
 
 use super::Nonblocking;
 impl Socket<Nonblocking> {
-    pub fn new(bind_to: &str, sndbuf_bytes: usize, rcvbuf_bytes: usize) -> Result<Self> {
+    pub fn new(bind_to: &str) -> Result<Self> {
+        Socket::__new(bind_to, None, None)
+    }
+
+    pub fn new_with_skbuf(
+        bind_to: &str,
+        sndbuf_bytes: Option<usize>,
+        rcvbuf_bytes: Option<usize>,
+    ) -> Result<Self> {
         let sk = Socket::__new(bind_to, sndbuf_bytes, rcvbuf_bytes)?;
         sk.sk.set_nonblocking(true).map_err(Error::from)?;
         Ok(sk)

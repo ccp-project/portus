@@ -1,11 +1,11 @@
 //! A library wrapping various IPC mechanisms with a datagram-oriented
 //! messaging layer. This is how CCP communicates with the datapath.
 
-use std::rc::{Rc, Weak};
-use std::sync::{atomic, Arc};
-
 use super::Error;
 use super::Result;
+use std::rc::{Rc, Weak};
+use std::sync::{atomic, Arc};
+use tracing::{info, warn};
 
 /// Thread-channel implementation
 pub mod chan;
@@ -24,19 +24,19 @@ pub mod unix;
 /// sockets, but currently only unix sockets support connectionless sockets. When using unix
 /// sockets, you must provide a valid `Addr` to `send()` and you will also receive a valid
 /// `Addr` as a return value from `recv`. When using connection-oriented ipc mechanisms, these
-/// values are ignored and should just be the nil value `()`. 
+/// values are ignored and should just be the nil value `()`.
 pub trait Ipc: 'static + Send {
     type Addr: Clone + Default + std::cmp::Eq + std::hash::Hash + std::fmt::Debug;
     /// Returns the name of this IPC mechanism (e.g. "netlink" for Linux netlink sockets)
     fn name() -> String;
     /// Blocking send
     fn send(&self, msg: &[u8], to: &Self::Addr) -> Result<()>;
-    /// Blocking listen. 
+    /// Blocking listen.
     ///
-    /// Returns how many bytes were read, and (if using unix sockets) the address of the sender. 
+    /// Returns how many bytes were read, and (if using unix sockets) the address of the sender.
     ///
     /// Important: should not allocate!
-    fn recv(&self, msg: &mut [u8]) -> Result<(usize,Self::Addr)>;
+    fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)>;
     /// Close the underlying sockets
     fn close(&mut self) -> Result<()>;
 }
@@ -108,7 +108,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
             receive_buf,
             tot_read: 0,
             read_until: 0,
-            last_recv_addr: Default::default()
+            last_recv_addr: Default::default(),
         }
     }
 
@@ -125,14 +125,14 @@ impl<'a, T: Ipc> Backend<'a, T> {
     /// Get the next IPC message.
     // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
     // of `self`, so we cannot implement that trait.
-    pub fn next(&mut self, logger: Option<&slog::Logger>) -> Option<(Msg<'_>, T::Addr)> {
+    pub fn next(&mut self) -> Option<(Msg<'_>, T::Addr)> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
             let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
             self.read_until += consumed;
             Some((msg, self.last_recv_addr.clone()))
         } else {
-            self.tot_read = self.get_next_read(logger).ok()?;
+            self.tot_read = self.get_next_read().ok()?;
             self.read_until = 0;
             let (msg, consumed) =
                 Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
@@ -163,9 +163,9 @@ impl<'a, T: Ipc> Backend<'a, T> {
             // NOTE This may seem precarious, but is safe
             // In the case that `recv` returns a buffer containing multiple messages,
             // `next()` will continue to hit the first `if` branch (and thus will not
-            // call `get_next_read()` again) until all of the messages from that buffer 
-            // have been returned. So it is not possible for recvs to interleave and 
-            // interfere with the last_recv_addr value. 
+            // call `get_next_read()` again) until all of the messages from that buffer
+            // have been returned. So it is not possible for recvs to interleave and
+            // interfere with the last_recv_addr value.
             self.last_recv_addr = addr;
 
             if read == 0 {
