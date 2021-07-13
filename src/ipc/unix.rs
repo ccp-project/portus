@@ -1,6 +1,6 @@
 use super::{Error, Result};
 use std::marker::PhantomData;
-use std::os::unix::net::UnixDatagram;
+use std::os::unix::{io::AsRawFd, net::UnixDatagram};
 use std::path::PathBuf;
 use tracing::trace;
 
@@ -66,6 +66,13 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     fn send(&self, msg: &[u8], to: &Self::Addr) -> Result<()> {
+        let to = format!(
+            "/tmp/ccp/{}",
+            to.as_path()
+                .as_os_str()
+                .to_str()
+                .ok_or_else(|| Error("invalid addrress".to_owned()))?
+        );
         self.sk.send_to(msg, to).map(|_| ()).map_err(Error::from)
     }
 
