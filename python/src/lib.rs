@@ -1,30 +1,22 @@
-#![feature(box_patterns, specialization, const_fn)]
-use std::rc::{Rc, Weak};
+#![allow(non_snake_case)]
 
-extern crate fnv;
-#[macro_use]
-extern crate slog;
-extern crate time;
-
-extern crate portus;
 use portus::ipc;
 use portus::ipc::BackendBuilder;
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
-
-extern crate simple_signal;
-use simple_signal::Signal;
-
-extern crate pyo3;
 use pyo3::prelude::*;
+use pyo3::types::*;
+use pyo3::{exceptions, ToBorrowedObject};
+use simple_signal::Signal;
+use std::rc::{Rc, Weak};
 
 #[macro_export]
 macro_rules! raise {
     ($errtype:ident, $msg:expr) => {
-        return Err(PyErr::new::<exc::$errtype, _>($msg));
+        return Err(PyErr::new::<exceptions::$errtype, _>($msg));
     };
     ($errtype:ident, $msg:expr, false) => {
-        Err(PyErr::new::<exc::$errtype, _>($msg));
+        Err(PyErr::new::<exceptions::$errtype, _>($msg));
     };
 }
 
@@ -37,63 +29,52 @@ macro_rules! py_none {
 mod cong_alg;
 use cong_alg::*;
 
-/// Convenience wrapper around datapath struct,
-/// python keeps a pointer to this for talking to the datapath
-#[py::class(gc, weakref, dict)]
-struct PyDatapath {
-    backend: Box<DatapathTrait>,
-    sc: Option<Rc<Scope>>,
-    logger: slog::Logger,
-    debug: bool,
-    sock_id: u32,
-}
-
-// Copy of the datapath class, $[prop(get)] necessary to access the fields in python
-#[py::class(gc, weakref, dict)]
+// Copy of the datapath class, $[pyo3(get)] necessary to access the fields in python
+#[pyclass(weakref, dict)]
 pub struct DatapathInfo {
-    #[prop(get)]
+    #[pyo3(get)]
     pub sock_id: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub init_cwnd: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub mss: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub src_ip: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub src_port: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub dst_ip: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub dst_port: u32,
 }
 
-#[py::class(gc, weakref, dict)]
+#[pyclass(weakref, dict)]
 pub struct Measurements {
-    #[prop(get)]
+    #[pyo3(get)]
     pub acked: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub was_timeout: bool,
-    #[prop(get)]
+    #[pyo3(get)]
     pub sacked: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub loss: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub rtt: u32,
-    #[prop(get)]
+    #[pyo3(get)]
     pub inflight: u32,
 }
 
 /// Convenience wrapper around the Report struct for sending to python,
 /// keeps a copy of the scope so the python user doesn't need to manage it
-#[py::class(gc, weakref, dict)]
+#[pyclass(weakref, dict, unsendable)]
 struct PyReport {
     report: Report,
     sc: Weak<Scope>,
 }
 
-#[py::proto]
+#[pyproto]
 impl<'p> pyo3::class::PyObjectProtocol<'p> for PyReport {
-    fn __getattr__(&self, name: String) -> PyResult<u64> {
+    fn __getattr__(&'p self, name: String) -> PyResult<u64> {
         let field_name = match name.as_ref() {
             "Cwnd" | "Rate" => name.clone(),
             _ => format!("Report.{}", name),
@@ -102,7 +83,7 @@ impl<'p> pyo3::class::PyObjectProtocol<'p> for PyReport {
             Some(sc) => sc,
             None => {
                 raise!(
-                    Exception,
+                    PyException,
                     format!(
                         "Failed to get {}: no datapath program installed",
                         field_name.clone()
@@ -112,7 +93,7 @@ impl<'p> pyo3::class::PyObjectProtocol<'p> for PyReport {
         };
         match self.report.get_field(field_name.as_ref(), &sc) {
             Ok(val) => Ok(val),
-            Err(portus::Error(e)) => raise!(Exception, format!("Failed to get {}: {}", name, e)),
+            Err(portus::Error(e)) => raise!(PyException, format!("Failed to get {}: {}", name, e)),
         }
     }
 }
@@ -123,46 +104,44 @@ fn get_fields(list: &PyList) -> Vec<(&str, u32)> {
             tuple_ref.extract()
                 .expect("second argument to datapath.set_program must be a list of tuples of the form (string, int)")
         })
-    .collect::<Vec<(&str, u32)>>()
+    .collect::<_>()
 }
 
-#[py::methods]
+/// Convenience wrapper around datapath struct,
+/// python keeps a pointer to this for talking to the datapath
+#[pyclass(weakref, dict, unsendable)]
+struct PyDatapath {
+    backend: Box<dyn DatapathTrait>,
+    sc: Option<Rc<Scope>>,
+    sock_id: u32,
+}
+
+#[pymethods]
 impl PyDatapath {
     fn update_field(&self, _py: Python, reg_name: String, val: u32) -> PyResult<()> {
-        if self.debug {
-            debug!(self.logger, "Updating field";
-                "sid" => self.sock_id,
-                "field" => reg_name.clone(),
-                "val" => val,
-            )
-        }
+        tracing::debug!(sock_id = ?self.sock_id, ?reg_name, ?val, "Updating field");
         let sc = match self.sc {
             Some(ref s) => s,
             None => {
                 raise!(
-                    ReferenceError,
+                    PyReferenceError,
                     "Cannot update field: no datapath program installed yet!"
                 );
             }
         };
         match self.backend.update_field(sc, &[(reg_name.as_str(), val)]) {
             Ok(()) => Ok(()),
-            Err(e) => raise!(Exception, format!("Failed to update field, err: {:?}", e)),
+            Err(e) => raise!(PyException, format!("Failed to update field, err: {:?}", e)),
         }
     }
 
-    fn update_fields(&self, py: Python, fields: &PyList) -> PyResult<()> {
-        if self.debug {
-            debug!(self.logger, "Updating fields";
-                "sid" => self.sock_id,
-                "fields" => format!("{:?}",fields),
-            )
-        }
+    fn update_fields(&self, _py: Python, fields: &PyList) -> PyResult<()> {
+        tracing::debug!(sock_id = ?self.sock_id, ?fields, "Updating fields");
         let sc = match self.sc {
             Some(ref s) => s,
             None => {
                 raise!(
-                    ReferenceError,
+                    PyReferenceError,
                     "Cannot update field: no datapath program installed yet!"
                 );
             }
@@ -172,25 +151,32 @@ impl PyDatapath {
 
         match ret {
             Ok(()) => Ok(()),
-            Err(e) => raise!(Exception, format!("Failed to update fields, err: {:?}", e)),
+            Err(e) => raise!(
+                PyException,
+                format!("Failed to update fields, err: {:?}", e)
+            ),
         }
     }
 
     fn set_program(
         &mut self,
-        py: Python,
-        program_name: &'static str,
+        _py: Python,
+        program_name: &str,
         fields: Option<&PyList>,
     ) -> PyResult<()> {
-        if self.debug {
-            debug!(self.logger, "switching datapath programs";
-                "sid" => self.sock_id,
-                "program_name" => program_name.clone(),
-            )
-        }
+        tracing::debug!(sock_id = ?self.sock_id, ?program_name, "switching datapath programs");
+
+        // we have a &'py str and need a &'static str.
+        //
+        // SAFETY: *in practice*, portus does not rely on the 'static lifetime of program_name (it
+        // does not keep it around, only uses it to lookup in its HashMap); therefore, the lifetime of
+        // `program_name`, `'py`, is sufficient.
+        // If `backend.set_program` changes to keep the string around, then this will no longer
+        // work.
+        let pname: &'static str = unsafe { std::mem::transmute(program_name) };
 
         let ret = self.backend.set_program(
-            program_name,
+            pname,
             fields
                 .map(|list| get_fields(list))
                 .as_ref()
@@ -203,88 +189,80 @@ impl PyDatapath {
                 Ok(())
             }
             Err(e) => raise!(
-                Exception,
+                PyException,
                 format!("Failed to set datapath program: {:?}", e)
             ),
         }
     }
 }
 
-#[py::modinit(pyportus)]
-fn init_mod(py: pyo3::Python<'static>, m: &PyModule) -> PyResult<()> {
-    #[pyfn(m, "_connect")]
-    fn _py_connect(
-        py: pyo3::Python<'static>,
-        ipc_str: String,
-        alg: PyObject,
-        debug: bool,
-    ) -> PyResult<i32> {
+#[pymodule]
+fn pyportus(_py: Python, m: &PyModule) -> PyResult<()> {
+    #[pyfn(m)]
+    fn start_inner(py: Python, ipc_str: String, alg: PyObject) -> PyResult<i32> {
         simple_signal::set_handler(&[Signal::Int, Signal::Term], move |_signals| {
+            tracing::info!("exiting");
             ::std::process::exit(1);
         });
-        py_connect(py, ipc_str, alg, debug)
+
+        py_start_inner(py, ipc_str, alg)
     }
 
-    #[pyfn(m, "_try_compile")]
-    fn _py_try_compile(py: pyo3::Python<'static>, prog: String) -> PyResult<String> {
+    #[pyfn(m)]
+    fn try_compile(py: Python, prog: String) -> PyResult<String> {
         py_try_compile(py, prog)
     }
 
     m.add_class::<DatapathInfo>()?;
     m.add_class::<PyDatapath>()?;
     m.add_class::<PyReport>()?;
-
     Ok(())
 }
 
-use portus::lang;
-use std::error::Error;
-fn py_try_compile(_py: pyo3::Python<'static>, prog: String) -> PyResult<String> {
-    match lang::compile(prog.as_bytes(), &[]) {
-        Ok(_) => Ok("".to_string()),
-        Err(e) => Ok(e.description().to_string()),
-    }
-}
-
-fn py_connect(py: pyo3::Python<'static>, ipc: String, alg: PyObject, debug: bool) -> PyResult<i32> {
-    let log = portus::algs::make_logger();
-
+fn py_start_inner<'p>(py: Python<'p>, ipc: String, alg: PyObject) -> PyResult<i32> {
     // Check args
     if let Err(e) = portus::algs::ipc_valid(ipc.clone()) {
-        raise!(ValueError, e);
+        raise!(PyValueError, e);
     };
 
-    let py_cong_alg = PyCongAlg {
-        py,
-        logger: log.clone(),
-        alg_obj: alg,
-        debug,
-    };
+    tracing_subscriber::fmt::init();
 
+    let py_cong_alg = PyCongAlg { py, alg_obj: alg };
+
+    // SAFETY: _connect will block the Python program, so really we will hold the GIL for
+    // the remainder of the program's lifetime, which is 'static.
+    let py_cong_alg: PyCongAlg<'static> = unsafe { std::mem::transmute(py_cong_alg) };
+    tracing::info!(?ipc, "starting CCP");
     match ipc.as_str() {
         "unix" => {
-            use portus::ipc::unix::Socket;
+            use ipc::unix::Socket;
             let b = Socket::<ipc::Blocking>::new("portus")
                 .map(|sk| BackendBuilder { sock: sk })
                 .expect("create unix socket");
-            portus::run::<_, PyCongAlg>(b, portus::Config { logger: Some(log) }, py_cong_alg)
-                .unwrap();
+            portus::RunBuilder::new(b).default_alg(py_cong_alg).run()
         }
         #[cfg(all(target_os = "linux"))]
         "netlink" => {
-            use portus::ipc::netlink::Socket;
+            use ipc::netlink::Socket;
             let b = Socket::<ipc::Blocking>::new()
                 .map(|sk| BackendBuilder { sock: sk })
                 .expect("create netlink socket");
-
-            portus::run::<_, PyCongAlg>(b, portus::Config { logger: Some(log) }, py_cong_alg)
-                .unwrap();
+            portus::RunBuilder::new(b).default_alg(py_cong_alg).run()
         }
         _ => unreachable!(),
     }
+    .or_else(|e| raise!(PyException, format!("{:?}", e), false))?;
+    Ok(0)
 }
 
-use std::os::raw::c_int;
+fn py_try_compile<'p>(_py: Python<'p>, prog: String) -> PyResult<String> {
+    use portus::lang;
+    match lang::compile(prog.as_bytes(), &[]) {
+        Ok(_) => Ok("".to_string()),
+        Err(e) => Ok(format!("{}", e)),
+    }
+}
+
 // Creates an instance of cls and calls __init__(self, *args, **kwargs)
 // Returns a pointer to the instance
 fn _py_new_instance(
@@ -293,6 +271,7 @@ fn _py_new_instance(
     args: *mut pyo3::ffi::PyObject,
     kwargs: *mut pyo3::ffi::PyObject,
 ) -> PyResult<PyObject> {
+    use std::os::raw::c_int;
     unsafe {
         match (*cls).tp_new {
             Some(tp_new) => {
@@ -321,6 +300,7 @@ where
     N: ToBorrowedObject,
     V: ToBorrowedObject,
 {
+    use pyo3::AsPyPointer;
     attr_name.with_borrowed_ptr(py, move |attr_name| {
         val.with_borrowed_ptr(py, |val| unsafe {
             let ret = pyo3::ffi::PyObject_SetAttr(o.as_ptr(), attr_name, val);

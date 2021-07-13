@@ -1,27 +1,19 @@
 [package]
 name = "pyportus"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Frank Cangialosi <frankc@csail.mit.edu>"]
 description = "A Congestion Control Plane"
 homepage = "https://ccp-project.github.io"
 license = "ISC"
 repository = "https://github.com/ccp-project/portus"
+edition = "2018"
 
 [dependencies]
-bytes = "0.4.5"
-clap = "2.29"
-fnv = "1"
-portus = "0.5"
+portus = { path = ".." }
 simple-signal = "1"
-slog = { version = "2" }
-slog-async = "2"
-slog-term = "2"
-time = "0.1"
-
-[dependencies.pyo3]
-version = "0.2.7"
-features = ["extension-module"]
-default-features = false
+pyo3 = { version = "0.14", features = ["extension-module", "macros"], default-features = false }
+tracing = "0.1"
+tracing-subscriber = "0.2"
 
 [features]
 bench = []

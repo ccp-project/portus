@@ -20,8 +20,8 @@ class Const(portus.AlgBase):
         return {
                 "default" : """\
                 (def (Report
-                    (volatile acked 0) 
-                    (volatile loss 0) 
+                    (volatile acked 0)
+                    (volatile loss 0)
                     (volatile rtt 0)
                 ))
                 (when true
@@ -38,4 +38,4 @@ class Const(portus.AlgBase):
 
 alg = Const()
 
-portus.start("unix", alg, debug=True)
+portus.start("unix", alg)

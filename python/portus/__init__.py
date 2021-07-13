@@ -1,4 +1,4 @@
-from .pyportus import _connect, DatapathInfo, PyDatapath, PyReport
+from .pyportus import DatapathInfo, PyDatapath, PyReport, start_inner
 from abc import ABCMeta, abstractmethod
 import signal
 import sys
@@ -31,13 +31,13 @@ class AlgBase(object):
                         ))
             return True
 
-def start(ipc, alg, debug=False):
+def start(ipc, alg):
     cls = alg.__class__
     if not issubclass(cls, object):
         raise Exception(cls.__name__ + " must be a subclass of object")
     if issubclass(cls, AlgBase):
         AlgBase.assert_implements_interface(cls)
         checker._check_datapath_programs(cls)
-        return _connect(ipc, alg, debug)
+        return start_inner(ipc, alg)
     else:
         raise Exception(cls.__name__ + " must be a subclass of portus.AlgBase")
