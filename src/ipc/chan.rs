@@ -103,10 +103,8 @@ mod tests {
     #[test]
     fn basic() {
         let (tx, rx) = channel::unbounded();
-
         let (s1, r1) = channel::unbounded();
         let (s2, r2) = channel::unbounded();
-
         let ipc = Socket::<Blocking>::new(s1, r2);
 
         thread::spawn(move || {

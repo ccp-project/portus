@@ -20,7 +20,7 @@
 //!
 //! ```
 //! use std::collections::HashMap;
-//! use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
+//! use portus::{CongAlg, Flow, Datapath, DatapathInfo, DatapathTrait, Report};
 //! use portus::ipc::Ipc;
 //! use portus::lang::Scope;
 //! use portus::lang::Bin;
@@ -63,9 +63,6 @@
 //!     }
 //! }
 //! ```
-
-#[macro_use]
-extern crate slog;
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -327,7 +324,7 @@ pub trait CongAlgBuilder<'a, 'b> {
     /// running `Clap::App::get_matches_from` on the `clap::App` returned by the `register` function.
     /// It also takes an instsance of a logger so that the calling program can define the logging
     /// behavior (eg. format and redirection).
-    fn with_arg_matches(args: &clap::ArgMatches, logger: Option<slog::Logger>) -> Result<Self>
+    fn with_arg_matches(args: &clap::ArgMatches) -> Result<Self>
     where
         Self: Sized;
 }

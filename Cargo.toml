@@ -25,9 +25,7 @@ nix            =  "0.9.0"
 unix_socket    =  "0.5.0"
 nom            =  "4"
 portus_export  =  "0.1"
-slog           =  "2"
-slog-async     =  "2"
-slog-term      =  "2"
+tracing        =  "0.1"
 time           =  "0.1"
 structopt    =  { version = "0.2", optional = true }
 itertools    =  { version = "0.8", optional = true }

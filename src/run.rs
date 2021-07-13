@@ -6,18 +6,11 @@ use crate::lang::Scope;
 use crate::serialize;
 use crate::serialize::Msg;
 use crate::{lang, CongAlg, Datapath, DatapathInfo, Error, Flow, Report, Result};
-use slog::{debug, info};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{atomic, Arc};
 use std::thread;
-
-/// Configuration parameters for the portus runtime.
-/// Defines a `slog::Logger` to use for (optional) logging
-#[derive(Clone, Default)]
-pub struct Config {
-    pub logger: Option<slog::Logger>,
-}
+use tracing::{debug, info};
 
 /// A handle to manage running instances of the CCP execution loop.
 #[derive(Debug)]
@@ -243,12 +236,11 @@ use sealed::*;
 /// 1. The IPC socket is closed.
 /// 2. An invalid message is received.
 ///
-/// Callers must construct a `BackendBuilder` and a `Config`.
+/// Callers must construct a `BackendBuilder`.
 /// Algorithm implementations should
 /// 1. Initializes an ipc backendbuilder (depending on the datapath).
-/// 2. Calls `run()`, or `spawn() `passing the `BackendBuilder b` and a `Config` with optional
-/// logger and command line argument structure.
-/// Run() or spawn() create arc<AtomicBool> objects,
+/// 2. Calls `run()`, or `spawn() `passing the `BackendBuilder b`.
+/// Run() or spawn() create Arc<AtomicBool> objects,
 /// which are passed into run_inner to build the backend, so spawn() can create a CCPHandle that references this
 /// boolean to kill the thread.
 ///
@@ -257,7 +249,7 @@ use sealed::*;
 /// Configuration:
 /// ```rust,no_run
 /// use std::collections::HashMap;
-/// use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
+/// use portus::{CongAlg, Flow, Datapath, DatapathInfo, DatapathTrait, Report};
 /// use portus::ipc::Ipc;
 /// use portus::lang::Scope;
 /// use portus::lang::Bin;
@@ -326,9 +318,9 @@ use sealed::*;
 /// }
 ///
 /// use portus::RunBuilder;
-/// use portus::ipc::{BackendBuilder, unix::Socket};
-/// let b = Socket::<portus::ipc::Blocking>::new("in", "out").map(|sk| BackendBuilder { sock: sk }).expect("ipc initialization");
-/// let rb = RunBuilder::new(b, Config::default())
+/// use portus::ipc::{BackendBuilder};
+/// let b = portus::ipc::unix::Socket::<portus::ipc::Blocking>::new("portus").map(|sk| BackendBuilder { sock: sk }).expect("ipc initialization");
+/// let rb = RunBuilder::new(b))
 ///   .default_alg(AlgOne::default())
 ///   .additional_alg(AlgTwo::default())
 ///   .additional_alg::<AlgOne, _>(None);
@@ -339,7 +331,6 @@ use sealed::*;
 pub struct RunBuilder<I: Ipc, U, Spawnness> {
     backend_builder: BackendBuilder<I>,
     alg: U,
-    cfg: Config,
     stop_handle: Option<*const atomic::AtomicBool>,
     _phantom: std::marker::PhantomData<Spawnness>,
 }
@@ -348,10 +339,9 @@ pub struct Spawn;
 pub struct NoSpawn;
 
 impl<I: Ipc> RunBuilder<I, (), NoSpawn> {
-    pub fn new(backend_builder: BackendBuilder<I>, cfg: Config) -> Self {
+    pub fn new(backend_builder: BackendBuilder<I>) -> Self {
         Self {
             backend_builder,
-            cfg,
             alg: (),
             stop_handle: None,
             _phantom: Default::default(),
@@ -368,7 +358,6 @@ impl<I: Ipc, S> RunBuilder<I, (), S> {
         RunBuilder {
             alg: AlgListNil(alg),
             backend_builder: self.backend_builder,
-            cfg: self.cfg,
             stop_handle: self.stop_handle,
             _phantom: Default::default(),
         }
@@ -390,7 +379,6 @@ impl<I: Ipc, U, S> RunBuilder<I, U, S> {
                 tail: self.alg,
             },
             backend_builder: self.backend_builder,
-            cfg: self.cfg,
             stop_handle: self.stop_handle,
             _phantom: Default::default(),
         }
@@ -407,7 +395,6 @@ impl<I: Ipc, U, S> RunBuilder<I, U, S> {
                 tail: self.alg,
             },
             backend_builder: self.backend_builder,
-            cfg: self.cfg,
             stop_handle: self.stop_handle,
             _phantom: Default::default(),
         }
@@ -461,7 +448,6 @@ impl<I: Ipc, U> RunBuilder<I, U, NoSpawn> {
     pub fn spawn_thread(self) -> RunBuilder<I, U, Spawn> {
         RunBuilder {
             backend_builder: self.backend_builder,
-            cfg: self.cfg,
             stop_handle: self.stop_handle,
             alg: self.alg,
             _phantom: Default::default(),
@@ -477,7 +463,7 @@ where
 {
     pub fn run(self) -> Result<()> {
         let h = self.stop_handle()?;
-        run_inner(h, self.backend_builder, self.cfg, self.alg)
+        run_inner(h, self.backend_builder, self.alg)
     }
 }
 
@@ -490,11 +476,10 @@ where
     pub fn run(self) -> Result<CCPHandle> {
         let stop_signal = self.stop_handle()?;
         let bb = self.backend_builder;
-        let cfg = self.cfg;
         let alg = self.alg;
         Ok(CCPHandle {
             continue_listening: stop_signal.clone(),
-            join_handle: thread::spawn(move || run_inner(stop_signal, bb, cfg, alg)),
+            join_handle: thread::spawn(move || run_inner(stop_signal, bb, alg)),
         })
     }
 }
@@ -513,7 +498,6 @@ where
 fn run_inner<I, U>(
     continue_listening: Arc<atomic::AtomicBool>,
     backend_builder: BackendBuilder<I>,
-    cfg: Config,
     algs: U,
 ) -> Result<()>
 where
@@ -523,17 +507,14 @@ where
 {
     let mut receive_buf = [0u8; 1024];
     let mut b = backend_builder.build(continue_listening.clone(), &mut receive_buf[..]);
-    // the borrow has to be fore the HashMap, to guarantee that the HashMap is dropped first
+    // the borrow has to before the HashMap, to guarantee that the HashMap is dropped first
     let algs2 = &algs;
-    // let mut flows = HashMap::<u32, <<&'_ U as Pick<'_, I>>::Picked as CongAlg<I>>::Flow>::default();
-    let mut dp_to_flowmap = HashMap::<I::Addr, HashMap::<u32, <<&'_ U as Pick<'_, I>>::Picked as CongAlg<I>>::Flow>>::new();
+    let mut dp_to_flowmap = HashMap::<
+        I::Addr,
+        HashMap<u32, <<&'_ U as Pick<'_, I>>::Picked as CongAlg<I>>::Flow>,
+    >::new();
 
-    if let Some(log) = cfg.logger.as_ref() {
-        info!(log, "starting CCP";
-            "ipc"       => I::name(),
-            "v"         => "0.6.1",
-        );
-    }
+    info!(ipc = ?I::name(), "starting CCP");
 
     let mut scope_map = Rc::new(HashMap::<String, Scope>::default());
     let mut install_msgs = vec![];
@@ -565,28 +546,22 @@ where
         }
     }
 
-    if let Some(log) = cfg.logger.as_ref() {
-        info!(log, "compiled all datapath programs, ccp ready";
-            "programs" => format!("{:#?}", programs.keys())
-        );
-    }
-
-    while let Some((msg, recv_addr)) = b.next(cfg.logger.as_ref()) {
+    debug!(programs = %format!("{:#?}", programs.keys()), "compiled all datapath programs, ccp ready");
+    while let Some((msg, recv_addr)) = b.next() {
         match msg {
             Msg::Rdy(_r) => {
                 if dp_to_flowmap.remove(&recv_addr).is_some() {
-                    if let Some(log) = cfg.logger.as_ref() { 
-                        info!(log, "new ready from old datapath, clearing old flows and installing programs...");
-                    }
+                    info!(
+                        "new ready from old datapath, clearing old flows and installing programs"
+                    );
                 } else {
-                    if let Some(log) = cfg.logger.as_ref() {
-                        info!(log, "found new datapath, installing programs...";
-                             "addr" => format!("{:#?}", recv_addr),
-                        );
-                    }
+                    info!(addr = %format!("{:#?}", recv_addr), "found new datapath, installing programs");
                 }
 
-                dp_to_flowmap.insert(recv_addr.clone(), HashMap::<u32, <<&'_ U as Pick<'_, I>>::Picked as CongAlg<I>>::Flow>::default());
+                dp_to_flowmap.insert(
+                    recv_addr.clone(),
+                    HashMap::<u32, <<&'_ U as Pick<'_, I>>::Picked as CongAlg<I>>::Flow>::default(),
+                );
 
                 let backend = b.sender(recv_addr);
                 for buf in &install_msgs {
@@ -597,33 +572,26 @@ where
                 let flowmap = match dp_to_flowmap.get_mut(&recv_addr) {
                     Some(fm) => fm,
                     None => {
-                        if let Some(log) = cfg.logger.as_ref() {
-                            info!(log, "received create from unknown datapath, ignoring";
-                                  "addr" => format!("{:#?}", recv_addr),
-                            );
-                        }
+                        debug!(addr = %format!("{:#?}", recv_addr), "received create from unknown datapath, ignoring");
                         continue;
                     }
                 };
 
                 if flowmap.remove(&c.sid).is_some() {
-                    if let Some(log) = cfg.logger.as_ref() {
-                        debug!(log, "re-creating already created flow"; "sid" => c.sid);
-                    }
+                    debug!(sid = ?c.sid, "re-creating already created flow");
                 }
 
-                if let Some(log) = cfg.logger.as_ref() {
-                    debug!(log, "creating new flow";
-                           "sid" => c.sid,
-                           "init_cwnd" => c.init_cwnd,
-                           "mss"  =>  c.mss,
-                           "src_ip"  =>  c.src_ip,
-                           "src_port"  =>  c.src_port,
-                           "dst_ip"  =>  c.dst_ip,
-                           "dst_port"  =>  c.dst_port,
-                           "alg" => c.cong_alg.as_ref(),
-                    );
-                }
+                debug!(
+                    sid        = ?c.sid,
+                    init_cwnd  = ?c.init_cwnd,
+                    mss        = ?c.mss,
+                    src_ip     = ?c.src_ip,
+                    src_port   = ?c.src_port,
+                    dst_ip     = ?c.dst_ip,
+                    dst_port   = ?c.dst_port,
+                    alg        = ?c.cong_alg.as_ref(),
+                    "creating new flow"
+                );
 
                 let alg = algs2.pick(c.cong_alg.as_ref().map(String::as_str).unwrap_or(""));
                 let f = alg.new_flow(
@@ -648,11 +616,7 @@ where
                 let flowmap = match dp_to_flowmap.get_mut(&recv_addr) {
                     Some(fm) => fm,
                     None => {
-                        if let Some(log) = cfg.logger.as_ref() {
-                            info!(log, "received create from unknown datapath, ignoring";
-                                  "addr" => format!("{:#?}", recv_addr),
-                            );
-                        }
+                        info!(addr = %format!("{:#?}", recv_addr), "received create from unknown datapath, ignoring");
                         continue;
                     }
                 };
@@ -672,8 +636,8 @@ where
                             },
                         )
                     }
-                } else if let Some(log) = cfg.logger.as_ref() {
-                    debug!(log, "measurement for unknown flow"; "sid" => m.sid);
+                } else {
+                    debug!(sid = m.sid, "measurement for unknown flow");
                 }
             }
             Msg::Ins(_) => {
@@ -681,22 +645,21 @@ where
                 unreachable!()
             }
             Msg::Other(m) => {
-                if let Some(log) = cfg.logger.as_ref() {
-                    warn!(log, "got unknown message";
-                          "size" => m.len,
-                          "type" => m.typ,
-                          "sid" => m.sid,
-                          "addr" => format!("{:#?}", recv_addr),
-                    );
-                }
-                continue
+                debug!(
+                    size = ?m.len,
+                    msg_type = ?m.typ,
+                    sid = ?m.sid,
+                    addr = %format!("{:#?}", recv_addr),
+                    "got unknown message"
+                );
+                continue;
             }
         }
     }
 
     // if the thread has been killed, return that as error
     if !continue_listening.load(atomic::Ordering::SeqCst) {
-		eprintln!("[ccp] received shutdown");
+        info!("portus shutting down");
         Ok(())
     } else {
         Err(Error(String::from("The IPC channel has closed.")))

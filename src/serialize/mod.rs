@@ -24,13 +24,12 @@
 //! External message types can implement `get_bytes()` to pass custom types in the message payload.
 //! In these cases, there is little deserialization overhead from the u32 and u64 parts of the message.
 
+use super::Result;
+use bytes::{ByteOrder, LittleEndian};
 use std::io::prelude::*;
 use std::io::Cursor;
 use std::vec::Vec;
-
-use super::Result;
-
-use bytes::{ByteOrder, LittleEndian};
+use tracing::debug;
 
 fn u16_to_u8s(buf: &mut [u8], num: u16) {
     LittleEndian::write_u16(buf, num);
@@ -182,7 +181,9 @@ fn deserialize(buf: &[u8]) -> Result<RawMsg> {
     }
     if len > buf.get_ref().len() as u32 {
         return Err(super::Error(format!(
-            "header len claims {} but buf size is {}", len, buf.get_ref().len()
+            "header len claims {} but buf size is {}",
+            len,
+            buf.get_ref().len()
         )));
     }
 
@@ -224,19 +225,23 @@ impl<'a> Msg<'a> {
         deserialize(buf)
             .map_or_else(
                 |e| {
-                    eprintln!("{:#?}", e);
-                    Ok((RawMsg {
-                        typ : 255,
-                        len : 0,
-                        sid : 0,
-                        bytes: &buf,
-                    }, buf.len()))
+                    debug!(err = %format!("{:#?}", e), "failed deserialization");
+                    Ok((
+                        RawMsg {
+                            typ: 255,
+                            len: 0,
+                            sid: 0,
+                            bytes: &buf,
+                        },
+                        buf.len(),
+                    ))
                 },
                 |m| {
                     let len = m.len;
                     Ok((m, len as usize))
-                }
-            ).and_then(|(m, l)| Ok((Msg::from_raw_msg(m)?, l)))
+                },
+            )
+            .and_then(|(m, l)| Ok((Msg::from_raw_msg(m)?, l)))
     }
 }
 

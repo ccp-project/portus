@@ -1,10 +1,8 @@
-#[cfg_attr(test, macro_use)]
-extern crate slog;
-
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 use std::collections::HashMap;
 use std::time::Instant;
+use tracing::info;
 
 mod libccp_integration;
 use crate::libccp_integration::{IntegrationTest, ACKED_PRIMITIVE};
@@ -42,14 +40,7 @@ impl IntegrationTest for TestBasicSerialize {
         dp.set_program("TestBasicSerialize", None).ok()
     }
 
-    fn check_test(
-        &mut self,
-        sc: &Scope,
-        _log: &slog::Logger,
-        _t: Instant,
-        _sock_id: u32,
-        m: &Report,
-    ) -> bool {
+    fn check_test(&mut self, sc: &Scope, _t: Instant, _sock_id: u32, m: &Report) -> bool {
         let acked = m
             .get_field("Report.acked", sc)
             .expect("expected acked field in returned measurement") as u32;
@@ -67,7 +58,6 @@ impl IntegrationTest for TestBasicSerialize {
 
 #[test]
 fn basic() {
-    let log = libccp_integration::logger();
-    info!(log, "starting basic test");
-    libccp_integration::run_test::<TestBasicSerialize>(log, 1);
+    info!("starting basic test");
+    libccp_integration::run_test::<TestBasicSerialize>(1);
 }

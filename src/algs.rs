@@ -1,26 +1,5 @@
 //! Helper methods for making algorithm binaries.
 
-extern crate slog;
-extern crate slog_async;
-extern crate slog_term;
-use slog::Drain;
-use std::fs::File;
-
-/// Make a standard instance of `slog::Logger`.
-pub fn make_logger() -> slog::Logger {
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    slog::Logger::root(drain, o!())
-}
-
-pub fn make_file_logger(f: File) -> slog::Logger {
-    let decorator = slog_term::PlainSyncDecorator::new(f);
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    slog::Logger::root(drain, o!())
-}
-
 /// Platform-dependent validator for ipc mechanisms.
 #[cfg(all(target_os = "linux"))]
 pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
@@ -44,9 +23,8 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 /// Arguments are:
 /// 1. ipc, a &str specifying the IPC type
 /// (either "unix", "netlink", or "char"): see [`ipc`](./ipc/index.html).
-/// 2. log, an instance of `Option<slog::Logger>`.
-/// 3. alg, an instance of `impl CongAlg<T: Ipc>`.
-/// 4. blk, optional argument, either [`Blocking`](./ipc/struct.Blocking.html) or
+/// 2. alg, an instance of `impl CongAlg<T: Ipc>`.
+/// 3. blk, optional argument, either [`Blocking`](./ipc/struct.Blocking.html) or
 ///    [`Nonblocking`](./ipc/struct.Nonblocking.html).
 ///
 ///
@@ -55,9 +33,8 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 /// Using the example algorithm from above:
 ///
 /// ```
-/// extern crate portus;
 /// use std::collections::HashMap;
-/// use portus::{CongAlg, Flow, Config, Datapath, DatapathInfo, DatapathTrait, Report};
+/// use portus::{CongAlg, Flow, Datapath, DatapathInfo, DatapathTrait, Report};
 /// use portus::ipc::Ipc;
 /// use portus::lang::Scope;
 /// use portus::lang::Bin;
@@ -113,7 +90,7 @@ macro_rules! start {
     ($ipc:expr, $log:expr, $alg:expr, $blk:ty) => {{
         $crate::start!($ipc, $log, $alg, $blk, "portus")
     }};
-    ($ipc:expr, $log:expr, $alg:expr, $blk:ty, $bindaddr:expr) => {{
+    ($ipc:expr, $alg:expr, $blk:ty, $bindaddr:expr) => {{
         use $crate::ipc::BackendBuilder;
         match $ipc {
             "unix" => {
@@ -122,9 +99,7 @@ macro_rules! start {
                 let b = Socket::<$blk>::new($bindaddr, 0, 0)
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::RunBuilder::new(b, $crate::Config { logger: $log })
-                    .default_alg($alg)
-                    .run()
+                $crate::RunBuilder::new(b).default_alg($alg).run()
             }
             #[cfg(all(target_os = "linux"))]
             "netlink" => {
@@ -132,9 +107,7 @@ macro_rules! start {
                 let b = Socket::<$blk>::new()
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::RunBuilder::new(b, $crate::Config { logger: $log })
-                    .default_alg($alg)
-                    .run()
+                $crate::RunBuilder::new(b).default_alg($alg).run()
             }
             #[cfg(all(target_os = "linux"))]
             "char" => {
@@ -142,9 +115,7 @@ macro_rules! start {
                 let b = Socket::<$blk>::new()
                     .map(|sk| BackendBuilder { sock: sk })
                     .expect("ipc initialization");
-                $crate::RunBuilder::new(b, $crate::Config { logger: $log })
-                    .default_alg($alg)
-                    .run()
+                $crate::RunBuilder::new(b).default_alg($alg).run()
             }
             _ => unreachable!(),
         }

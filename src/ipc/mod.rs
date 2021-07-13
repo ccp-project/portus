@@ -144,22 +144,18 @@ impl<'a, T: Ipc> Backend<'a, T> {
 
     // calls IPC repeatedly to read one or more messages.
     // Returns a slice into self.receive_buf covering the read data
-    fn get_next_read(&mut self, logger: Option<&slog::Logger>) -> Result<usize> {
+    fn get_next_read(&mut self) -> Result<usize> {
         loop {
             // if continue_loop has been set to false, stop iterating
             if !self.continue_listening.load(atomic::Ordering::SeqCst) {
-                eprintln!("[ccp] recieved kill signal");
+                info!("recieved kill signal");
                 return Err(Error(String::from("Done")));
             }
 
             let (read, addr) = match self.sock.recv(self.receive_buf) {
                 Ok(r) => r,
                 Err(Error(e)) => {
-                    if let Some(log) = logger {
-                        warn!(log, "recv failed";
-                              "err" => format!("{:#?}", e)
-                        );
-                    }
+                    warn!(err = %format!("{:#?}", e), "recv failed" );
                     continue;
                 }
             };

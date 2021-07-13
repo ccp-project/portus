@@ -1,9 +1,7 @@
-#[macro_use]
-extern crate slog;
-
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 use std::collections::HashMap;
+use tracing::info;
 
 mod libccp_integration;
 use crate::libccp_integration::IntegrationTest;
@@ -49,7 +47,6 @@ impl IntegrationTest for TestUpdateFields {
     fn check_test(
         &mut self,
         sc: &Scope,
-        _log: &slog::Logger,
         _t: std::time::Instant,
         _sock_id: u32,
         m: &Report,
@@ -79,7 +76,6 @@ impl IntegrationTest for TestUpdateFields {
 
 #[test]
 fn update() {
-    let log = libccp_integration::logger();
-    info!(log, "starting update test");
-    libccp_integration::run_test::<TestUpdateFields>(log, 1);
+    info!("starting update test");
+    libccp_integration::run_test::<TestUpdateFields>(1);
 }

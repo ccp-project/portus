@@ -1,13 +1,11 @@
 use anyhow::{bail, Error};
 use minion::Cancellable;
-use slog::Logger;
 use std::sync::Arc;
 
 use super::ACKED_PRIMITIVE;
 
 pub struct MockDatapath {
     pub sk: crossbeam::channel::Sender<Vec<u8>>,
-    pub logger: Logger,
 }
 
 impl libccp::DatapathOps for MockDatapath {
@@ -99,15 +97,11 @@ impl Cancellable for MockConnection {
 }
 
 pub fn start(
-    log: Logger,
     num_connections: usize,
     ipc_sender: crossbeam::channel::Sender<Vec<u8>>,
     ipc_receiver: crossbeam::channel::Receiver<Vec<u8>>,
 ) -> (minion::Handle<Error>, Vec<minion::Handle<Error>>) {
-    let dp = MockDatapath {
-        sk: ipc_sender,
-        logger: log.clone(),
-    };
+    let dp = MockDatapath { sk: ipc_sender };
 
     let dp = libccp::Datapath::init(dp).unwrap();
     let dp = Arc::new(dp);
