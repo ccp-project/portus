@@ -302,11 +302,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(
-    name = "ccp",
-    author = "",
-    raw(setting = "clap::AppSettings::DeriveDisplayOrder")
-)]
+#[structopt(name = "ccp", setting = clap::AppSettings::DeriveDisplayOrder)]
 /// Manage and run congestion control algorithms built on CCP
 struct Ccp {
     #[structopt(short = "d", long = "dir", parse(from_os_str))]
@@ -323,7 +319,7 @@ USAGE:
 
 #[derive(Debug, StructOpt)]
 enum Subcommand {
-    #[structopt(name = "get", author = "")]
+    #[structopt(name = "get")]
     /// Download and build a new algorithm
     Get {
         #[structopt(name = "url")]
@@ -340,16 +336,16 @@ enum Subcommand {
         /// Use a specific branch for this repository rather than master
         branch: Option<String>,
     },
-    #[structopt(name = "list", author = "")]
+    #[structopt(name = "list")]
     /// List the currently available algorithms
     List {},
-    #[structopt(name = "run", author = "", raw(help = "RUN_HELP"))]
+    #[structopt(name = "run", help = RUN_HELP)]
     /// Start a CCP algorithm
     Run {
         #[structopt(name = "algorithm")]
         alg: String,
     },
-    #[structopt(name = "makelib", author = "")]
+    #[structopt(name = "makelib")]
     /// Force-rebuild the ccp algorithms library
     Makelib {},
 }
@@ -508,8 +504,9 @@ fn main() {
                 .join("target")
                 .join("release")
                 .join("libstartccp.so");
-            let lib = libloading::Library::new(lib_path).expect("failed to load dynamic library");
             unsafe {
+                let lib =
+                    libloading::Library::new(lib_path).expect("failed to load dynamic library");
                 let spawn: libloading::Symbol<unsafe extern "C" fn(*const c_char) -> u32> = lib
                     .get(b"libstartccp_run_forever")
                     .expect("failed to get spawn function");
