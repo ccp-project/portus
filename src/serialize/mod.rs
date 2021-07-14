@@ -25,7 +25,7 @@
 //! In these cases, there is little deserialization overhead from the u32 and u64 parts of the message.
 
 use super::Result;
-use bytes::{ByteOrder, LittleEndian};
+use byteorder::{ByteOrder, LittleEndian};
 use std::io::prelude::*;
 use std::io::Cursor;
 use std::vec::Vec;
