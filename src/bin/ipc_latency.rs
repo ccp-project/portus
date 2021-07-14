@@ -1,20 +1,16 @@
-use std::thread;
-use std::vec::Vec;
-
-extern crate bytes;
-#[macro_use]
-extern crate clap;
-extern crate portus;
-extern crate time;
-
-use bytes::{ByteOrder, LittleEndian};
 use clap::Arg;
 use portus::ipc::{Backend, BackendSender, Blocking, Ipc, Nonblocking};
+use std::convert::TryInto;
 use std::sync::{atomic, Arc};
+use std::thread;
+use std::vec::Vec;
 use time::Duration;
 
+#[macro_use]
+extern crate clap;
+
 #[derive(Debug)]
-struct TimeMsg(time::Timespec);
+struct TimeMsg(time::OffsetDateTime);
 
 use std::io::prelude::*;
 impl portus::serialize::AsRawMsg for TimeMsg {
@@ -31,25 +27,22 @@ impl portus::serialize::AsRawMsg for TimeMsg {
     }
 
     fn get_bytes<W: Write>(&self, w: &mut W) -> portus::Result<()> {
-        let mut msg = [0u8; 12]; // one i64 and one i32
-        LittleEndian::write_i64(&mut msg[0..8], self.0.sec);
-        LittleEndian::write_i32(&mut msg[8..12], self.0.nsec);
+        let msg = self.0.unix_timestamp_nanos().to_le_bytes();
         w.write_all(&msg[..])?;
         Ok(())
     }
 
     fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
         let b = msg.get_bytes()?;
-        let sec = LittleEndian::read_i64(&b[0..8]);
-        let nsec = LittleEndian::read_i32(&b[8..12]);
-        Ok(TimeMsg(time::Timespec::new(sec, nsec)))
+        let ts = i128::from_le_bytes((&b[0..16]).try_into().unwrap());
+        Ok(TimeMsg(time::OffsetDateTime::from_unix_timestamp_nanos(ts)))
     }
 }
 
 #[derive(Debug)]
 struct NlTimeMsg {
-    kern_rt: time::Timespec,
-    kern_st: time::Timespec,
+    kern_rt: time::OffsetDateTime,
+    kern_st: time::OffsetDateTime,
 }
 impl portus::serialize::AsRawMsg for NlTimeMsg {
     fn get_hdr(&self) -> (u8, u32, u32) {
@@ -65,24 +58,20 @@ impl portus::serialize::AsRawMsg for NlTimeMsg {
     }
 
     fn get_bytes<W: Write>(&self, w: &mut W) -> portus::Result<()> {
-        let mut msg = [0u8; 24]; // one i64 and one i32
-        LittleEndian::write_i64(&mut msg[0..8], self.kern_rt.sec);
-        LittleEndian::write_i32(&mut msg[8..12], self.kern_rt.nsec);
-        LittleEndian::write_i64(&mut msg[12..20], self.kern_st.sec);
-        LittleEndian::write_i32(&mut msg[20..24], self.kern_st.nsec);
+        let mut msg = [0u8; 32]; // 2x i128
+        (&mut msg[0..16]).copy_from_slice(&self.kern_rt.unix_timestamp_nanos().to_le_bytes());
+        (&mut msg[16..]).copy_from_slice(&self.kern_st.unix_timestamp_nanos().to_le_bytes());
         w.write_all(&msg[..])?;
         Ok(())
     }
 
     fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
         let b = msg.get_bytes()?;
-        let up_sec = LittleEndian::read_i64(&b[0..8]);
-        let up_nsec = LittleEndian::read_i32(&b[8..12]);
-        let down_sec = LittleEndian::read_i64(&b[12..20]);
-        let down_nsec = LittleEndian::read_i32(&b[20..24]);
+        let rt_ts = i128::from_le_bytes((&b[0..16]).try_into().unwrap());
+        let st_ts = i128::from_le_bytes((&b[16..]).try_into().unwrap());
         Ok(NlTimeMsg {
-            kern_rt: time::Timespec::new(up_sec, up_nsec),
-            kern_st: time::Timespec::new(down_sec, down_nsec),
+            kern_rt: time::OffsetDateTime::from_unix_timestamp_nanos(rt_ts),
+            kern_st: time::OffsetDateTime::from_unix_timestamp_nanos(st_ts),
         })
     }
 }
@@ -92,12 +81,12 @@ use std::sync::mpsc;
 fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Duration> {
     (0..iter)
         .map(|_| {
-            let then = time::get_time();
+            let then = time::OffsetDateTime::now_utc();
             let msg = portus::serialize::serialize(&TimeMsg(then)).expect("serialize");
             b.send_msg(&msg[..]).expect("send ts");
             if let (portus::serialize::Msg::Other(raw), _addr) = l.next().expect("receive echo") {
                 let then = TimeMsg::from_raw_msg(raw).expect("get time from raw");
-                time::get_time() - then.0
+                time::OffsetDateTime::now_utc() - then.0
             } else {
                 panic!("wrong type");
             }
@@ -145,7 +134,7 @@ macro_rules! netlink_bench {
                 let sender = nl.sender(());
                 let res = (0..iter)
                     .map(|_| {
-                        let portus_send_time = time::get_time();
+                        let portus_send_time = time::OffsetDateTime::now_utc();
                         let msg = portus::serialize::serialize(&TimeMsg(portus_send_time))
                             .expect("serialize");
 
@@ -153,7 +142,7 @@ macro_rules! netlink_bench {
                         if let (portus::serialize::Msg::Other(raw), _addr) =
                             nl.next().expect("recv echo")
                         {
-                            let portus_rt = time::get_time();
+                            let portus_rt = time::OffsetDateTime::now_utc();
                             let kern_recv_msg =
                                 NlTimeMsg::from_raw_msg(raw).expect("get time from raw");
                             return NlDuration(
@@ -325,9 +314,9 @@ arg_enum! {
 fn nl_exp(trials: u32) {
     for t in netlink_nonblocking(trials).iter().map(|d| {
         (
-            d.0.num_nanoseconds().unwrap(),
-            d.1.num_nanoseconds().unwrap(),
-            d.2.num_nanoseconds().unwrap(),
+            d.0.whole_nanoseconds(),
+            d.1.whole_nanoseconds(),
+            d.2.whole_nanoseconds(),
         )
     }) {
         println!("nl nonblk {:?} {:?} {:?}", t.0, t.1, t.2);
@@ -335,9 +324,9 @@ fn nl_exp(trials: u32) {
 
     for t in netlink_blocking(trials).iter().map(|d| {
         (
-            d.0.num_nanoseconds().unwrap(),
-            d.1.num_nanoseconds().unwrap(),
-            d.2.num_nanoseconds().unwrap(),
+            d.0.whole_nanoseconds(),
+            d.1.whole_nanoseconds(),
+            d.2.whole_nanoseconds(),
         )
     }) {
         println!("nl blk {:?} {:?} {:?}", t.0, t.1, t.2);
@@ -382,15 +371,12 @@ fn main() {
     if imps.contains(&IpcType::Unix) {
         for t in unix_nonblocking(trials)
             .iter()
-            .map(|d| d.num_nanoseconds().unwrap())
+            .map(|d| d.whole_nanoseconds())
         {
             println!("unix nonblk {:?} 0 0", t);
         }
 
-        for t in unix_blocking(trials)
-            .iter()
-            .map(|d| d.num_nanoseconds().unwrap())
-        {
+        for t in unix_blocking(trials).iter().map(|d| d.whole_nanoseconds()) {
             println!("unix blk {:?} 0 0", t);
         }
     }
@@ -400,17 +386,11 @@ fn main() {
     }
 
     if imps.contains(&IpcType::Kp) && cfg!(target_os = "linux") {
-        for t in kp_nonblocking(trials)
-            .iter()
-            .map(|d| d.num_nanoseconds().unwrap())
-        {
+        for t in kp_nonblocking(trials).iter().map(|d| d.whole_nanoseconds()) {
             println!("kp nonblk {:?} 0 0", t);
         }
 
-        for t in kp_blocking(trials)
-            .iter()
-            .map(|d| d.num_nanoseconds().unwrap())
-        {
+        for t in kp_blocking(trials).iter().map(|d| d.whole_nanoseconds()) {
             println!("kp blk {:?} 0 0", t);
         }
     }
