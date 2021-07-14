@@ -41,8 +41,9 @@ features = ["full", "visit", "fold", "extra-traits","parsing"]
 
 [dev-dependencies]
 anyhow = "1"
-libccp = "1"
+libccp = "1.1"
 minion = "0.1"
+tracing-subscriber = "0.2"
 
 [[bin]]
 name = "ccp"

@@ -1,8 +1,8 @@
+use super::ACKED_PRIMITIVE;
 use anyhow::{bail, Error};
 use minion::Cancellable;
 use std::sync::Arc;
-
-use super::ACKED_PRIMITIVE;
+use tracing::{debug, info};
 
 pub struct MockDatapath {
     pub sk: crossbeam::channel::Sender<Vec<u8>>,
@@ -40,10 +40,12 @@ pub struct MockConnectionState {
 
 impl libccp::CongestionOps for MockConnectionState {
     fn set_cwnd(&mut self, cwnd: u32) {
+        debug!(?cwnd, "set mock cwnd");
         self.mock_cwnd = cwnd;
     }
 
     fn set_rate_abs(&mut self, rate: u32) {
+        debug!(?rate, "set mock rate");
         self.mock_rate = rate;
     }
 }
@@ -101,9 +103,12 @@ pub fn start(
     ipc_sender: crossbeam::channel::Sender<Vec<u8>>,
     ipc_receiver: crossbeam::channel::Receiver<Vec<u8>>,
 ) -> (minion::Handle<Error>, Vec<minion::Handle<Error>>) {
+    info!("starting mock datapath");
     let dp = MockDatapath { sk: ipc_sender };
-
-    let dp = libccp::Datapath::init(dp).unwrap();
+    let dp = libccp::DatapathBuilder::default()
+        .with_ops(dp)
+        .init()
+        .unwrap();
     let dp = Arc::new(dp);
 
     let conns: Vec<MockConnection> = (0..num_connections)

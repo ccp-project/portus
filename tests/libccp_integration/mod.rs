@@ -1,10 +1,10 @@
-use std::marker::PhantomData;
-use std::sync::mpsc;
-
-use portus::ipc::Ipc;
+use portus::ipc::{chan::Socket, BackendBuilder, Blocking, Ipc};
 use portus::lang::Scope;
 use portus::{CongAlg, Datapath, DatapathInfo, DatapathTrait, Flow, Report};
 use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::sync::mpsc;
+use std::thread;
 
 pub const ACKED_PRIMITIVE: u32 = 5; // libccp uses this same value for acked_bytes
 
@@ -62,10 +62,6 @@ impl<I: Ipc, T: IntegrationTest> Flow for TestBase<I, T> {
     }
 }
 
-use portus::ipc::chan::Socket;
-use portus::ipc::{BackendBuilder, Blocking};
-use std::thread;
-
 // Spawn userspace ccp
 fn start_ccp<T: IntegrationTest + 'static + Send>(
     sk: Socket<Blocking>,
@@ -80,6 +76,8 @@ fn start_ccp<T: IntegrationTest + 'static + Send>(
 
 // Runs a specific intergration test
 pub fn run_test<T: IntegrationTest + 'static + Send>(num_flows: usize) {
+    tracing_subscriber::fmt::try_init().unwrap_or_else(|_| ());
+
     let (tx, rx) = std::sync::mpsc::channel();
 
     // Channel for IPC
