@@ -32,7 +32,7 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 ///
 /// Using the example algorithm from above:
 ///
-/// ```
+/// ```rust
 /// use std::collections::HashMap;
 /// use portus::{CongAlg, Flow, Datapath, DatapathInfo, DatapathTrait, Report};
 /// use portus::ipc::Ipc;
