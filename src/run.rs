@@ -253,6 +253,8 @@ use sealed::*;
 /// use portus::ipc::Ipc;
 /// use portus::lang::Scope;
 /// use portus::lang::Bin;
+/// use portus::RunBuilder;
+/// use portus::ipc::{BackendBuilder};
 ///
 /// const PROG: &str = "
 ///       (def (Report
@@ -266,10 +268,8 @@ use sealed::*;
 ///           (reset)
 ///       )";
 ///
-///
 /// #[derive(Clone, Default)]
 /// struct AlgOne(Scope);
-///
 /// impl<I: Ipc> CongAlg<I> for AlgOne {
 ///     type Flow = Self;
 ///
@@ -286,6 +286,7 @@ use sealed::*;
 ///         AlgOne(sc)
 ///     }
 /// }
+///
 /// impl Flow for AlgOne {
 ///     fn on_report(&mut self, sock_id: u32, m: Report) {
 ///         println!("alg1 minrtt: {:?}", m.get_field("Report.minrtt", &self.0).unwrap());
@@ -294,7 +295,6 @@ use sealed::*;
 ///
 /// #[derive(Clone, Default)]
 /// struct AlgTwo(Scope);
-///
 /// impl<I: Ipc> CongAlg<I> for AlgTwo {
 ///     type Flow = Self;
 ///
@@ -311,22 +311,23 @@ use sealed::*;
 ///         AlgTwo(sc)
 ///     }
 /// }
+///
 /// impl Flow for AlgTwo {
 ///     fn on_report(&mut self, sock_id: u32, m: Report) {
 ///         println!("alg2 minrtt: {:?}", m.get_field("Report.minrtt", &self.0).unwrap());
 ///     }
 /// }
 ///
-/// use portus::RunBuilder;
-/// use portus::ipc::{BackendBuilder};
-/// let b = portus::ipc::unix::Socket::<portus::ipc::Blocking>::new("portus").map(|sk| BackendBuilder { sock: sk }).expect("ipc initialization");
-/// let rb = RunBuilder::new(b))
-///   .default_alg(AlgOne::default())
-///   .additional_alg(AlgTwo::default())
-///   .additional_alg::<AlgOne, _>(None);
-///   // .spawn_thread() to spawn runtime in a thread
-///   // .with_stop_handle() to pass in an Arc<AtomicBool> that will stop the runtime
-/// rb.run();
+/// fn main() {
+///   let b = portus::ipc::unix::Socket::<portus::ipc::Blocking>::new("portus").map(|sk| BackendBuilder { sock: sk }).expect("ipc initialization");
+///   let rb = RunBuilder::new(b)
+///     .default_alg(AlgOne::default())
+///     .additional_alg(AlgTwo::default())
+///     .additional_alg::<AlgOne, _>(None);
+///     // .spawn_thread() to spawn runtime in a thread
+///     // .with_stop_handle() to pass in an Arc<AtomicBool> that will stop the runtime
+///   rb.run();
+/// }
 /// ```
 pub struct RunBuilder<I: Ipc, U, Spawnness> {
     backend_builder: BackendBuilder<I>,
