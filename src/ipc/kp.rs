@@ -42,7 +42,7 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)> {
-        let pollfd = nix::poll::PollFd::new(self.fd.as_raw_fd(), nix::poll::POLLIN);
+        let pollfd = nix::poll::PollFd::new(self.fd.as_raw_fd(), nix::poll::PollFlags::POLLIN);
         let ok = nix::poll::poll(&mut [pollfd], 1000)?;
         if ok < 0 {
             return Err(Error::from(std::io::Error::from_raw_os_error(ok)));

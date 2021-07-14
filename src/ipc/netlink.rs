@@ -1,12 +1,8 @@
-use std::marker::PhantomData;
-
 use super::Error;
 use super::Result;
-
-extern crate libc;
 use libc::c_int;
-extern crate nix;
 use nix::sys::socket;
+use std::marker::PhantomData;
 
 pub struct Socket<T>(c_int, PhantomData<T>);
 
@@ -20,7 +16,7 @@ impl<T> Socket<T> {
             nix::sys::socket::AddressFamily::Netlink,
             nix::sys::socket::SockType::Raw,
             nix::sys::socket::SockFlag::empty(),
-            libc::NETLINK_USERSOCK,
+            nix::sys::socket::SockProtocol::NetlinkUserSock,
         ) {
             fd
         } else {
@@ -29,7 +25,7 @@ impl<T> Socket<T> {
                 nix::sys::socket::SockType::Raw,
                 nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_RECV)
                     | nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_SEND),
-                libc::NETLINK_USERSOCK,
+                nix::sys::socket::SockProtocol::NetlinkUserSock,
             )?
         };
 
@@ -83,7 +79,7 @@ impl<T> Socket<T> {
 
     fn __recv(&self, buf: &mut [u8], flags: nix::sys::socket::MsgFlags) -> Result<usize> {
         let mut nl_buf = [0u8; 1024];
-        let end = socket::recvmsg::<()>(
+        let end = socket::recvmsg(
             self.0,
             &[nix::sys::uio::IoVec::from_mut_slice(&mut nl_buf[..])],
             None,
@@ -149,7 +145,8 @@ impl super::Ipc for Socket<Blocking> {
     }
 
     fn recv(&self, buf: &mut [u8]) -> Result<(usize, Self::Addr)> {
-        self.__recv(buf, nix::sys::socket::MsgFlags::empty()).map(|s| (s,()))
+        self.__recv(buf, nix::sys::socket::MsgFlags::empty())
+            .map(|s| (s, ()))
     }
 
     fn send(&self, buf: &[u8], _to: &Self::Addr) -> Result<()> {
@@ -170,7 +167,8 @@ impl super::Ipc for Socket<Nonblocking> {
     }
 
     fn recv(&self, buf: &mut [u8]) -> Result<(usize, Self::Addr)> {
-        self.__recv(buf, nix::sys::socket::MSG_DONTWAIT).map(|s| (s,()))
+        self.__recv(buf, nix::sys::socket::MsgFlags::MSG_DONTWAIT)
+            .map(|s| (s, ()))
     }
 
     fn send(&self, buf: &[u8], _to: &Self::Addr) -> Result<()> {
