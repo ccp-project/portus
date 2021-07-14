@@ -5,7 +5,7 @@ use super::Error;
 use super::Result;
 use std::rc::{Rc, Weak};
 use std::sync::{atomic, Arc};
-use tracing::{info, warn};
+use tracing::{debug, info};
 
 /// Thread-channel implementation
 pub mod chan;
@@ -155,7 +155,7 @@ impl<'a, T: Ipc> Backend<'a, T> {
             let (read, addr) = match self.sock.recv(self.receive_buf) {
                 Ok(r) => r,
                 Err(Error(e)) => {
-                    warn!(err = %format!("{:#?}", e), "recv failed" );
+                    debug!(err = %format!("{:#?}", e), "recv failed" );
                     continue;
                 }
             };
