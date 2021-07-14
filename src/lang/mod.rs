@@ -138,6 +138,7 @@ impl<I, E> From<nom::Context<I, E>> for Error {
     fn from(e: nom::Context<I, E>) -> Error {
         match e {
             nom::Context::Code(_, _) => Error(String::from(e.into_error_kind().description())),
+            #[allow(unreachable_patterns)]
             #[cfg(feature = "lang-verbose-errors")]
             nom::Context::List(ks) => Error(String::from(
                 ks.into_iter()
@@ -145,6 +146,7 @@ impl<I, E> From<nom::Context<I, E>> for Error {
                     .collect::<Vec<String>>()
                     .join(" -> "),
             )),
+            #[allow(unreachable_patterns)]
             #[cfg(not(feature = "lang-verbose-errors"))]
             _ => Error(String::from(e.into_error_kind().description())),
         }
