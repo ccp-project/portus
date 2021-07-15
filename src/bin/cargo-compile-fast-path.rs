@@ -1,17 +1,10 @@
-extern crate portus;
-extern crate quote;
-extern crate syn;
-extern crate walkdir;
-
+use portus::lang;
+use quote::ToTokens;
 use std::env::args;
 use std::fs::File;
 use std::io::Read;
-
-use portus::lang;
-use quote::ToTokens;
-use syn::punctuated::{Pair::End, Pair::Punctuated};
 use syn::visit::Visit;
-use syn::{Expr, Expr::Lit, Expr::MethodCall, Item::Impl, Lit::ByteStr, Lit::Str};
+use syn::{Expr, Expr::MethodCall, Item::Impl, Lit::ByteStr, Lit::Str};
 use walkdir::{DirEntry, WalkDir};
 
 const ESC: &str = "\u{1B}";
@@ -62,12 +55,14 @@ impl<'v> Visit<'v> for FastPathProgramFinder {
             let method_name = emc.method.to_string();
             if method_name == "install" {
                 match emc.args.first() {
-                    Some(Punctuated(&Lit(ref l), _)) | Some(End(&Lit(ref l))) => {
-                        let compile_result = match l.lit {
-                                ByteStr(ref ls) => { lang::compile(&ls.value(), &[]) }
-                                Str(ref ls)     => { lang::compile(ls.value().as_bytes(), &[]) }
-                                _           => { panic!("Non-string passed to install(). This shouldn't have compiled in the first place...") }
-                            };
+                    Some(Expr::Lit(syn::ExprLit { ref lit, .. })) => {
+                        let compile_result = match lit {
+                            ByteStr(ref ls) => lang::compile(&ls.value(), &[]),
+                            Str(ref ls) => lang::compile(ls.value().as_bytes(), &[]),
+                            _ => {
+                                panic!("Non-string passed to install(). This shouldn't have compiled in the first place...")
+                            }
+                        };
                         self.total += 1;
                         match compile_result {
                             Ok(_) => {}
@@ -76,7 +71,7 @@ impl<'v> Visit<'v> for FastPathProgramFinder {
                                 eprintln!("{}{}", bold_red!("error"), bold!(format!(": {:?}", e)));
                                 eprintln!("{} {}", bold_blue!("-->"), self.filename);
                                 eprintln!("{} {}", bold_blue!("-->"), self.impl_str);
-                                let prog_src = l.into_token_stream().to_string();
+                                let prog_src = lit.into_token_stream().to_string();
                                 eprintln!(
                                     "{}\n\n",
                                     prog_src
@@ -93,8 +88,7 @@ impl<'v> Visit<'v> for FastPathProgramFinder {
                             }
                         }
                     }
-                    Some(Punctuated(&MethodCall(ref mcmc), _))
-                    | Some(End(&MethodCall(ref mcmc))) => {
+                    Some(Expr::MethodCall(ref mcmc)) => {
                         self.visit_expr(&mcmc.receiver);
                     }
                     _ => {}
