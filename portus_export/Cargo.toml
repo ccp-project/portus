@@ -1,6 +1,6 @@
 [package]
 name = "portus_export"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Frank Cangialosi <frankc@csail.mit.edu>", "Akshay Narayan <akshayn@csail.mit.edu>"]
 description = "Procedural macro for use with portus, CCP congestion control algorithms"
 license = "ISC"
@@ -10,8 +10,5 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-quote = "0.6"
-
-[dependencies.syn]
-version = "0.15"
-features = ["full"]
+quote = "1"
+syn = { version = "1", features = ["full"] }
