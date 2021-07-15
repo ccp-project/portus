@@ -1,5 +1,5 @@
 import sys
-import portus
+import pyportus as portus
 
 class ConstFlow():
     INIT_RATE = 1000000

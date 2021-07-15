@@ -1,5 +1,5 @@
 import sys
-import portus
+import pyportus as portus
 
 class AIMDFlow():
     INIT_CWND = 10
@@ -16,19 +16,20 @@ class AIMDFlow():
             self.cwnd /= 2
         else:
             self.cwnd += (self.datapath_info.mss * (r.acked / self.cwnd))
+
+        print(f"acked {r.acked} rtt {r.rtt} inflight {r.inflight}")
         self.cwnd = max(self.cwnd, self.init_cwnd)
         self.datapath.update_field("Cwnd", int(self.cwnd))
 
 
 class AIMD(portus.AlgBase):
-
     def datapath_programs(self):
         return {
                 "default" : """\
                 (def (Report
-                    (volatile acked 0) 
-                    (volatile sacked 0) 
-                    (volatile loss 0) 
+                    (volatile acked 0)
+                    (volatile sacked 0)
+                    (volatile loss 0)
                     (volatile timeout false)
                     (volatile rtt 0)
                     (volatile inflight 0)
@@ -58,4 +59,4 @@ class AIMD(portus.AlgBase):
 
 alg = AIMD()
 
-portus.start("netlink", alg, debug=True)
+portus.start("netlink", alg)
