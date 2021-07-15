@@ -9,7 +9,7 @@ repository = "https://github.com/ccp-project/portus"
 edition = "2018"
 
 [dependencies]
-portus = { path = ".." }
+portus = "0.6"
 simple-signal = "1"
 pyo3 = { version = "0.14", features = ["extension-module", "macros"], default-features = false }
 tracing = "0.1"
