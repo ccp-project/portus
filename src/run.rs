@@ -568,13 +568,20 @@ where
                 }
             }
             Msg::Cr(c) => {
-                let flowmap = match dp_to_flowmap.get_mut(&recv_addr) {
-                    Some(fm) => fm,
-                    None => {
-                        debug!(addr = %format!("{:#?}", recv_addr), "received create from unknown datapath, ignoring");
-                        continue;
+                let mut need_install = false;
+                let flowmap = dp_to_flowmap.entry(recv_addr.clone()).or_insert_with_key(|recv_addr| {
+                    debug!(addr = %format!("{:#?}", recv_addr), "received create from unknown datapath, initializing");
+                    need_install = true;
+                    HashMap::<u32, <<&'_ U as Pick<'_, I>>::Picked as CongAlg<I>>::Flow>::default()
+                });
+
+                if need_install {
+                    debug!(addr = %format!("{:#?}", recv_addr), "installing programs");
+                    let backend = b.sender(recv_addr.clone());
+                    for buf in &install_msgs {
+                        backend.send_msg(&buf[..])?;
                     }
-                };
+                }
 
                 if flowmap.remove(&c.sid).is_some() {
                     debug!(sid = ?c.sid, "re-creating already created flow");
@@ -615,7 +622,7 @@ where
                 let flowmap = match dp_to_flowmap.get_mut(&recv_addr) {
                     Some(fm) => fm,
                     None => {
-                        info!(addr = %format!("{:#?}", recv_addr), "received create from unknown datapath, ignoring");
+                        info!(addr = %format!("{:#?}", recv_addr), "received measurement from unknown datapath, ignoring");
                         continue;
                     }
                 };
