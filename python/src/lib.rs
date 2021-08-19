@@ -199,13 +199,13 @@ impl PyDatapath {
 #[pymodule]
 fn pyportus(_py: Python, m: &PyModule) -> PyResult<()> {
     #[pyfn(m)]
-    fn start_inner(py: Python, ipc_str: String, alg: PyObject) -> PyResult<i32> {
+    fn start_inner(py: Python, ipc_str: String, alg: PyObject, identifier: String) -> PyResult<i32> {
         simple_signal::set_handler(&[Signal::Int, Signal::Term], move |_signals| {
             tracing::info!("exiting");
             ::std::process::exit(1);
         });
 
-        py_start_inner(py, ipc_str, alg)
+        py_start_inner(py, ipc_str, alg, identifier)
     }
 
     #[pyfn(m)]
@@ -219,7 +219,7 @@ fn pyportus(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
-fn py_start_inner<'p>(py: Python<'p>, ipc: String, alg: PyObject) -> PyResult<i32> {
+fn py_start_inner<'p>(py: Python<'p>, ipc: String, alg: PyObject, identifier: String) -> PyResult<i32> {
     // Check args
     if let Err(e) = portus::algs::ipc_valid(ipc.clone()) {
         raise!(PyValueError, e);
@@ -236,7 +236,7 @@ fn py_start_inner<'p>(py: Python<'p>, ipc: String, alg: PyObject) -> PyResult<i3
     match ipc.as_str() {
         "unix" => {
             use ipc::unix::Socket;
-            let b = Socket::<ipc::Blocking>::new("portus")
+            let b = Socket::<ipc::Blocking>::new(identifier.as_str())
                 .map(|sk| BackendBuilder { sock: sk })
                 .expect("create unix socket");
             portus::RunBuilder::new(b).default_alg(py_cong_alg).run()

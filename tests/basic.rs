@@ -58,6 +58,6 @@ impl IntegrationTest for TestBasicSerialize {
 
 #[test]
 fn basic() {
-    info!("starting basic test");
+    info!("starting basic test 233");
     libccp_integration::run_test::<TestBasicSerialize>(1);
 }

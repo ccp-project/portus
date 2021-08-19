@@ -31,13 +31,16 @@ class AlgBase(object):
                         ))
             return True
 
-def start(ipc, alg):
+'''
+@identifier: ipc = "unix" only. It will be used to create unix socket to allow multi CCP run together without interference with each other, default is "portus"
+'''
+def start(ipc, alg, identifier="portus"):
     cls = alg.__class__
     if not issubclass(cls, object):
         raise Exception(cls.__name__ + " must be a subclass of object")
     if issubclass(cls, AlgBase):
         AlgBase.assert_implements_interface(cls)
         checker._check_datapath_programs(cls)
-        return start_inner(ipc, alg)
+        return start_inner(ipc, alg, identifier)
     else:
         raise Exception(cls.__name__ + " must be a subclass of portus.AlgBase")
