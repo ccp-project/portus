@@ -5,41 +5,21 @@ This module provides a python interface to the Portus CCP implementation.
 
 ## Setup
 
-To build and use the python bindings, you also need setuptools_rust
+These python bindings are available [on pyPI](https://pypi.org/project/pyportus/), `pip install pyportus`. 
 
-```bash
-sudo pip install setuptools_rust
-```
+To build manually, this project uses [maturin](https://github.com/PyO3/maturin).
 
-You need to tell it to use the nightly version of rust since some features
-are still experimental:
-* Check where the package was installed: `pip show setuptools_rust`
-* Edit `packages/setuptools_rust/build.py`
-* Search for the line containing "rustc" (should be ~102), and change the args to be `["cargo", "+nightly", "rustc", ...`
+To test:
+1. make a virtual environment
+2. `maturin develop`
 
-Now, rather than running make, you can build with
+To install:
+1. `maturin build`
+2. `pip install` the resulting .whl
 
-```bash
-python setup.py develop
-```
-
-Depending on your python environment setup, you may need to run this with `sudo`
-(and ensure that your `PATH` variable is preserved):
-
-```bash
-sudo env PATH=$PATH python setup.py develop
-```
-
-Now you should be able to import the package like so:
-
-```python
-import portus
-```
-
-
+To then run/test, `cd examples && ./<venv>/python3 aimd.py` (may need to run as root)
 
 ## Writing Algorithms
-
 
 ### Overview
 
