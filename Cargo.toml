@@ -1,6 +1,6 @@
 [package]
 name = "portus"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["Akshay Narayan <akshayn@csail.mit.edu>", "Frank Cangialosi <frankc@csail.mit.edu>", "Deepti Raghavan <deeptir@cs.stanford.edu>"]
 description = "A Congestion Control Plane"
 homepage = "https://ccp-project.github.io"
@@ -8,7 +8,7 @@ documentation = "https://docs.rs/portus"
 repository = "https://github.com/ccp-project/portus"
 readme = "./README.md"
 license = "ISC"
-edition = "2018"
+edition = "2021"
 
 [features]
 default = []
@@ -18,10 +18,10 @@ ipc-latency = ["time"]
 
 [dependencies]
 byteorder      =  "1"
-clap           =  "2.32"
+clap           =  "3"
 crossbeam      =  "0.8"
 libc           =  "0.2"
-nix            =  "0.22"
+nix            =  "0.23"
 nom            =  "4"
 portus_export  =  "0.2"
 tracing        =  "0.1"
@@ -41,7 +41,7 @@ time           =  { version = "0.2", optional = true }
 anyhow             = "1"
 libccp             = "1.1"
 minion             = "0.1"
-tracing-subscriber = "0.2"
+tracing-subscriber = "0.3"
 
 [[bin]]
 name = "ipc_latency"

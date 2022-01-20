@@ -313,11 +313,11 @@ pub trait CongAlg<I: Ipc> {
 /// Tell `portus` how to construct instances of your `impl` [`portus::CongAlg`].
 ///
 /// You should also annotate your struct with [`portus_export::register_ccp_alg`]()).
-pub trait CongAlgBuilder<'a, 'b> {
+pub trait CongAlgBuilder<'a> {
     /// This function should return a new
     /// [`clap::App`](https://docs.rs/clap/2.32.0/clap/struct.App.html) that describes the
     /// arguments this algorithm needs to create an instance of itself.
-    fn args() -> clap::App<'a, 'b>;
+    fn args() -> clap::App<'a>;
 
     /// This function takes as input the set of parsed arguments and uses them to parameterize a
     /// new instance of this congestion control algorithm. The matches will be derived from
