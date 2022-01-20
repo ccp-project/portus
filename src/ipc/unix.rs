@@ -2,7 +2,7 @@ use super::{Error, Result};
 use std::marker::PhantomData;
 use std::os::unix::{io::AsRawFd, net::UnixDatagram};
 use std::path::PathBuf;
-use tracing::trace;
+use tracing::{debug, trace};
 
 pub struct Socket<T> {
     sk: UnixDatagram,
@@ -30,6 +30,7 @@ impl<T> Socket<T> {
             None => Ok(()),
         }?;
 
+        debug!(?bind_to_addr, "binding");
         let sock = UnixDatagram::bind(bind_to_addr)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
 
@@ -66,13 +67,6 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     fn send(&self, msg: &[u8], to: &Self::Addr) -> Result<()> {
-        let to = format!(
-            "/tmp/ccp/{}",
-            to.as_path()
-                .as_os_str()
-                .to_str()
-                .ok_or_else(|| Error("invalid addrress".to_owned()))?
-        );
         self.sk.send_to(msg, to).map(|_| ()).map_err(Error::from)
     }
 

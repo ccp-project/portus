@@ -55,7 +55,7 @@ fn test_unix() {
         let b2 = super::Backend::new(sk2, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..]);
         let test_msg = TestMsg(String::from("hello, world"));
         let test_msg_buf = serialize::serialize(&test_msg).expect("serialize test msg");
-        b2.sender(std::path::PathBuf::from("portus-test-unix-2"))
+        b2.sender(std::path::PathBuf::from("/tmp/ccp/portus-test-unix-2"))
             .send_msg(&test_msg_buf[..])
             .expect("send message");
     });
