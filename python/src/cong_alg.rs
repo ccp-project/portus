@@ -84,13 +84,13 @@ impl<'py, T: Ipc> CongAlg<T> for PyCongAlg<'py> {
                     }
                 };
                 dict.iter().map(|(key, value)| {
-                    let program_name = match PyString::try_from(key) {
+                    let program_name = match <PyString as PyTryFrom<'_>>::try_from(key) {
                         Ok(pn) => pn.to_string_lossy().into_owned(),
                         Err(_) => {
                             panic!("datapath_programs() must return a list of tuples of (2) *strings*.\ngot a list of tuples, but the first element was not a string.")
                         }
                     };
-                    let program_string = match PyString::try_from(value) {
+                    let program_string = match <PyString as PyTryFrom<'_>>::try_from(value) {
                         Ok(ps) => ps.to_string_lossy().into_owned(),
                         Err(_) => {
                             panic!("datapath_programs() must return a list of tuples of (2) *strings*.\ngot a list of tuples, but the second element was not a string.")

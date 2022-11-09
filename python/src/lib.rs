@@ -13,10 +13,7 @@ use std::rc::{Rc, Weak};
 #[macro_export]
 macro_rules! raise {
     ($errtype:ident, $msg:expr) => {
-        return Err(PyErr::new::<exceptions::$errtype, _>($msg));
-    };
-    ($errtype:ident, $msg:expr, false) => {
-        Err(PyErr::new::<exceptions::$errtype, _>($msg));
+        Err(PyErr::new::<exceptions::$errtype, _>($msg))
     };
 }
 
@@ -82,7 +79,7 @@ impl<'p> pyo3::class::PyObjectProtocol<'p> for PyReport {
         let sc = match self.sc.upgrade() {
             Some(sc) => sc,
             None => {
-                raise!(
+                return raise!(
                     PyException,
                     format!(
                         "Failed to get {}: no datapath program installed",
@@ -123,7 +120,7 @@ impl PyDatapath {
         let sc = match self.sc {
             Some(ref s) => s,
             None => {
-                raise!(
+                return raise!(
                     PyReferenceError,
                     "Cannot update field: no datapath program installed yet!"
                 );
@@ -140,7 +137,7 @@ impl PyDatapath {
         let sc = match self.sc {
             Some(ref s) => s,
             None => {
-                raise!(
+                return raise!(
                     PyReferenceError,
                     "Cannot update field: no datapath program installed yet!"
                 );
@@ -222,7 +219,7 @@ fn pyportus(_py: Python, m: &PyModule) -> PyResult<()> {
 fn py_start_inner<'p>(py: Python<'p>, ipc: String, alg: PyObject) -> PyResult<i32> {
     // Check args
     if let Err(e) = portus::algs::ipc_valid(ipc.clone()) {
-        raise!(PyValueError, e);
+        return raise!(PyValueError, e);
     };
 
     tracing_subscriber::fmt::init();
@@ -251,7 +248,7 @@ fn py_start_inner<'p>(py: Python<'p>, ipc: String, alg: PyObject) -> PyResult<i3
         }
         _ => unreachable!(),
     }
-    .or_else(|e| raise!(PyException, format!("{:?}", e), false))?;
+    .or_else(|e| raise!(PyException, format!("{:?}", e)))?;
     Ok(0)
 }
 

@@ -6,7 +6,7 @@ description = "A Congestion Control Plane"
 homepage = "https://ccp-project.github.io"
 license = "ISC"
 repository = "https://github.com/ccp-project/portus"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 portus = { path = ".." }
