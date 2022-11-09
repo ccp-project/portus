@@ -6,7 +6,7 @@ use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 use pyo3::prelude::*;
 use pyo3::types::*;
-use pyo3::{exceptions, ToBorrowedObject};
+use pyo3::{exceptions, ToPyObject};
 use simple_signal::Signal;
 use std::rc::{Rc, Weak};
 
@@ -69,9 +69,10 @@ struct PyReport {
     sc: Weak<Scope>,
 }
 
-#[pyproto]
-impl<'p> pyo3::class::PyObjectProtocol<'p> for PyReport {
-    fn __getattr__(&'p self, name: String) -> PyResult<u64> {
+#[pymethods]
+impl PyReport {
+    #[getter]
+    fn __getattr__(&self, name: String) -> PyResult<u64> {
         let field_name = match name.as_ref() {
             "Cwnd" | "Rate" => name.clone(),
             _ => format!("Report.{}", name),
@@ -294,18 +295,20 @@ fn _py_new_instance(
 
 pub fn py_setattr<N, V>(o: &PyObject, py: Python, attr_name: N, val: V) -> PyResult<()>
 where
-    N: ToBorrowedObject,
-    V: ToBorrowedObject,
+    N: ToPyObject,
+    V: ToPyObject,
 {
     use pyo3::AsPyPointer;
-    attr_name.with_borrowed_ptr(py, move |attr_name| {
-        val.with_borrowed_ptr(py, |val| unsafe {
-            let ret = pyo3::ffi::PyObject_SetAttr(o.as_ptr(), attr_name, val);
-            if ret != -1 {
-                Ok(())
-            } else {
-                Err(PyErr::fetch(py))
-            }
-        })
-    })
+    unsafe {
+        let ret = pyo3::ffi::PyObject_SetAttr(
+            o.as_ptr(),
+            attr_name.to_object(py).as_ptr(),
+            val.to_object(py).as_ptr(),
+        );
+        if ret != -1 {
+            Ok(())
+        } else {
+            Err(PyErr::fetch(py))
+        }
+    }
 }
