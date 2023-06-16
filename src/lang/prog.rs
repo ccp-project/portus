@@ -1,9 +1,13 @@
-use nom::types::CompleteByteSlice;
-use nom::*;
-
 use super::ast::{atom, comment, expr, exprs, name, Expr};
 use super::datapath::{check_atom_type, Scope, Type};
 use super::{Error, Result};
+use nom::multi::{many0, many1};
+use nom::{
+    bytes::complete::tag,
+    character::complete::multispace0,
+    combinator::{map, map_res, opt},
+    sequence::{delimited, tuple},
+};
 
 /// An `Event` is a condition expression and a sequence of execution expressions.
 /// If the condition expression evaluates to `true`, the execution expressions are
@@ -26,95 +30,120 @@ pub struct Prog(pub Vec<Event>);
 
 // Declare a state variable and provide an initial value
 // Optionally declare the variable "volatile", meaning it gets reset on "(report)"
-named_complete!(
-    decl<(bool, Type, Type)>,
-    ws!(delimited!(
-        tag!("("),
-        tuple!(
-            map!(opt!(tag!("volatile")), |v: Option<CompleteByteSlice>| v
-                .is_some()),
-            map!(name, Type::Name),
-            map_res!(atom, |a: Result<Expr>| a.and_then(|i| check_atom_type(&i)))
+pub fn decl(input: &str) -> nom::IResult<&str, (bool, Type, Type)> {
+    delimited(
+        multispace0,
+        delimited(
+            tag("("),
+            delimited(
+                multispace0,
+                map(
+                    tuple((
+                        map(
+                            opt(delimited(multispace0, tag("volatile"), multispace0)),
+                            |v: Option<_>| v.is_some(),
+                        ),
+                        map(name, Type::Name),
+                        multispace0,
+                        map_res(atom, |expr| check_atom_type(&expr)),
+                    )),
+                    |(a, b, _, d)| (a, b, d),
+                ),
+                multispace0,
+            ),
+            tag(")"),
         ),
-        tag!(")")
-    ))
-);
-named_complete!(
-    report_struct<Vec<(bool, Type, Type)>>,
-    ws!(delimited!(
-        tag!("("),
-        do_parse!(tag!("Report") >> d: many1!(decl) >> (d)),
-        tag!(")")
-    ))
-);
+        multispace0,
+    )(input)
+}
+
+pub fn report_struct(input: &str) -> nom::IResult<&str, Vec<(bool, Type, Type)>> {
+    delimited(
+        multispace0,
+        delimited(
+            tag("("),
+            delimited(
+                multispace0,
+                map(tuple((tag("Report"), many1(decl))), |(_, x)| x),
+                multispace0,
+            ),
+            tag(")"),
+        ),
+        multispace0,
+    )(input)
+}
 
 // a Prog has special syntax *at the beginning* to declare variables.
 // (def (decl) ...)
-named_complete!(
-    defs<Vec<(bool, Type, Type)>>,
-    ws!(delimited!(
-        tag!("("),
-        do_parse!(
-            tag!("def")
-                >> defs1: many0!(decl)
-                >> reports: opt!(report_struct)
-                >> defs2: many0!(decl)
-                >> (reports
-                    .into_iter()
-                    .flat_map(std::iter::IntoIterator::into_iter)
-                    .filter_map(|(is_volatile, name, init_val)| match name {
-                        Type::Name(name) => Some(Type::Name(format!("Report.{}", name))),
-                        _ => None,
-                    }
-                    .map(|full_name| match init_val {
-                        x @ Type::Num(_) | x @ Type::Bool(_) => (is_volatile, full_name, x),
-                        _ => (is_volatile, full_name, Type::None),
-                    }))
-                    .chain(
-                        defs1
-                            .into_iter()
-                            .chain(defs2)
-                            .map(|(is_volatile, name, init_val)| match init_val {
+pub fn defs(input: &str) -> nom::IResult<&str, Vec<(bool, Type, Type)>> {
+    delimited(
+        multispace0,
+        delimited(
+            tag("("),
+            map(
+                tuple((tag("def"), many0(decl), opt(report_struct), many0(decl))),
+                |(_, defs1, reports, defs2)| {
+                    reports
+                        .into_iter()
+                        .flat_map(std::iter::IntoIterator::into_iter)
+                        .filter_map(|(is_volatile, name, init_val)| {
+                            match name {
+                                Type::Name(name) => Some(Type::Name(format!("Report.{}", name))),
+                                _ => None,
+                            }
+                            .map(|full_name| match init_val {
+                                x @ Type::Num(_) | x @ Type::Bool(_) => (is_volatile, full_name, x),
+                                _ => (is_volatile, full_name, Type::None),
+                            })
+                        })
+                        .chain(defs1.into_iter().chain(defs2).map(
+                            |(is_volatile, name, init_val)| match init_val {
                                 x @ Type::Num(_) | x @ Type::Bool(_) => (is_volatile, name, x),
                                 _ => (is_volatile, name, Type::None),
-                            })
-                    )
-                    .collect())
+                            },
+                        ))
+                        .collect()
+                },
+            ),
+            tag(")"),
         ),
-        tag!(")")
-    ))
-);
+        multispace0,
+    )(input)
+}
 
 // ------------------------------------------
 // (when (bool expr) (body)...) grammar
 // ------------------------------------------
 
 // (when (single expr) (expr)...)
-named_complete!(
-    event<Result<Event>>,
-    ws!(delimited!(
-        tag!("("),
-        do_parse!(
-            tag!("when")
-                >> c: expr
-                >> body: exprs
-                >> (c.and_then(|cond| {
-                    let exps: Result<Vec<Expr>> = body.into_iter().collect();
-                    Ok(Event {
-                        flag: cond,
-                        body: exps?,
-                    })
-                }))
+pub fn event(input: &str) -> nom::IResult<&str, Event> {
+    delimited(
+        multispace0,
+        delimited(
+            tag("("),
+            delimited(
+                multispace0,
+                map(tuple((tag("when"), expr, exprs)), |(_, cond, body)| Event {
+                    flag: cond,
+                    body,
+                }),
+                multispace0,
+            ),
+            tag(")"),
         ),
-        tag!(")")
-    ))
-);
-named_complete!(
-    events<Vec<Result<Event>>>,
-    many1!(do_parse!(opt!(comment) >> e: event >> (e)))
-);
+        multispace0,
+    )(input)
+}
 
-fn get_error(src: CompleteByteSlice) -> Error {
+pub fn events(input: &str) -> nom::IResult<&str, Vec<Event>> {
+    many1(delimited(
+        multispace0,
+        map(tuple((opt(comment), event)), |(_, x)| x),
+        multispace0,
+    ))(input)
+}
+
+fn get_error(src: &str) -> Error {
     match events(src) {
         Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Error::from(e),
         _ => Error::from("none"),
@@ -124,18 +153,17 @@ fn get_error(src: CompleteByteSlice) -> Error {
 impl Prog {
     /// Turn raw bytes into an AST representation, including implementing syntactic sugar features
     /// such as `(report)` and `(fallthrough)`.
-    pub fn new_with_scope(source: &[u8]) -> Result<(Self, Scope)> {
+    pub fn new_with_scope(source: &str) -> Result<(Self, Scope)> {
         let mut scope = Scope::new();
-        let body = match defs(CompleteByteSlice(source)) {
+        let body = match defs(source) {
             Ok((rest, flow_state)) => {
-                let (reports, controls): (Vec<(bool, String, Type)>, Vec<(bool, String, Type)>) =
-                    flow_state
-                        .into_iter()
-                        .map(|(is_volatile, var, typ)| match var {
-                            Type::Name(v) => (is_volatile, v, typ),
-                            _ => unreachable!(),
-                        })
-                        .partition(|&(_, ref var, _)| var.starts_with("Report."));
+                let (reports, controls): (Vec<_>, Vec<_>) = flow_state
+                    .into_iter()
+                    .map(|(is_volatile, var, typ)| match var {
+                        Type::Name(v) => (is_volatile, v, typ),
+                        _ => unreachable!(),
+                    })
+                    .partition(|(_, var, _)| var.starts_with("Report."));
 
                 for (is_volatile, var, typ) in reports {
                     scope.new_report(is_volatile, var, typ);
@@ -148,10 +176,10 @@ impl Prog {
                 Ok(rest)
             }
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(Error::from(e)),
-            Err(nom::Err::Incomplete(Needed::Unknown)) => {
+            Err(nom::Err::Incomplete(nom::Needed::Unknown)) => {
                 Err(Error::from(String::from("need more src")))
             }
-            Err(nom::Err::Incomplete(Needed::Size(s))) => {
+            Err(nom::Err::Incomplete(nom::Needed::Size(s))) => {
                 Err(Error::from(format!("need {} more bytes", s)))
             }
         }?;
@@ -161,14 +189,13 @@ impl Prog {
                 let e = get_error(rest);
                 Err(Error::from(format!(
                     "compile error: \"{:?}\" in \"{}\"",
-                    e,
-                    std::str::from_utf8(rest.0)?
+                    e, rest
                 )))
             }
-            Ok((_, me)) => me.into_iter().collect(),
+            Ok((_, me)) => Ok(me),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(Error::from(e)),
-            Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from("need more src")),
-            Err(nom::Err::Incomplete(Needed::Size(s))) => {
+            Err(nom::Err::Incomplete(nom::Needed::Unknown)) => Err(Error::from("need more src")),
+            Err(nom::Err::Incomplete(nom::Needed::Size(s))) => {
                 Err(Error::from(format!("need {} more bytes", s)))
             }
         }?;
@@ -189,20 +216,18 @@ impl Prog {
 
 #[cfg(test)]
 mod tests {
-    use nom;
-    use nom::types::CompleteByteSlice;
-
     use crate::lang::ast::{Expr, Op, Prim};
     use crate::lang::datapath::{Scope, Type};
     use crate::lang::prog::{Event, Prog};
+    use nom;
 
     #[test]
     fn defs() {
-        let foo = b"(def (Bar 0) (Report (Foo 0) (volatile Baz 0)) (Qux 0) (volatile Qux2 0))";
+        let foo = "(def (Bar 0) (Report (Foo 0) (volatile Baz 0)) (Qux 0) (volatile Qux2 0))";
         use nom::Needed;
-        match super::defs(CompleteByteSlice(foo)) {
+        match super::defs(foo) {
             Ok((r, me)) => {
-                assert_eq!(r, CompleteByteSlice(&[]));
+                assert_eq!(r, "");
                 assert_eq!(
                     me,
                     vec![
@@ -230,11 +255,11 @@ mod tests {
 
     #[test]
     fn def_infinity() {
-        let foo = b"(def (Report (Foo +infinity)))";
+        let foo = "(def (Report (Foo +infinity)))";
         use nom::Needed;
-        match super::defs(CompleteByteSlice(foo)) {
+        match super::defs(foo) {
             Ok((r, me)) => {
-                assert_eq!(r, CompleteByteSlice(&[]));
+                assert_eq!(r, "");
                 assert_eq!(
                     me,
                     vec![(
@@ -253,8 +278,8 @@ mod tests {
     #[test]
     fn reserved_names() {
         use nom::Needed;
-        let foo = b"(def (__illegalname 0))";
-        match super::defs(CompleteByteSlice(foo)) {
+        let foo = "(def (__illegalname 0))";
+        match super::defs(foo) {
             Ok((r, me)) => panic!("Should not have succeeded: rest {:?}, result {:?}", r, me),
             Err(nom::Err::Error(_)) => (),
             Err(nom::Err::Failure(e)) => panic!("{:?}", e),
@@ -265,11 +290,11 @@ mod tests {
 
     #[test]
     fn simple_event() {
-        let foo = b"(when true (+ 3 4))";
+        let foo = "(when true (+ 3 4))";
         use nom::Needed;
-        match super::event(CompleteByteSlice(foo)) {
-            Ok((r, Ok(me))) => {
-                assert_eq!(r, CompleteByteSlice(&[]));
+        match super::event(foo) {
+            Ok((r, me)) => {
+                assert_eq!(r, "");
                 assert_eq!(
                     me,
                     Event {
@@ -282,9 +307,6 @@ mod tests {
                     }
                 );
             }
-            Ok((_, Err(me))) => {
-                panic!("{}", me);
-            }
             Err(nom::Err::Error(_)) => (),
             Err(nom::Err::Failure(e)) => panic!("compilation error: {}", super::Error::from(e)),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
@@ -294,16 +316,16 @@ mod tests {
 
     #[test]
     fn event() {
-        let foo = b"
+        let foo = "
             (when (< 2 3)
                 (+ 3 4)
                 (* 8 7)
             )
         ";
         use nom::Needed;
-        match super::event(CompleteByteSlice(foo)) {
-            Ok((r, Ok(me))) => {
-                assert_eq!(r, CompleteByteSlice(&[]));
+        match super::event(foo) {
+            Ok((r, me)) => {
+                assert_eq!(r, "");
                 assert_eq!(
                     me,
                     Event {
@@ -327,9 +349,6 @@ mod tests {
                     }
                 );
             }
-            Ok((_, Err(me))) => {
-                panic!("{}", me);
-            }
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => panic!("{:?}", e),
             Err(nom::Err::Incomplete(Needed::Unknown)) => panic!("incomplete"),
             Err(nom::Err::Incomplete(Needed::Size(s))) => panic!("need {} more bytes", s),
@@ -338,7 +357,7 @@ mod tests {
 
     #[test]
     fn events() {
-        let foo = b"
+        let foo = "
             (when (< 2 3)
                 (+ 3 4)
                 (* 8 7)
@@ -348,14 +367,12 @@ mod tests {
                 (* 9 8)
             )
         ";
-        use crate::lang::Result;
         use nom::Needed;
-        match super::events(CompleteByteSlice(foo)) {
+        match super::events(foo) {
             Ok((r, me)) => {
-                assert_eq!(r, CompleteByteSlice(&[]));
-                let res_me: Vec<Event> = me.into_iter().collect::<Result<Vec<Event>>>().unwrap();
+                assert_eq!(r, "");
                 assert_eq!(
-                    res_me,
+                    me,
                     vec![
                         Event {
                             flag: Expr::Sexp(
@@ -422,7 +439,7 @@ mod tests {
 
     #[test]
     fn combined() {
-        let foo = b"
+        let foo = "
             (def (foo 0) (bar 0)) # this is a comment
             (when (> foo 0)
                 (:= bar (+ bar 1)) # this is a comment
@@ -493,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_complete_failure_fails() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when (> Micros 3000)
             (report
@@ -504,7 +521,7 @@ mod tests {
 
     #[test]
     fn test_partial_failure_fails() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
@@ -519,7 +536,7 @@ mod tests {
 
     #[test]
     fn test_bad_clause_fails() {
-        let foo = b"
+        let foo = "
 	(def
 	    (Report
 		(volatile acked 0)

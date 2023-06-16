@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn serialize_install_msg() {
-        let foo = b"
+        let foo = "
         (def (Report (volatile foo 0)))
         (when true
             (bind Report.foo 4)

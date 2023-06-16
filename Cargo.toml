@@ -12,7 +12,6 @@ edition = "2021"
 
 [features]
 default = []
-lang-verbose-errors = ["nom/verbose-errors"]
 ccp-bin = ["syn", "structopt", "itertools", "quote", "regex", "toml", "proc-macro2", "libloading", "walkdir", "colored"]
 ipc-latency = ["time"]
 
@@ -22,7 +21,7 @@ clap           =  "3"
 crossbeam      =  "0.8"
 libc           =  "0.2"
 nix            =  "0.23"
-nom            =  "4"
+nom            =  "7"
 portus_export  =  "0.2"
 tracing        =  "0.1"
 structopt      =  { version = "0.3", optional = true }

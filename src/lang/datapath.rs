@@ -636,7 +636,7 @@ mod tests {
     use crate::lang::prog::Prog;
     #[test]
     fn primitives() {
-        let foo = b"
+        let foo = "
         (def (Report (foo 0))) # this is a comment
         (when true # this is a comment
             (bind Report.foo 4)
@@ -741,7 +741,7 @@ mod tests {
 
     #[test]
     fn reg() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
@@ -786,7 +786,7 @@ mod tests {
 
     #[test]
     fn underscored_var() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
@@ -797,7 +797,7 @@ mod tests {
         let b = Bin::compile_prog(&p, &mut sc).unwrap();
 
         // check for underscored state variable
-        let foo2 = b"
+        let foo2 = "
         (def (Report.foo_bar 0))
         (when true
             (bind Report.foo_bar 4)
@@ -811,7 +811,7 @@ mod tests {
 
     #[test]
     fn ewma() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when true
             (bind Report.foo (ewma 2 Flow.rate_outgoing))
@@ -858,7 +858,7 @@ mod tests {
 
     #[test]
     fn infinity_if() {
-        let foo = b"
+        let foo = "
         (def (Report.foo +infinity))
         (when true
             (bind Report.foo (if (< Flow.rtt_sample_us Report.foo) Flow.rtt_sample_us))
@@ -910,7 +910,7 @@ mod tests {
 
     #[test]
     fn control_def() {
-        let foo = b"
+        let foo = "
         (def (Control.foo +infinity))
         (when (< Flow.rtt_sample_us Control.foo)
             (bind Control.foo Flow.rtt_sample_us)
@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn control_if_definition() {
-        let foo = b"
+        let foo = "
         (def (controlFoo 0))
         (when true
             (bind  controlFoo (if (== controlFoo 0) (+ controlFoo 1)))
@@ -1020,7 +1020,7 @@ mod tests {
 
     #[test]
     fn intermediate() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when true
             (bind bar 3)
@@ -1079,7 +1079,7 @@ mod tests {
 
     #[test]
     fn prog_reset_tmps() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when (> (+ 1 2) 3)
             (bind Report.foo (+ (+ 1 2) 3))
@@ -1162,7 +1162,7 @@ mod tests {
 
     #[test]
     fn bool_ops() {
-        let foo = b" 
+        let foo = " 
 		(def (Report.acked 0) (Control.state 0))
 		(when true
 			(:= Report.acked (+ Report.acked Ack.bytes_acked))
@@ -1272,7 +1272,7 @@ mod tests {
 
     #[test]
     fn multiple_events() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when true
             (bind Report.foo 4)
@@ -1341,7 +1341,7 @@ mod tests {
 
     #[test]
     fn commands() {
-        let foo = b"
+        let foo = "
         (def (Report.foo 0))
         (when true
             (bind Report.foo 4)

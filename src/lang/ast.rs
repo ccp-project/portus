@@ -1,6 +1,14 @@
 use super::{Error, Result};
-use nom::types::CompleteByteSlice;
-use nom::*;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_until, take_while1},
+    character::{
+        complete::{digit1, multispace0},
+        is_alphanumeric,
+    },
+    combinator::{map, map_res, opt},
+    sequence::{delimited, tuple},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Prim {
@@ -50,29 +58,26 @@ pub enum Expr {
     None,
 }
 
-use std::str;
-named_complete!(
-    op<Result<Op>>,
-    alt!(
-        alt!(tag!("+") | tag!("add"))   => { |_| Ok(Op::Add) }     |
-        alt!(tag!("&&") | tag!("and"))  => { |_| Ok(Op::And) }     |
-        alt!(tag!(":=") | tag!("bind")) => { |_| Ok(Op::Bind) }    |
-        tag!("if")                      => { |_| Ok(Op::If) }      |
-        alt!(tag!("/") | tag!("div"))   => { |_| Ok(Op::Div) }     |
-        alt!(tag!("==") | tag!("eq"))   => { |_| Ok(Op::Equiv) }   |
-        tag!("ewma")                    => { |_| Ok(Op::Ewma) }    |
-        alt!(tag!(">") | tag!("gt"))    => { |_| Ok(Op::Gt) }      |
-        alt!(tag!("<") | tag!("lt"))    => { |_| Ok(Op::Lt) }      |
-        tag!("wrapped_max")             => { |_| Ok(Op::MaxWrap) } |
-        tag!("max")                     => { |_| Ok(Op::Max) }     |
-        tag!("min")                     => { |_| Ok(Op::Min) }     |
-        alt!(tag!("*") | tag!("mul"))   => { |_| Ok(Op::Mul) }     |
-        alt!(tag!("||") | tag!("or"))   => { |_| Ok(Op::Or) }      |
-        tag!("!if")                     => { |_| Ok(Op::NotIf) }   |
-        alt!(tag!("-") | tag!("sub"))   => { |_| Ok(Op::Sub) }     |
-        atom => { |f: Result<Expr>| Err(Error::from(format!("unexpected token {:?}", f))) }
-    )
-);
+pub fn op(input: &str) -> nom::IResult<&str, Op> {
+    alt((
+        map(alt((tag("+"), tag("add"))), |_| Op::Add),
+        map(alt((tag("&&"), tag("and"))), |_| Op::And),
+        map(alt((tag(":="), tag("bind"))), |_| Op::Bind),
+        map(tag("if"), |_| Op::If),
+        map(alt((tag("/"), tag("div"))), |_| Op::Div),
+        map(alt((tag("=="), tag("eq"))), |_| Op::Equiv),
+        map(tag("ewma"), |_| Op::Ewma),
+        map(alt((tag(">"), tag("gt"))), |_| Op::Gt),
+        map(alt((tag("<"), tag("lt"))), |_| Op::Lt),
+        map(tag("wrapped_max"), |_| Op::MaxWrap),
+        map(tag("max"), |_| Op::Max),
+        map(tag("min"), |_| Op::Min),
+        map(alt((tag("*"), tag("mul"))), |_| Op::Mul),
+        map(alt((tag("||"), tag("or"))), |_| Op::Or),
+        map(tag("!if"), |_| Op::NotIf),
+        map(alt((tag("-"), tag("sub"))), |_| Op::Sub),
+    ))(input)
+}
 
 fn check_expr(op: Op, left: Expr, right: Expr) -> Result<Expr> {
     match op {
@@ -89,117 +94,102 @@ fn check_expr(op: Op, left: Expr, right: Expr) -> Result<Expr> {
     }
 }
 
-named_complete!(
-    sexp<Result<Expr>>,
-    ws!(delimited!(
-        tag!("("),
-        do_parse!(
-            first: op
-                >> opt!(multispace)
-                >> second: expr
-                >> opt!(multispace)
-                >> third: expr
-                >> (first.and_then(|opr| second
-                    .and_then(|left| third.and_then(|right| check_expr(opr, left, right)))))
-        ),
-        tag!(")")
-    ))
-);
-
-use std::str::FromStr;
-named_complete!(
-    pub num<u64>,
-    map_res!(
-        digit,
-        |d: CompleteByteSlice| {
-            let st = str::from_utf8(d.0)?;
-            FromStr::from_str(st).map_err(Error::from)
-        }
-    )
-);
-
-named_complete!(
-    pub name<String>,
-    map_res!(
-        take_while1!(|u: u8| is_alphanumeric(u) || u == b'.' || u == b'_'),
-        |n: CompleteByteSlice| str::from_utf8(n.0).map_err(Error::from).and_then(|s|
-            if s.starts_with("__") {
-                Err(Error::from(
-                    format!("Names beginning with \"__\" are reserved for internal use: {:?}", s),
-                ))
-            } else {
-                Ok(String::from(s))
-            }
-        )
-    )
-);
-
-named_complete!(
-    pub atom<Result<Expr>>,
-    ws!(do_parse!(
-        val: alt!(
-            tag!("true")  => { |_| Ok(Prim::Bool(true)) }  |
-            tag!("false") => { |_| Ok(Prim::Bool(false)) } |
-            tag!("+infinity") => { |_| Ok(Prim::Num(u64::max_value())) } |
-            num => { |n: u64| Ok(Prim::Num(n)) } |
-            name => { |n: String| Ok(Prim::Name(n)) }
-        ) >>
-        (val.and_then(|t| Ok(Expr::Atom(t))))
-    ))
-);
-
-named_complete!(
-    command<Result<Expr>>,
-    ws!(delimited!(
-        tag!("("),
-        map!(
-            alt!(
-                tag!("fallthrough") => { |_| Command::Fallthrough } |
-                tag!("report")      => { |_| Command::Report      }
+pub fn sexp(input: &str) -> nom::IResult<&str, Expr> {
+    delimited(
+        tag("("),
+        delimited(
+            multispace0,
+            map_res(
+                tuple((op, opt(multispace0), expr, opt(multispace0), expr)),
+                |(op, _, left, _, right)| check_expr(op, left, right),
             ),
-            |c| Ok(Expr::Cmd(c))
+            multispace0,
         ),
-        tag!(")")
-    ))
-);
+        tag(")"),
+    )(input)
+}
 
-named_complete!(
-    pub comment<Result<Expr>>,
-    ws!(do_parse!(
-        tag!("#") >>
-        take_until!("\n") >>
-        (Ok(Expr::None))
-    ))
-);
+pub fn num(input: &str) -> nom::IResult<&str, u64> {
+    map_res(digit1, |s: &str| s.parse())(input)
+}
 
-named_complete!(
-    pub expr<Result<Expr>>,
-    alt_complete!(comment | sexp | command | atom)
-);
+pub fn name(input: &str) -> nom::IResult<&str, String> {
+    map_res(
+        take_while1(|u: char| is_alphanumeric(u as _) || u == '.' || u == '_'),
+        |s: &str| {
+            if s.starts_with("__") {
+                Err(Error::from(format!(
+                    "Names beginning with \"__\" are reserved for internal use: {:?}",
+                    s
+                )))
+            } else {
+                Ok(s.to_string())
+            }
+        },
+    )(input)
+}
 
-named_complete!(
-    pub exprs<Vec<Result<Expr>>>,
-    many1!(expr)
-);
+pub fn atom(input: &str) -> nom::IResult<&str, Expr> {
+    map(
+        alt((
+            map(tag("true"), |_| Prim::Bool(true)),
+            map(tag("false"), |_| Prim::Bool(false)),
+            map(tag("+infinity"), |_| Prim::Num(u64::MAX)),
+            map(num, Prim::Num),
+            map(name, Prim::Name),
+        )),
+        Expr::Atom,
+    )(input)
+}
+
+pub fn command(input: &str) -> nom::IResult<&str, Expr> {
+    map(
+        delimited(
+            tag("("),
+            delimited(
+                multispace0,
+                alt((
+                    map(tag("fallthrough"), |_| Command::Fallthrough),
+                    map(tag("report"), |_| Command::Report),
+                )),
+                multispace0,
+            ),
+            tag(")"),
+        ),
+        Expr::Cmd,
+    )(input)
+}
+
+pub fn comment(input: &str) -> nom::IResult<&str, Expr> {
+    map(tuple((tag("#"), take_until("\n"))), |_| Expr::None)(input)
+}
+
+pub fn expr(input: &str) -> nom::IResult<&str, Expr> {
+    delimited(
+        multispace0,
+        alt((comment, sexp, command, atom)),
+        multispace0,
+    )(input)
+}
+
+pub fn exprs(input: &str) -> nom::IResult<&str, Vec<Expr>> {
+    nom::multi::many1(expr)(input)
+}
 
 impl Expr {
     // TODO make return Iter
-    pub fn new(src: &[u8]) -> Result<Vec<Self>> {
-        match exprs(CompleteByteSlice(src)) {
-            Ok((rest, _)) if !rest.is_empty() => Err(Error::from(format!(
-                "compile error: \"{}\"",
-                str::from_utf8(rest.0)?
-            ))),
-            Ok((_, me)) => me
+    pub fn new(src: &str) -> Result<Vec<Self>> {
+        match exprs(src) {
+            Ok((rest, _)) if !rest.is_empty() => {
+                Err(Error::from(format!("compile error: \"{}\"", rest)))
+            }
+            Ok((_, me)) => Ok(me
                 .into_iter()
-                .filter(|e| match e {
-                    Ok(Expr::None) => false,
-                    _ => true,
-                })
-                .collect(),
+                .filter(|e| !matches!(e, Expr::None))
+                .collect()),
             Err(nom::Err::Error(e)) | Err(nom::Err::Failure(e)) => Err(Error::from(e)),
-            Err(nom::Err::Incomplete(Needed::Unknown)) => Err(Error::from("need more src")),
-            Err(nom::Err::Incomplete(Needed::Size(s))) => {
+            Err(nom::Err::Incomplete(nom::Needed::Unknown)) => Err(Error::from("need more src")),
+            Err(nom::Err::Incomplete(nom::Needed::Size(s))) => {
                 Err(Error::from(format!("need {} more bytes", s)))
             }
         }
@@ -234,19 +224,18 @@ impl Expr {
 #[cfg(test)]
 mod tests {
     use super::{Command, Expr, Op, Prim};
-    use nom::types::CompleteByteSlice;
 
     #[test]
     fn atom_0() {
         use super::name;
-        let foo = b"foo";
-        let er = name(CompleteByteSlice(foo));
+        let foo = "foo";
+        let er = name(foo);
         println!("{:?}", er.expect("parse single atom"));
     }
 
     #[test]
     fn atom_1() {
-        let foo = b"1";
+        let foo = "1";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(e, vec![Expr::Atom(Prim::Num(1))]);
@@ -254,7 +243,7 @@ mod tests {
 
     #[test]
     fn atom_2() {
-        let foo = b"1 ";
+        let foo = "1 ";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(e, vec![Expr::Atom(Prim::Num(1))]);
@@ -262,17 +251,16 @@ mod tests {
 
     #[test]
     fn atom_3() {
-        let foo = b"+";
+        let foo = "+";
         let er = Expr::new(foo);
-        match er {
-            Ok(e) => panic!("false ok: {:?}", e),
-            Err(_) => (),
+        if let Ok(e) = er {
+            panic!("false ok: {:?}", e);
         }
     }
 
     #[test]
     fn atom_4() {
-        let foo = b"true";
+        let foo = "true";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(e, vec![Expr::Atom(Prim::Bool(true))]);
@@ -280,7 +268,7 @@ mod tests {
 
     #[test]
     fn atom_5() {
-        let foo = b"false";
+        let foo = "false";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(e, vec![Expr::Atom(Prim::Bool(false))]);
@@ -288,7 +276,7 @@ mod tests {
 
     #[test]
     fn atom_6() {
-        let foo = b"x";
+        let foo = "x";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(e, vec![Expr::Atom(Prim::Name(String::from("x")))]);
@@ -296,7 +284,7 @@ mod tests {
 
     #[test]
     fn atom_7() {
-        let foo = b"acbdefg";
+        let foo = "acbdefg";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(e, vec![Expr::Atom(Prim::Name(String::from("acbdefg")))]);
@@ -304,7 +292,7 @@ mod tests {
 
     #[test]
     fn atom_8() {
-        let foo = b"blah 10 20";
+        let foo = "blah 10 20";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
@@ -319,7 +307,7 @@ mod tests {
 
     #[test]
     fn simple_exprs() {
-        let foo = b"(+ 10 20)";
+        let foo = "(+ 10 20)";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
@@ -331,14 +319,14 @@ mod tests {
             ),]
         );
 
-        let foo = b"(blah 10 20)";
+        let foo = "(blah 10 20)";
         let er = Expr::new(foo);
         match er {
             Ok(e) => panic!("false ok: {:?}", e),
             Err(_) => (),
         }
 
-        let foo = b"(blah 10 20";
+        let foo = "(blah 10 20";
         let er = Expr::new(foo);
         match er {
             Ok(e) => panic!("false ok: {:?}", e),
@@ -348,7 +336,7 @@ mod tests {
 
     #[test]
     fn bool_ops() {
-        let foo = b"(&& true false)";
+        let foo = "(&& true false)";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
@@ -360,7 +348,7 @@ mod tests {
             ),]
         );
 
-        let foo = b"(|| 10 20)";
+        let foo = "(|| 10 20)";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
@@ -376,15 +364,14 @@ mod tests {
     #[test]
     fn expr_leftover() {
         use nom;
-        let foo = b"(+ 10 20))";
+        let foo = "(+ 10 20))";
         use super::exprs;
-        use crate::lang::Result;
         use nom::Needed;
-        match exprs(CompleteByteSlice(foo)) {
+        match exprs(foo) {
             Ok((r, me)) => {
-                assert_eq!(r, CompleteByteSlice(b")"));
+                assert_eq!(r, ")");
                 assert_eq!(
-                    me.into_iter().collect::<Result<Vec<Expr>>>().unwrap(),
+                    me.into_iter().collect::<Vec<Expr>>(),
                     vec![Expr::Sexp(
                         Op::Add,
                         Box::new(Expr::Atom(Prim::Num(10))),
@@ -400,7 +387,7 @@ mod tests {
 
     #[test]
     fn maxtest() {
-        let foo = b"(wrapped_max 10 20)";
+        let foo = "(wrapped_max 10 20)";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
@@ -415,7 +402,7 @@ mod tests {
 
     #[test]
     fn tree() {
-        let foo = b"(+ (+ 7 3) (+ 4 6))";
+        let foo = "(+ (+ 7 3) (+ 4 6))";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
@@ -435,7 +422,7 @@ mod tests {
             ),]
         );
 
-        let foo = b"(+ (- 17 7) (+ 4 (- 26 20)))";
+        let foo = "(+ (- 17 7) (+ 4 (- 26 20)))";
         let er = Expr::new(foo);
         let e = er.unwrap();
         assert_eq!(
@@ -462,7 +449,7 @@ mod tests {
 
     #[test]
     fn whitespace() {
-        let foo = b"
+        let foo = "
             (
                 +
                 (
@@ -506,7 +493,7 @@ mod tests {
 
     #[test]
     fn commands() {
-        let foo = b"
+        let foo = "
             (report)
             (fallthrough)
         ";
@@ -520,7 +507,7 @@ mod tests {
 
     #[test]
     fn partial() {
-        let foo = b"
+        let foo = "
             (:= foo 1)
             (report
         ";
@@ -530,7 +517,7 @@ mod tests {
 
     #[test]
     fn comments() {
-        let foo = b"
+        let foo = "
             # such comments
             (report) # very descriptive # wow (+ 2 3)
             # much documentation
@@ -542,7 +529,7 @@ mod tests {
 
     #[test]
     fn old_syntax() {
-        let foo = b"(reset)";
+        let foo = "(reset)";
         let er = Expr::new(foo);
         match er {
             Ok(e) => panic!("false ok: {:?}", e),

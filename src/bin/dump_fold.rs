@@ -16,7 +16,7 @@ fn main() {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer).unwrap();
     println!("buffer:\n{}", buffer);
-    let (ast, mut sc) = lang::Prog::new_with_scope(buffer.as_bytes()).unwrap();
+    let (ast, mut sc) = lang::Prog::new_with_scope(&buffer).unwrap();
     println!("ast:\n{:?}", ast);
     let bin = lang::Bin::compile_prog(&ast, &mut sc).unwrap();
     println!("instructions:\n{:?}", bin);

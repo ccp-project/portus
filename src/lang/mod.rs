@@ -121,37 +121,28 @@ impl From<String> for Error {
         Error(e)
     }
 }
+
 impl<'a> From<&'a str> for Error {
     fn from(e: &'a str) -> Error {
         Error(String::from(e))
     }
 }
-impl<I, E> From<nom::Err<I, E>> for Error {
-    fn from(e: nom::Err<I, E>) -> Error {
+
+impl<E: std::fmt::Debug> From<nom::Err<E>> for Error {
+    fn from(e: nom::Err<E>) -> Error {
         match e {
-            nom::Err::Error(c) | nom::Err::Failure(c) => Self::from(c),
-            _ => Error(String::from(e.into_error_kind().description())),
+            nom::Err::Error(c) | nom::Err::Failure(c) => Self::from(format!("{:?}", c)),
+            nom::Err::Incomplete(needed) => Self::from(format!("{:?}", needed)),
         }
     }
 }
-impl<I, E> From<nom::Context<I, E>> for Error {
-    fn from(e: nom::Context<I, E>) -> Error {
-        match e {
-            nom::Context::Code(_, _) => Error(String::from(e.into_error_kind().description())),
-            #[allow(unreachable_patterns)]
-            #[cfg(feature = "lang-verbose-errors")]
-            nom::Context::List(ks) => Error(String::from(
-                ks.into_iter()
-                    .map(|(_, k)| k.description().to_string())
-                    .collect::<Vec<String>>()
-                    .join(" -> "),
-            )),
-            #[allow(unreachable_patterns)]
-            #[cfg(not(feature = "lang-verbose-errors"))]
-            _ => Error(String::from(e.into_error_kind().description())),
-        }
+
+impl<I: std::fmt::Debug> From<nom::error::Error<I>> for Error {
+    fn from(nom::error::Error { input, code }: nom::error::Error<I>) -> Error {
+        Error(format!("{:?}: {}", input, code.description()))
     }
 }
+
 impl From<std::string::FromUtf8Error> for Error {
     fn from(e: std::string::FromUtf8Error) -> Error {
         Error(format!("string err {}", e))
@@ -166,21 +157,6 @@ impl From<std::num::ParseIntError> for Error {
     fn from(e: std::num::ParseIntError) -> Error {
         Error(format!("int err {}", e))
     }
-}
-
-/// Define this helper macro to replace the named! macro provided by nom
-/// to address https://github.com/Geal/nom/issues/790 with CompleteByteSlice
-macro_rules! named_complete {
-    ($name:ident<$t:ty>, $submac:ident!( $($args:tt)* )) => (
-        fn $name( i: nom::types::CompleteByteSlice ) -> nom::IResult<nom::types::CompleteByteSlice, $t, u32> {
-            $submac!(i, $($args)*)
-        }
-    );
-    (pub $name:ident<$t:ty>, $submac:ident!( $($args:tt)* )) => (
-        pub fn $name( i: nom::types::CompleteByteSlice ) -> nom::IResult<nom::types::CompleteByteSlice, $t, u32> {
-            $submac!(i, $($args)*)
-        }
-    )
 }
 
 mod ast;
@@ -203,6 +179,7 @@ pub use self::prog::Prog;
 /// 4. The list of runtime updates (from `updates`) for values is applied to the Scope.
 /// 5. `Bin::compile_prog()` turns a `Prog` into a `Bin`, which is a `Vec` of datapath `Instr`
 pub fn compile(src: &[u8], updates: &[(&str, u32)]) -> Result<(Bin, Scope)> {
+    let src = std::str::from_utf8(src)?;
     Prog::new_with_scope(src).and_then(|(p, mut s)| {
         for &(name, new_val) in updates {
             match s.update_type(name, &Type::Num(Some(new_val as u64))) {
