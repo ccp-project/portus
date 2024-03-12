@@ -1,5 +1,6 @@
 //! Utilities to start a CCP processing worker.
 
+use crate::ipc::Backend;
 use crate::ipc::BackendBuilder;
 use crate::ipc::Ipc;
 use crate::lang::Scope;
@@ -206,7 +207,6 @@ mod sealed {
             self.head
                 .iter()
                 .flat_map(|x| x.datapath_programs())
-                .into_iter()
                 .chain(self.tail.datapath_programs().into_iter())
                 .collect()
         }
@@ -222,7 +222,6 @@ mod sealed {
             self.head
                 .iter()
                 .flat_map(|x| x.datapath_programs())
-                .into_iter()
                 .chain(self.tail.datapath_programs().into_iter())
                 .collect()
         }
@@ -545,7 +544,31 @@ where
         }
     }
 
+    fn maybe_try_install_datapath_programs<I, A>(
+        backend: &Backend<'_, I>,
+        install_msgs: &[Vec<u8>],
+    ) -> Result<()>
+    where
+        I: Ipc<Addr = A>,
+        A: Default + 'static,
+    {
+        let a = A::default();
+        let x: &dyn std::any::Any = &a;
+        if x.downcast_ref::<()>().is_some() {
+            info!("detected address-less datapath, installing programs");
+            let s = backend.sender(a);
+            for buf in install_msgs {
+                s.send_msg(&buf[..])?;
+            }
+
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
+
     debug!(programs = %format!("{:#?}", programs.keys()), "compiled all datapath programs, ccp ready");
+    maybe_try_install_datapath_programs(&b, &install_msgs)?;
     while let Some((msg, recv_addr)) = b.next() {
         match msg {
             Msg::Rdy(_r) => {
