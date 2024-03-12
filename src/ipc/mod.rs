@@ -125,10 +125,12 @@ impl<'a, T: Ipc> Backend<'a, T> {
     /// Get the next IPC message.
     // This is similar to `impl Iterator`, but the returned value is tied to the lifetime
     // of `self`, so we cannot implement that trait.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<(Msg<'_>, T::Addr)> {
         // if we have leftover buffer from the last read, parse another message.
         if self.read_until < self.tot_read {
-            let (msg, consumed) = Msg::from_buf(&self.receive_buf[self.read_until..]).ok()?;
+            let (msg, consumed) =
+                Msg::from_buf(&self.receive_buf[self.read_until..self.tot_read]).ok()?;
             self.read_until += consumed;
             Some((msg, self.last_recv_addr.clone()))
         } else {

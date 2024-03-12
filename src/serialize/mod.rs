@@ -231,7 +231,7 @@ impl<'a> Msg<'a> {
                             typ: 255,
                             len: 0,
                             sid: 0,
-                            bytes: &buf,
+                            bytes: buf,
                         },
                         buf.len(),
                     ))

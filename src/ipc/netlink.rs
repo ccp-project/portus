@@ -87,7 +87,8 @@ impl<T> Socket<T> {
         )
         .map(|r| r.bytes)
         .map_err(Error::from)?;
-        buf[..(end - NLMSG_HDRSIZE)].copy_from_slice(&nl_buf[NLMSG_HDRSIZE..end]);
+        let nlmsg_len: usize = u32::from_le_bytes(nl_buf[..4].try_into().unwrap()) as usize;
+        buf[..nlmsg_len].copy_from_slice(&nl_buf[NLMSG_HDRSIZE..NLMSG_HDRSIZE + nlmsg_len]);
         Ok(end - NLMSG_HDRSIZE)
     }
 
