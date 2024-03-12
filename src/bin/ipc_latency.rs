@@ -15,7 +15,7 @@ struct TimeMsg(time::OffsetDateTime);
 use std::io::prelude::*;
 impl portus::serialize::AsRawMsg for TimeMsg {
     fn get_hdr(&self) -> (u8, u32, u32) {
-        (0xff, portus::serialize::HDR_LENGTH + 8 + 4, 0)
+        (0xff, portus::serialize::HDR_LENGTH + 16, 0)
     }
 
     fn get_u32s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
@@ -35,44 +35,9 @@ impl portus::serialize::AsRawMsg for TimeMsg {
     fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
         let b = msg.get_bytes()?;
         let ts = i128::from_le_bytes((&b[0..16]).try_into().unwrap());
-        Ok(TimeMsg(time::OffsetDateTime::from_unix_timestamp_nanos(ts)))
-    }
-}
-
-#[derive(Debug)]
-struct NlTimeMsg {
-    kern_rt: time::OffsetDateTime,
-    kern_st: time::OffsetDateTime,
-}
-impl portus::serialize::AsRawMsg for NlTimeMsg {
-    fn get_hdr(&self) -> (u8, u32, u32) {
-        (0xff - 1, portus::serialize::HDR_LENGTH + 16 + 8, 0)
-    }
-
-    fn get_u32s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
-        Ok(())
-    }
-
-    fn get_u64s<W: Write>(&self, _: &mut W) -> portus::Result<()> {
-        Ok(())
-    }
-
-    fn get_bytes<W: Write>(&self, w: &mut W) -> portus::Result<()> {
-        let mut msg = [0u8; 32]; // 2x i128
-        (&mut msg[0..16]).copy_from_slice(&self.kern_rt.unix_timestamp_nanos().to_le_bytes());
-        (&mut msg[16..]).copy_from_slice(&self.kern_st.unix_timestamp_nanos().to_le_bytes());
-        w.write_all(&msg[..])?;
-        Ok(())
-    }
-
-    fn from_raw_msg(msg: portus::serialize::RawMsg) -> portus::Result<Self> {
-        let b = msg.get_bytes()?;
-        let rt_ts = i128::from_le_bytes((&b[0..16]).try_into().unwrap());
-        let st_ts = i128::from_le_bytes((&b[16..]).try_into().unwrap());
-        Ok(NlTimeMsg {
-            kern_rt: time::OffsetDateTime::from_unix_timestamp_nanos(rt_ts),
-            kern_st: time::OffsetDateTime::from_unix_timestamp_nanos(st_ts),
-        })
+        Ok(TimeMsg(time::OffsetDateTime::from_unix_timestamp_nanos(
+            ts,
+        )?))
     }
 }
 
@@ -94,11 +59,10 @@ fn bench<T: Ipc>(b: BackendSender<T>, mut l: Backend<T>, iter: u32) -> Vec<Durat
         .collect()
 }
 
-struct NlDuration(Duration, Duration, Duration);
 macro_rules! netlink_bench {
     ($name: ident, $mode: ident) => {
         #[cfg(target_os = "linux")] // netlink is linux-only
-        fn $name(iter: u32) -> Vec<NlDuration> {
+        fn $name(iter: u32) -> Vec<Duration> {
             use std::process::Command;
             Command::new("sudo")
                 .arg("rmmod")
@@ -107,19 +71,29 @@ macro_rules! netlink_bench {
                 .expect("rmmod failed");
 
             // make clean
-            Command::new("make")
+            let make_clean = Command::new("make")
                 .arg("clean")
                 .current_dir("./src/ipc/test-nl-kernel")
                 .output()
                 .expect("make failed to start");
+            assert!(make_clean.status.success());
 
             // compile kernel module
-            Command::new("make")
+            let make = Command::new("make")
                 .current_dir("./src/ipc/test-nl-kernel")
                 .output()
                 .expect("make failed to start");
+            assert!(make.status.success());
 
-            let (tx, rx) = mpsc::channel::<Vec<NlDuration>>();
+            // load kernel module
+            let insmod = Command::new("sudo")
+                .arg("insmod")
+                .arg("./src/ipc/test-nl-kernel/nltest.ko")
+                .output()
+                .expect("insmod failed");
+            assert!(insmod.status.success());
+
+            let (tx, rx) = mpsc::channel::<Vec<Duration>>();
 
             // listen
             let c1 = thread::spawn(move || {
@@ -129,42 +103,26 @@ macro_rules! netlink_bench {
                         Backend::new(sk, Arc::new(atomic::AtomicBool::new(true)), &mut buf[..])
                     })
                     .expect("nl ipc initialization");
-                tx.send(vec![]).expect("ok to insmod");
-                nl.next().expect("receive echo");
                 let sender = nl.sender(());
                 let res = (0..iter)
                     .map(|_| {
                         let portus_send_time = time::OffsetDateTime::now_utc();
                         let msg = portus::serialize::serialize(&TimeMsg(portus_send_time))
                             .expect("serialize");
-
                         sender.send_msg(&msg[..]).expect("send ts");
                         if let (portus::serialize::Msg::Other(raw), _addr) =
                             nl.next().expect("recv echo")
                         {
-                            let portus_rt = time::OffsetDateTime::now_utc();
-                            let kern_recv_msg =
-                                NlTimeMsg::from_raw_msg(raw).expect("get time from raw");
-                            return NlDuration(
-                                portus_rt - portus_send_time,
-                                kern_recv_msg.kern_rt - portus_send_time,
-                                portus_rt - kern_recv_msg.kern_st,
-                            );
+                            let then = TimeMsg::from_raw_msg(raw).expect("get time from raw");
+                            assert_eq!(then.0, portus_send_time);
+                            time::OffsetDateTime::now_utc() - then.0
                         } else {
                             panic!("wrong type");
-                        };
+                        }
                     })
                     .collect();
                 tx.send(res).expect("report rtts");
             });
-
-            rx.recv().expect("wait to insmod");
-            // load kernel module
-            Command::new("sudo")
-                .arg("insmod")
-                .arg("./src/ipc/test-nl-kernel/nltest.ko")
-                .output()
-                .expect("insmod failed");
 
             c1.join().expect("join netlink thread");
             Command::new("sudo")
@@ -312,24 +270,12 @@ arg_enum! {
 
 #[cfg(target_os = "linux")]
 fn nl_exp(trials: u32) {
-    for t in netlink_nonblocking(trials).iter().map(|d| {
-        (
-            d.0.whole_nanoseconds(),
-            d.1.whole_nanoseconds(),
-            d.2.whole_nanoseconds(),
-        )
-    }) {
-        println!("nl nonblk {:?} {:?} {:?}", t.0, t.1, t.2);
+    for t in netlink_nonblocking(trials) {
+        println!("nl nonblk {:?} 0 0", t.whole_nanoseconds());
     }
 
-    for t in netlink_blocking(trials).iter().map(|d| {
-        (
-            d.0.whole_nanoseconds(),
-            d.1.whole_nanoseconds(),
-            d.2.whole_nanoseconds(),
-        )
-    }) {
-        println!("nl blk {:?} {:?} {:?}", t.0, t.1, t.2);
+    for t in netlink_blocking(trials) {
+        println!("nl blk {:?} 0 0", t.whole_nanoseconds());
     }
 }
 
@@ -347,7 +293,7 @@ fn main() {
         .arg(
             Arg::with_name("iterations")
                 .long("iterations")
-                .short("i")
+                .short('i')
                 .help("Specifies how many trials to run (default 100)")
                 .default_value("100"),
         )

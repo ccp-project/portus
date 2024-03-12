@@ -34,7 +34,7 @@ libloading     =  { version = "0.7", optional = true }
 walkdir        =  { version = "2", optional = true }
 syn            =  { version = "1", features = ["full", "visit", "fold", "extra-traits","parsing"], optional = true }
 colored        =  { version = "2", optional = true }
-time           =  { version = "0.2", optional = true }
+time           =  { version = "0.3", optional = true }
 
 [dev-dependencies]
 anyhow             = "1"
