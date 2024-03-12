@@ -117,7 +117,7 @@ impl<T: Ipc> DatapathTrait for Datapath<T> {
             Some(sc) => {
                 // apply optional updates to values of registers in this scope
                 let fields: Vec<(Reg, u64)> = fields
-                    .unwrap_or_else(|| &[])
+                    .unwrap_or(&[])
                     .iter()
                     .map(|&(reg_name, new_value)| {
                         if reg_name.starts_with("__") {
