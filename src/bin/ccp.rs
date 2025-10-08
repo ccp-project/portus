@@ -1,21 +1,8 @@
 #![recursion_limit = "128"]
 
-extern crate colored;
-extern crate libc;
-extern crate libloading;
-extern crate portus;
-extern crate proc_macro2;
-extern crate quote;
-extern crate regex;
-extern crate structopt;
-extern crate syn;
-extern crate toml;
-extern crate walkdir;
-
 use colored::Colorize;
-use walkdir::WalkDir;
-//use clap::{App, Arg};
 use std::process::Command;
+use walkdir::WalkDir;
 
 #[derive(Debug)]
 struct Alg {
@@ -298,17 +285,18 @@ fn rebuild_library(root: &PathBuf, algs: Vec<Alg>) -> bool {
     true
 }
 
+use clap::Parser;
 use std::path::PathBuf;
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "ccp", setting = clap::AppSettings::DeriveDisplayOrder)]
+#[derive(Debug, Parser)]
+#[command(name = "ccp", setting = clap::AppSettings::DeriveDisplayOrder)]
 /// Manage and run congestion control algorithms built on CCP
 struct Ccp {
-    #[structopt(short = "d", long = "dir", parse(from_os_str))]
     /// Where to store algorithms (defaults to /usr/local/ccp)
+    #[arg(short = "d", long = "dir", parse(from_os_str))]
     dir: Option<PathBuf>,
-    #[structopt(subcommand)]
+
+    #[arg(subcommand)]
     cmd: Subcommand,
 }
 
@@ -317,12 +305,11 @@ USAGE:
     ccp run <algorithm> -- [args]
 "#;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum Subcommand {
-    #[structopt(name = "get")]
     /// Download and build a new algorithm
+    #[arg(name = "get")]
     Get {
-        #[structopt(name = "url")]
         /// Where to find the algorithm. May be a normal URL or one of the following shortcuts:{n}
         ///     (1) name of a ccp-project, eg. "reno"{n}
         ///     (2) github_user/repo, eg. "venkatarun95/copa"{n}
@@ -331,22 +318,26 @@ enum Subcommand {
         /// If you use a different VCS or have any trouble fetching algorithms with ccp get,{n}
         /// you can manually place the algorithm code in the root ccp directory (e.g ~/.ccp){n}
         /// and then run `ccp makelib`.
+        #[arg(name = "url")]
         url: String,
-        #[structopt(name = "branch", long = "branch")]
+
         /// Use a specific branch for this repository rather than master
+        #[arg(name = "branch", long = "branch")]
         branch: Option<String>,
     },
-    #[structopt(name = "list")]
+
     /// List the currently available algorithms
+    #[arg(name = "list")]
     List {},
-    #[structopt(name = "run", help = RUN_HELP)]
+
     /// Start a CCP algorithm
+    #[arg(name = "run", help = RUN_HELP)]
     Run {
-        #[structopt(name = "algorithm")]
+        #[arg(name = "algorithm")]
         alg: String,
     },
-    #[structopt(name = "makelib")]
     /// Force-rebuild the ccp algorithms library
+    #[arg(name = "makelib")]
     Makelib {},
 }
 

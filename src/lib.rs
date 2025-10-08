@@ -310,25 +310,6 @@ pub trait CongAlg<I: Ipc> {
     fn new_flow(&self, control: Datapath<I>, info: DatapathInfo) -> Self::Flow;
 }
 
-/// Tell `portus` how to construct instances of your `impl` [`portus::CongAlg`].
-///
-/// You should also annotate your struct with [`portus_export::register_ccp_alg`]()).
-pub trait CongAlgBuilder<'a> {
-    /// This function should return a new
-    /// [`clap::App`](https://docs.rs/clap/2.32.0/clap/struct.App.html) that describes the
-    /// arguments this algorithm needs to create an instance of itself.
-    fn args() -> clap::App<'a>;
-
-    /// This function takes as input the set of parsed arguments and uses them to parameterize a
-    /// new instance of this congestion control algorithm. The matches will be derived from
-    /// running `Clap::App::get_matches_from` on the `clap::App` returned by the `register` function.
-    /// It also takes an instsance of a logger so that the calling program can define the logging
-    /// behavior (eg. format and redirection).
-    fn with_arg_matches(args: &clap::ArgMatches) -> Result<Self>
-    where
-        Self: Sized;
-}
-
 mod run;
 pub use run::*;
 

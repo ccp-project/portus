@@ -12,19 +12,18 @@ edition = "2021"
 
 [features]
 default = []
-ccp-bin = ["syn", "structopt", "itertools", "quote", "regex", "toml", "proc-macro2", "libloading", "walkdir", "colored"]
+ccp-bin = ["syn", "clap/derive", "itertools", "quote", "regex", "toml", "proc-macro2", "libloading", "walkdir", "colored"]
 ipc-latency = ["time"]
 
 [dependencies]
 byteorder      =  "1"
-clap           =  "3"
 crossbeam      =  "0.8"
 libc           =  "0.2"
 nix            =  "0.23"
 nom            =  "7"
 portus_export  =  "0.2"
 tracing        =  "0.1"
-structopt      =  { version = "0.3", optional = true }
+clap           =  { version = "4", optional = true }
 itertools      =  { version = "0.10", optional = true }
 quote          =  { version = "1", optional = true }
 regex          =  { version = "1.1", optional = true }
