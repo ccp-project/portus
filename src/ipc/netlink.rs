@@ -3,8 +3,10 @@ use super::Result;
 use libc::c_int;
 use nix::sys::socket;
 use std::marker::PhantomData;
+use std::os::fd::AsRawFd;
+use std::os::fd::OwnedFd;
 
-pub struct Socket<T>(c_int, PhantomData<T>);
+pub struct Socket<T>(OwnedFd, PhantomData<T>);
 
 const NL_CFG_F_NONROOT_RECV: c_int = 1;
 const NL_CFG_F_NONROOT_SEND: c_int = 1 << 1;
@@ -31,7 +33,10 @@ impl<T> Socket<T> {
 
         let pid = unsafe { libc::getpid() };
 
-        socket::bind(fd, &nix::sys::socket::SockAddr::new_netlink(pid as u32, 0))?;
+        socket::bind(
+            fd.as_raw_fd(),
+            &nix::sys::socket::NetlinkAddr::new(pid as u32, 0),
+        )?;
 
         Ok(Socket(fd, PhantomData))
     }
@@ -79,9 +84,9 @@ impl<T> Socket<T> {
 
     fn __recv(&self, buf: &mut [u8], flags: nix::sys::socket::MsgFlags) -> Result<usize> {
         let mut nl_buf = [0u8; 1024];
-        let end = socket::recvmsg(
+        let end = socket::recvmsg::<'_, '_, '_, ()>(
             self.0,
-            &[nix::sys::uio::IoVec::from_mut_slice(&mut nl_buf[..])],
+            &mut [std::io::IoSliceMut::new(&mut nl_buf[..])],
             None,
             flags,
         )
@@ -117,10 +122,10 @@ impl<T> Socket<T> {
         // send
         socket::sendmsg(
             self.0,
-            &[nix::sys::uio::IoVec::from_slice(&msg[..])],
+            &[std::io::IoSlice::new(&msg[..])],
             &[],
             nix::sys::socket::MsgFlags::empty(),
-            None,
+            None::<&()>,
         )
         .map(|_| ())
         .map_err(Error::from)

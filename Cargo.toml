@@ -19,7 +19,7 @@ ipc-latency = ["time"]
 byteorder      =  "1"
 crossbeam      =  "0.8"
 libc           =  "0.2"
-nix            =  "0.23"
+nix            =  { version = "0.30", features = ["socket", "uio", "poll"] }
 nom            =  "7"
 portus_export  =  "0.2"
 tracing        =  "0.1"
