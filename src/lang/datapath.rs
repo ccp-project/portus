@@ -425,7 +425,7 @@ macro_rules! expand_reg {
         $count:expr;
         $headname:expr => $headtype:expr
     ) => (
-        {add_reg!($scope, $headname, $reg, $count, $headtype); $count + 1}
+        {add_reg!($scope, $headname, $reg, $count, $headtype);}
     );
     (
         $scope:ident;
@@ -1162,7 +1162,7 @@ mod tests {
 
     #[test]
     fn bool_ops() {
-        let foo = " 
+        let foo = "
 		(def (Report.acked 0) (Control.state 0))
 		(when true
 			(:= Report.acked (+ Report.acked Ack.bytes_acked))
