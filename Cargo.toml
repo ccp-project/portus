@@ -37,9 +37,9 @@ time           =  { version = "0.2", optional = true }
 
 [dev-dependencies]
 anyhow             = "1"
-libccp             = "1.1"
+libccp             = "1.2"
 minion             = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = "0.3.20"
 
 [[bin]]
 name = "ipc_latency"
