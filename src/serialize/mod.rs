@@ -157,7 +157,6 @@ pub mod create;
 pub mod install;
 pub mod measure;
 pub mod ready;
-mod testmsg;
 pub mod update_field;
 
 /// Serialize a serializable message.
@@ -246,9 +245,9 @@ impl<'a> Msg<'a> {
 }
 
 #[cfg(test)]
+mod testmsg;
+#[cfg(test)]
 mod tests {
-    use super::Msg;
-
     #[test]
     fn test_from_u16() {
         let mut buf = [0u8; 2];
@@ -315,9 +314,9 @@ mod tests {
         use super::AsRawMsg;
         let m = testmsg::Msg(String::from("testing"));
         let buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m.clone()).expect("serialize");
-        let (msg, _) = Msg::from_buf(&buf[..]).expect("deserialize");
+        let (msg, _) = super::Msg::from_buf(&buf[..]).expect("deserialize");
         match msg {
-            Msg::Other(raw) => {
+            super::Msg::Other(raw) => {
                 let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
                 assert_eq!(m, got);
             }
@@ -335,18 +334,18 @@ mod tests {
         let mut buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m1.clone()).expect("serialize");
         buf.extend(super::serialize::<testmsg::Msg>(&m2.clone()).expect("serialize"));
 
-        let (msg, len1) = Msg::from_buf(&buf[..]).expect("deserialize");
+        let (msg, len1) = super::Msg::from_buf(&buf[..]).expect("deserialize");
         match msg {
-            Msg::Other(raw) => {
+            super::Msg::Other(raw) => {
                 let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
                 assert_eq!(m1, got);
             }
             _ => panic!("wrong type for message"),
         }
 
-        let (msg, len2) = Msg::from_buf(&buf[len1..]).expect("deserialize");
+        let (msg, len2) = super::Msg::from_buf(&buf[len1..]).expect("deserialize");
         match msg {
-            Msg::Other(raw) => {
+            super::Msg::Other(raw) => {
                 let got = testmsg::Msg::from_raw_msg(raw).expect("get raw msg");
                 assert_eq!(m2, got);
             }

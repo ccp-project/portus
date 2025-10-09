@@ -1,6 +1,6 @@
 use super::{Error, Result};
 use std::marker::PhantomData;
-use std::os::unix::{io::AsRawFd, net::UnixDatagram};
+use std::os::unix::net::UnixDatagram;
 use std::path::PathBuf;
 use tracing::{debug, trace};
 
@@ -34,21 +34,16 @@ impl<T> Socket<T> {
         let sock = UnixDatagram::bind(bind_to_addr)?;
         sock.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
 
+        use std::os::fd::AsFd;
         if let Some(sb) = sndbuf_bytes {
-            let snd_res = nix::sys::socket::setsockopt(
-                sock.as_raw_fd(),
-                nix::sys::socket::sockopt::SndBuf,
-                &sb,
-            );
+            let snd_res =
+                nix::sys::socket::setsockopt(&sock.as_fd(), nix::sys::socket::sockopt::SndBuf, &sb);
             trace!(?sndbuf_bytes, is_ok=?snd_res.is_ok(), "set send buf sockopt");
         }
 
         if let Some(rb) = rcvbuf_bytes {
-            let rcv_res = nix::sys::socket::setsockopt(
-                sock.as_raw_fd(),
-                nix::sys::socket::sockopt::RcvBuf,
-                &rb,
-            );
+            let rcv_res =
+                nix::sys::socket::setsockopt(&sock.as_fd(), nix::sys::socket::sockopt::RcvBuf, &rb);
             trace!(?rcvbuf_bytes, is_ok=?rcv_res.is_ok(), "set rcv buf sockopt");
         }
 

@@ -73,7 +73,7 @@ impl<T> Socket<T> {
         val: *const libc::c_void,
         sz: u32,
     ) -> Result<()> {
-        let res = unsafe { libc::setsockopt(self.0, level, option as c_int, val, sz) };
+        let res = unsafe { libc::setsockopt(self.0.as_raw_fd(), level, option as c_int, val, sz) };
 
         if res == -1 {
             return Err(Error::from(nix::Error::last()));
@@ -85,7 +85,7 @@ impl<T> Socket<T> {
     fn __recv(&self, buf: &mut [u8], flags: nix::sys::socket::MsgFlags) -> Result<usize> {
         let mut nl_buf = [0u8; 1024];
         let end = socket::recvmsg::<'_, '_, '_, ()>(
-            self.0,
+            self.0.as_raw_fd(),
             &mut [std::io::IoSliceMut::new(&mut nl_buf[..])],
             None,
             flags,
@@ -121,7 +121,7 @@ impl<T> Socket<T> {
 
         // send
         socket::sendmsg(
-            self.0,
+            self.0.as_raw_fd(),
             &[std::io::IoSlice::new(&msg[..])],
             &[],
             nix::sys::socket::MsgFlags::empty(),
@@ -132,7 +132,7 @@ impl<T> Socket<T> {
     }
 
     fn __close(&mut self) -> Result<()> {
-        let ok = unsafe { libc::close(self.0) as i32 };
+        let ok = unsafe { libc::close(self.0.as_raw_fd()) as i32 };
         if ok < 0 {
             Err(Error(format!("could not close netlink socket: {}", ok)))
         } else {

@@ -1,8 +1,10 @@
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::marker::PhantomData;
+use std::os::fd::AsFd;
 use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::AsRawFd;
+
+use nix::poll::PollTimeout;
 
 use super::Error;
 use super::Result;
@@ -36,19 +38,19 @@ impl<T: 'static + Sync + Send> super::Ipc for Socket<T> {
     }
 
     fn send(&self, buf: &[u8], _to: &Self::Addr) -> Result<()> {
-        nix::unistd::write(self.fd.as_raw_fd(), buf)
+        nix::unistd::write(&self.fd, buf)
             .map(|_| ())
             .map_err(Error::from)
     }
 
     fn recv(&self, msg: &mut [u8]) -> Result<(usize, Self::Addr)> {
-        let pollfd = nix::poll::PollFd::new(self.fd.as_raw_fd(), nix::poll::PollFlags::POLLIN);
-        let ok = nix::poll::poll(&mut [pollfd], 1000)?;
+        let pollfd = nix::poll::PollFd::new(self.fd.as_fd(), nix::poll::PollFlags::POLLIN);
+        let ok = nix::poll::poll(&mut [pollfd], PollTimeout::try_from(1000).unwrap())?;
         if ok < 0 {
             return Err(Error::from(std::io::Error::from_raw_os_error(ok)));
         }
 
-        let len = nix::unistd::read(self.fd.as_raw_fd(), msg).map_err(Error::from)?;
+        let len = nix::unistd::read(&self.fd, msg).map_err(Error::from)?;
         Ok((len, ()))
     }
 
