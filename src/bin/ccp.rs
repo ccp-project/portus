@@ -439,7 +439,9 @@ fn main() {
                     .arg(old_dir)
                     .output()
                     .expect("rm");
-                log_error("Failed to rebuild library. This is most likely becasue the algorithm does not implement the CongAlgBuilder trait or simply has a bug.")
+                log_error(
+                    "Failed to rebuild library. This is most likely becasue the algorithm does not implement the CongAlgBuilder trait or simply has a bug.",
+                )
             }
         }
         Subcommand::List {} => {

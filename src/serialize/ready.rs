@@ -1,6 +1,6 @@
 //! Message sent from datapath to CCP when it starts up, indicating its address
 
-use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
+use super::{AsRawMsg, HDR_LENGTH, RawMsg, u32_to_u8s};
 use crate::Result;
 use std::io::prelude::*;
 
@@ -36,7 +36,7 @@ impl AsRawMsg for Msg {
 #[cfg(test)]
 mod tests {
     macro_rules! check_ready_msg {
-        ($id: ident, $msg: expr) => {
+        ($id: ident, $msg: expr_2021) => {
             check_msg!(
                 $id,
                 super::Msg,

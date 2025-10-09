@@ -26,8 +26,8 @@
 
 use super::Result;
 use byteorder::{ByteOrder, LittleEndian};
-use std::io::prelude::*;
 use std::io::Cursor;
+use std::io::prelude::*;
 use std::vec::Vec;
 use tracing::debug;
 
@@ -86,13 +86,15 @@ pub struct RawMsg<'a> {
 impl<'a> RawMsg<'a> {
     /// For predefined messages, get u32s separately for convenience
     pub(crate) unsafe fn get_u32s(&self) -> Result<&'a [u32]> {
-        use std::mem;
-        match self.typ {
-            create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
-            measure::MEASURE => Ok(mem::transmute(&self.bytes[0..8])),
-            update_field::UPDATE_FIELD => Ok(mem::transmute(&self.bytes[0..4])),
-            ready::READY => Ok(mem::transmute(&self.bytes[0..(4 * 1)])),
-            _ => Ok(&[]),
+        unsafe {
+            use std::mem;
+            match self.typ {
+                create::CREATE => Ok(mem::transmute(&self.bytes[0..(4 * 6)])),
+                measure::MEASURE => Ok(mem::transmute(&self.bytes[0..8])),
+                update_field::UPDATE_FIELD => Ok(mem::transmute(&self.bytes[0..4])),
+                ready::READY => Ok(mem::transmute(&self.bytes[0..(4 * 1)])),
+                _ => Ok(&[]),
+            }
         }
     }
 
@@ -135,7 +137,7 @@ mod test_helper {
     /// and verifies the message is unchanged.
     #[macro_export]
     macro_rules! check_msg {
-        ($id: ident, $typ: ty, $m: expr, $got: pat, $x: ident) => {
+        ($id: ident, $typ: ty, $m: expr_2021, $got: pat, $x: ident) => {
             #[test]
             fn $id() {
                 let m = $m;
@@ -310,8 +312,8 @@ mod tests {
 
     #[test]
     fn test_other_msg() {
-        use super::testmsg;
         use super::AsRawMsg;
+        use super::testmsg;
         let m = testmsg::Msg(String::from("testing"));
         let buf: Vec<u8> = super::serialize::<testmsg::Msg>(&m.clone()).expect("serialize");
         let (msg, _) = super::Msg::from_buf(&buf[..]).expect("deserialize");
@@ -326,8 +328,8 @@ mod tests {
 
     #[test]
     fn test_multi_msg() {
-        use super::testmsg;
         use super::AsRawMsg;
+        use super::testmsg;
 
         let m1 = testmsg::Msg(String::from("foo"));
         let m2 = testmsg::Msg(String::from("bar"));

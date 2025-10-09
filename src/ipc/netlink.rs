@@ -14,21 +14,20 @@ const NLMSG_HDRSIZE: usize = 0x10;
 
 impl<T> Socket<T> {
     fn __new() -> Result<Self> {
-        let fd = if let Ok(fd) = socket::socket(
+        let fd = match socket::socket(
             nix::sys::socket::AddressFamily::Netlink,
             nix::sys::socket::SockType::Raw,
             nix::sys::socket::SockFlag::empty(),
             nix::sys::socket::SockProtocol::NetlinkUserSock,
         ) {
-            fd
-        } else {
-            socket::socket(
+            Ok(fd) => fd,
+            _ => socket::socket(
                 nix::sys::socket::AddressFamily::Netlink,
                 nix::sys::socket::SockType::Raw,
                 nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_RECV)
                     | nix::sys::socket::SockFlag::from_bits_truncate(NL_CFG_F_NONROOT_SEND),
                 nix::sys::socket::SockProtocol::NetlinkUserSock,
-            )?
+            )?,
         };
 
         let pid = unsafe { libc::getpid() };

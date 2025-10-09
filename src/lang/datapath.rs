@@ -238,13 +238,13 @@ fn compile_expr(e: &Expr, mut scope: &mut Scope) -> Result<(Vec<Instr>, Reg)> {
                     match left.get_type() {
                         Ok(Type::Bool(_)) => (),
                         x => {
-                            return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x)))
+                            return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x)));
                         }
                     }
                     match right.get_type() {
                         Ok(Type::Bool(_)) => (),
                         x => {
-                            return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x)))
+                            return Err(Error::from(format!("{:?} expected Bool, got {:?}", o, x)));
                         }
                     }
 
@@ -411,7 +411,7 @@ pub struct Scope {
 }
 
 macro_rules! add_reg {
-    ($scope:ident, $name:expr, $rtyp:ident, $idx:expr, $typ:expr) => {{
+    ($scope:ident, $name:expr_2021, $rtyp:ident, $idx:expr_2021, $typ:expr_2021) => {{
         $scope
             .named
             .insert(String::from($name), Reg::$rtyp($idx, $typ));
@@ -422,17 +422,17 @@ macro_rules! expand_reg {
     (
         $scope:ident;
         $reg:ident;
-        $count:expr;
-        $headname:expr => $headtype:expr
+        $count:expr_2021;
+        $headname:expr_2021 => $headtype:expr_2021
     ) => (
         {add_reg!($scope, $headname, $reg, $count, $headtype);}
     );
     (
         $scope:ident;
         $reg:ident;
-        $count:expr;
-        $headname:expr => $headtype:expr,
-        $( $restname:expr => $resttype:expr ),*
+        $count:expr_2021;
+        $headname:expr_2021 => $headtype:expr_2021,
+        $( $restname:expr_2021 => $resttype:expr_2021 ),*
     ) => ({
         add_reg!($scope, $headname, $reg, $count, $headtype);
         expand_reg!($scope; $reg; $count+1; $( $restname => $resttype ),* )
@@ -440,8 +440,8 @@ macro_rules! expand_reg {
     (
         $scope:ident;
         $reg:ident;
-        $headname:expr => $headtype:expr,
-        $( $restname:expr => $resttype:expr ),*
+        $headname:expr_2021 => $headtype:expr_2021,
+        $( $restname:expr_2021 => $resttype:expr_2021 ),*
     ) => ({
         add_reg!($scope, $headname, $reg, 0, $headtype);
         expand_reg!($scope; $reg; 1; $( $restname => $resttype ),* )

@@ -1,6 +1,6 @@
 //! CCP sends this message to change the datapath program currently in use.
 
-use super::{u32_to_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
+use super::{AsRawMsg, HDR_LENGTH, RawMsg, u32_to_u8s, u64_to_u8s};
 use crate::lang::Reg;
 use crate::{Error, Result};
 use std::io::prelude::*;

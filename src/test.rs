@@ -1,6 +1,6 @@
 use super::ipc;
 use super::serialize;
-use std::sync::{atomic, Arc};
+use std::sync::{Arc, atomic};
 use std::thread;
 
 #[test]

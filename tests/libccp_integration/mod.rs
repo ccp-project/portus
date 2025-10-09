@@ -1,4 +1,4 @@
-use portus::ipc::{chan::Socket, BackendBuilder, Blocking, Ipc};
+use portus::ipc::{BackendBuilder, Blocking, Ipc, chan::Socket};
 use portus::lang::Scope;
 use portus::{CongAlg, Datapath, DatapathInfo, DatapathTrait, Flow, Report};
 use std::collections::HashMap;

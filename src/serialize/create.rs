@@ -1,6 +1,6 @@
 //! Message sent from datapath to CCP when a new flow starts.
 
-use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
+use super::{AsRawMsg, HDR_LENGTH, RawMsg, u32_to_u8s};
 use crate::{Error, Result};
 use std::io::prelude::*;
 
@@ -61,7 +61,7 @@ impl AsRawMsg for Msg {
             None
         } else {
             let end = b.iter().position(|&c| c == b'\0').unwrap_or(b.len());
-            if let Ok(s) = std::ffi::CStr::from_bytes_with_nul(&b[..end+1]) {
+            if let Ok(s) = std::ffi::CStr::from_bytes_with_nul(&b[..end + 1]) {
                 Some(s.to_str()?.to_owned())
             } else {
                 None
@@ -83,7 +83,7 @@ impl AsRawMsg for Msg {
 #[cfg(test)]
 mod tests {
     macro_rules! check_create_msg {
-        ($id: ident, $msg: expr) => {
+        ($id: ident, $msg: expr_2021) => {
             check_msg!($id, super::Msg, $msg, crate::serialize::Msg::Cr(crm), crm);
         };
     }

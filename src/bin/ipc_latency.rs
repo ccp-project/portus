@@ -1,7 +1,7 @@
 use clap::Arg;
 use portus::ipc::{Backend, BackendSender, Blocking, Ipc, Nonblocking};
 use std::convert::TryInto;
-use std::sync::{atomic, Arc};
+use std::sync::{Arc, atomic};
 use std::thread;
 use std::vec::Vec;
 use time::Duration;

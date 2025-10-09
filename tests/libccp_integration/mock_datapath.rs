@@ -1,5 +1,5 @@
 use super::ACKED_PRIMITIVE;
-use anyhow::{bail, Error};
+use anyhow::{Error, bail};
 use minion::Cancellable;
 use std::sync::Arc;
 use tracing::{debug, info};

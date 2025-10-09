@@ -5,7 +5,7 @@ use std::time::Instant;
 use tracing::info;
 
 mod libccp_integration;
-use crate::libccp_integration::{IntegrationTest, ACKED_PRIMITIVE};
+use crate::libccp_integration::{ACKED_PRIMITIVE, IntegrationTest};
 
 pub struct TestBasicSerialize;
 

@@ -83,14 +83,12 @@ pub fn ipc_valid(v: String) -> std::result::Result<(), String> {
 /// ```
 #[macro_export]
 macro_rules! start {
-    ($ipc:expr, $alg: expr) => {{
+    ($ipc:expr_2021, $alg: expr_2021) => {{
         use $crate::ipc::Blocking;
         $crate::start!($ipc, $alg, Blocking)
     }};
-    ($ipc:expr, $alg:expr, $blk:ty) => {{
-        $crate::start!($ipc, $alg, $blk, "portus")
-    }};
-    ($ipc:expr, $alg:expr, $blk:ty, $bindaddr:expr) => {{
+    ($ipc:expr_2021, $alg:expr_2021, $blk:ty) => {{ $crate::start!($ipc, $alg, $blk, "portus") }};
+    ($ipc:expr_2021, $alg:expr_2021, $blk:ty, $bindaddr:expr_2021) => {{
         use $crate::ipc::BackendBuilder;
         match $ipc {
             "unix" => {

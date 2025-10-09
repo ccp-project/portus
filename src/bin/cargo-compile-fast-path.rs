@@ -60,7 +60,9 @@ impl<'v> Visit<'v> for FastPathProgramFinder {
                             ByteStr(ref ls) => lang::compile(&ls.value(), &[]),
                             Str(ref ls) => lang::compile(ls.value().as_bytes(), &[]),
                             _ => {
-                                panic!("Non-string passed to install(). This shouldn't have compiled in the first place...")
+                                panic!(
+                                    "Non-string passed to install(). This shouldn't have compiled in the first place..."
+                                )
                             }
                         };
                         self.total += 1;
@@ -203,7 +205,14 @@ fn main() {
     }
     if total > 0 {
         if failed > 0 {
-            eprintln!("{}{}", bold_red!("error"), bold!(format!(": {}/{} fast-path programs failed to compile.\n       You should resolve these issues before running the CCP.", failed, total)))
+            eprintln!(
+                "{}{}",
+                bold_red!("error"),
+                bold!(format!(
+                    ": {}/{} fast-path programs failed to compile.\n       You should resolve these issues before running the CCP.",
+                    failed, total
+                ))
+            )
         } else {
             println!(
                 "       {} {} fast-path programs in {}",

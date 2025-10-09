@@ -1,8 +1,8 @@
 //! CCP sends this message containing a datapath program.
 
-use super::{u32_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
-use crate::lang::Bin;
+use super::{AsRawMsg, HDR_LENGTH, RawMsg, u32_to_u8s};
 use crate::Result;
+use crate::lang::Bin;
 use std::io::prelude::*;
 
 pub(crate) const INSTALL: u8 = 2;

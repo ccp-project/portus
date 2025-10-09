@@ -5,10 +5,10 @@ use crate::ipc::Ipc;
 use crate::lang::Scope;
 use crate::serialize;
 use crate::serialize::Msg;
-use crate::{lang, CongAlg, Datapath, DatapathInfo, Error, Flow, Report, Result};
+use crate::{CongAlg, Datapath, DatapathInfo, Error, Flow, Report, Result, lang};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{atomic, Arc};
+use std::sync::{Arc, atomic};
 use std::thread;
 use tracing::{debug, info};
 
@@ -40,7 +40,7 @@ impl CCPHandle {
 }
 
 mod sealed {
-    use crate::{ipc::Ipc, CongAlg, Datapath, DatapathInfo, Flow, Report};
+    use crate::{CongAlg, Datapath, DatapathInfo, Flow, Report, ipc::Ipc};
     use std::collections::HashMap;
 
     pub struct AlgList<Head, Tail> {

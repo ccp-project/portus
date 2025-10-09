@@ -1,7 +1,7 @@
 //! When the datapath program specifies, the datapath sends a Report message containing
 //! measurements to CCP. Use the `Scope` returned from compiling the program to query the values.
 
-use super::{u32_to_u8s, u64_from_u8s, u64_to_u8s, AsRawMsg, RawMsg, HDR_LENGTH};
+use super::{AsRawMsg, HDR_LENGTH, RawMsg, u32_to_u8s, u64_from_u8s, u64_to_u8s};
 use crate::{Error, Result};
 use std::io::prelude::*;
 
@@ -74,7 +74,7 @@ impl AsRawMsg for Msg {
 #[cfg(test)]
 mod tests {
     macro_rules! check_measure_msg {
-        ($id: ident, $sid:expr, $program_uid:expr, $fields:expr) => {
+        ($id: ident, $sid:expr_2021, $program_uid:expr_2021, $fields:expr_2021) => {
             check_msg!(
                 $id,
                 super::Msg,

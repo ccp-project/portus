@@ -4,7 +4,7 @@
 use super::Error;
 use super::Result;
 use std::rc::{Rc, Weak};
-use std::sync::{atomic, Arc};
+use std::sync::{Arc, atomic};
 use tracing::{info, trace};
 
 /// Thread-channel implementation

@@ -1,5 +1,5 @@
-use super::ast::{atom, comment, expr, exprs, name, Expr};
-use super::datapath::{check_atom_type, Scope, Type};
+use super::ast::{Expr, atom, comment, expr, exprs, name};
+use super::datapath::{Scope, Type, check_atom_type};
 use super::{Error, Result};
 use nom::multi::{many0, many1};
 use nom::{

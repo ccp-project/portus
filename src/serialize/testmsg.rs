@@ -1,4 +1,4 @@
-use super::{AsRawMsg, RawMsg, HDR_LENGTH};
+use super::{AsRawMsg, HDR_LENGTH, RawMsg};
 use crate::Result;
 use std::io::prelude::*;
 
