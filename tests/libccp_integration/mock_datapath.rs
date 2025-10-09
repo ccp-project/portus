@@ -60,7 +60,7 @@ impl libccp::CongestionOps for MockConnectionState {
 // libccp::Connection has lifetime 'static.
 pub struct MockConnection(
     libccp::Connection<'static, MockConnectionState>,
-    Arc<libccp::Datapath>,
+    #[allow(dead_code)] Arc<libccp::Datapath>,
 );
 
 // For the same reason, impl Drop to prevent split borrows, which could cause the
@@ -130,7 +130,7 @@ pub fn start(
             )
             .unwrap();
 
-            MockConnection(unsafe { std::mem::transmute(mc) }, dp_local.clone())
+            MockConnection(unsafe { std::mem::transmute(mc) }, dp_local)
         })
         .collect();
 

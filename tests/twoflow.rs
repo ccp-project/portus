@@ -1,6 +1,7 @@
 use portus::lang::Scope;
 use portus::{DatapathTrait, Report};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 use tracing::info;
 
@@ -9,8 +10,8 @@ use crate::libccp_integration::IntegrationTest;
 
 pub struct TestTwoFlows;
 
-static mut FLOW1_RECVD: u32 = 0;
-static mut FLOW2_RECVD: u32 = 0;
+static FLOW1_RECVD: AtomicU32 = AtomicU32::new(0);
+static FLOW2_RECVD: AtomicU32 = AtomicU32::new(0);
 
 impl IntegrationTest for TestTwoFlows {
     fn new() -> Self {
@@ -42,27 +43,27 @@ impl IntegrationTest for TestTwoFlows {
     }
 
     fn check_test(&mut self, sc: &Scope, _t: Instant, sock_id: u32, m: &Report) -> bool {
-        unsafe {
-            let num = m
-                .get_field("Report.value", sc)
-                .expect("expected datapath value field in returned measurement")
-                as u32;
+        let num =
+            m.get_field("Report.value", sc)
+                .expect("expected datapath value field in returned measurement") as u32;
 
-            match sock_id {
-                1 => FLOW1_RECVD = num,
-                2 => FLOW2_RECVD = num,
-                _ => unreachable!(),
-            };
+        match sock_id {
+            1 => FLOW1_RECVD.store(num, Ordering::SeqCst),
+            2 => FLOW2_RECVD.store(num, Ordering::SeqCst),
+            _ => unreachable!(),
+        };
 
-            match (FLOW1_RECVD, FLOW2_RECVD) {
-                (10, 0) | (0, 20) => false,
-                (0, _) | (_, 0) => false,
-                (10, 20) => true,
-                _ => {
-                    assert_eq!(FLOW1_RECVD, 10);
-                    assert_eq!(FLOW2_RECVD, 20);
-                    unreachable!();
-                }
+        match (
+            FLOW1_RECVD.load(Ordering::SeqCst),
+            FLOW2_RECVD.load(Ordering::SeqCst),
+        ) {
+            (10, 0) | (0, 20) => false,
+            (0, _) | (_, 0) => false,
+            (10, 20) => true,
+            (one, two) => {
+                assert_eq!(one, 10);
+                assert_eq!(two, 20);
+                unreachable!();
             }
         }
     }
